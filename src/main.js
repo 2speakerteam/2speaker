@@ -213,14 +213,18 @@ function voiceScreen() {
 }
 
 function textScreen() {
-  const outgoingMessages = sentTextMessages.map((message) => `<article class="text-bubble me"><span>나</span><p>${escapeHtml(message)}</p></article>`).join('');
+  const outgoingMessages = sentTextMessages.map((message, index) => {
+    const pendingNotice = index === sentTextMessages.length - 1 && textSendNotice
+      ? `<small class="translation-pending" role="status" aria-live="polite">${escapeHtml(textSendNotice)}</small>`
+      : '';
+    return `<article class="text-bubble me"><span>나</span><p>${escapeHtml(message)}</p>${pendingNotice}</article>`;
+  }).join('');
   return `<main class="screen content-screen conversation-screen text-screen">
     ${conversationHeader('문자로 대화')}
     <section class="text-dialogue">
       <article class="text-bubble other"><span>상대방</span><p>Where is the station?</p><strong>역이 어디예요?</strong></article>
       <article class="text-bubble me"><span>나</span><p>이쪽으로 가세요.</p><strong>Go this way.</strong></article>
       ${outgoingMessages}
-      <p class="message-notice" role="status" aria-live="polite">${textSendNotice}</p>
     </section>
     <form class="message-composer"><input required placeholder="메시지를 입력하세요." aria-label="번역할 메시지"><button type="submit" aria-label="메시지 보내기">${icon('send', 28)}</button></form>
   </main>`;
