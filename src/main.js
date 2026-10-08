@@ -1,6 +1,7 @@
 const root = document.querySelector('#root');
 let currentPage = 'home';
 let destination = '';
+let selectedAppLanguage = '한국어';
 const pageHistory = [];
 let faqOpenIndex = 3;
 
@@ -200,26 +201,27 @@ function loginScreen() {
       <article class="account-card"><h2>로그인</h2>
         <label class="account-input">${icon('mail', 25)}<input type="email" placeholder="이메일"></label>
         <label class="account-input">${icon('lock', 25)}<input type="password" placeholder="비밀번호"></label>
-        <button class="primary-button">로그인</button>
+        <button class="primary-button" data-account-action="로그인">로그인</button>
       </article>
       <article class="account-card"><h2>회원가입</h2><p>간편 회원가입</p>
-        <div class="social-grid"><button><b class="google-mark">G</b>Google</button><button><b>●</b>Apple</button><button><b class="naver-mark">N</b>Naver</button></div>
-        <button class="email-signup">이메일로 회원가입 ${icon('chevron', 22)}</button>
+        <div class="social-grid"><button data-account-action="Google"><b class="google-mark">G</b>Google</button><button data-account-action="Apple"><b>●</b>Apple</button><button data-account-action="Naver"><b class="naver-mark">N</b>Naver</button></div>
+        <button class="email-signup" data-account-action="이메일 회원가입">이메일로 회원가입 ${icon('chevron', 22)}</button>
       </article>
+      <p class="account-notice" role="status" aria-live="polite"></p>
     </section>
   </main>`;
 }
 
 function languageScreen() {
   return `<main class="screen content-screen">${header('앱 언어')}
-    <section class="page-body language-body"><button class="setting-row" data-page="language-list"><strong>앱 언어</strong><span>한국어 ${icon('chevron', 26)}</span></button></section>
+    <section class="page-body language-body"><button class="setting-row" data-page="language-list"><strong>앱 언어</strong><span>${selectedAppLanguage} ${icon('chevron', 26)}</span></button></section>
   </main>`;
 }
 
 function languageListScreen() {
   const languages = ['한국어', 'English', '日本語', '中文', 'Español', 'Français', 'Deutsch'];
   return `<main class="screen content-screen">${header('앱 언어 선택')}
-    <section class="page-body language-list">${languages.map((language, index) => `<button><span>${language}</span>${index === 0 ? icon('check', 30) : ''}</button>`).join('')}</section>
+    <section class="page-body language-list">${languages.map((language) => `<button data-language="${language}" aria-pressed="${language === selectedAppLanguage}"><span>${language}</span>${language === selectedAppLanguage ? icon('check', 30) : ''}</button>`).join('')}</section>
   </main>`;
 }
 
@@ -281,8 +283,20 @@ function infoScreen(title, copy) {
 function serviceScreen() {
   return `<main class="screen content-screen">${header('서비스 정보')}
     <section class="page-body service-body"><article><h2>2SPEAKER</h2><p>One AI. Two ways to speak.</p></article>
-      <div class="list-card"><button data-page="terms"><span>이용약관</span>${icon('chevron', 27)}</button><button data-page="privacy"><span>개인정보처리방침</span>${icon('chevron', 27)}</button><button><span>앱 버전</span><em>1.0.0</em></button></div>
+      <div class="list-card"><button data-page="terms"><span>이용약관</span>${icon('chevron', 27)}</button><button data-page="privacy"><span>개인정보처리방침</span>${icon('chevron', 27)}</button><button data-page="version"><span>앱 버전</span><em>1.0.0</em></button></div>
     </section>
+  </main>`;
+}
+
+function versionScreen() {
+  return `<main class="screen content-screen">${header('앱 버전')}
+    <section class="page-body version-card"><p>Version 1.0.0</p><hr><p>현재 최신 버전입니다.</p></section>
+  </main>`;
+}
+
+function legalScreen(title, sections) {
+  return `<main class="screen content-screen">${header(title)}
+    <section class="page-body legal-body">${sections.map(([heading, copy]) => `<article><h2>${heading}</h2><p>${copy}</p></article>`).join('')}</section>
   </main>`;
 }
 
@@ -295,8 +309,24 @@ function render() {
     howto: howtoScreen,
     contact: contactScreen,
     faq: faqScreen,
-    terms: () => infoScreen('이용약관', '2SPEAKER 이용약관은 서비스 공개 전 최종 내용을 반영합니다.'),
-    privacy: () => infoScreen('개인정보처리방침', '2SPEAKER 개인정보처리방침은 서비스 공개 전 최종 내용을 반영합니다.')
+    version: versionScreen,
+    terms: () => legalScreen('이용약관', [
+      ['제1조 목적', '이 약관은 2SPEAKER 서비스 이용에 필요한 기본 사항을 정합니다.'],
+      ['제2조 서비스 제공', '2SPEAKER는 길찾기, 실시간 통역·번역 및 관련 AI 기능을 제공합니다.'],
+      ['제3조 계정 및 이용', '계정이 필요한 기능은 가입 후 이용할 수 있습니다.'],
+      ['제4조 서비스 이용 시 유의사항', 'AI 안내와 길찾기 정보는 실제 교통·현장 상황과 다를 수 있습니다.<br>사용자는 현장의 표지판, 교통정보 및 안전 상황을 함께 확인해야 합니다.'],
+      ['제5조 금지 행위', '서비스 운영을 방해하거나 타인의 권리를 침해하는 방식으로 이용해서는 안 됩니다.'],
+      ['제6조 서비스 변경 및 중단', '서비스 개선, 점검 또는 운영상 필요한 경우 일부 기능이 변경되거나 일시 중단될 수 있습니다.'],
+      ['제7조 기타', '본 약관에 정하지 않은 사항은 관련 법령과 서비스 운영 정책에 따릅니다.']
+    ]),
+    privacy: () => legalScreen('개인정보처리방침', [
+      ['1. 수집·처리하는 정보', '2SPEAKER는 서비스 제공에 필요한 범위에서 다음 정보를 처리할 수 있습니다.<br>- 계정 정보: 이메일 등<br>- 위치 정보: 길찾기 이용 시<br>- 음성·텍스트 입력 정보: 통역·번역 이용 시<br>- 서비스 이용 및 오류 기록'],
+      ['2. 이용 목적', '수집된 정보는 다음 목적으로 이용합니다.<br>- 길찾기 및 현재 위치 기반 안내<br>- 실시간 통역·번역<br>- 계정 관리<br>- 오류 확인 및 서비스 개선'],
+      ['3. 보관 및 파기', '개인정보는 서비스 제공에 필요한 기간 동안만 이용하며, 목적이 달성되면 관련 법령에 따라 안전하게 파기합니다.'],
+      ['4. 제3자 제공 및 외부 서비스', '이용자의 동의 또는 법적 근거 없이 개인정보를 제3자에게 제공하지 않습니다.<br>지도, 로그인, AI 처리 등 외부 서비스가 필요한 경우 필요한 범위에서만 정보를 처리합니다.'],
+      ['5. 이용자의 권리', '이용자는 자신의 개인정보에 대해 열람, 수정, 삭제 및 처리 정지를 요청할 수 있습니다.'],
+      ['6. 개인정보 문의', '개인정보와 관련된 문의는 2SPEAKER 문의 / 오류 신고를 통해 접수할 수 있습니다.']
+    ])
   };
   root.innerHTML = `<div class="app-shell">${screens[currentPage]()}</div>`;
 
@@ -311,6 +341,19 @@ function render() {
       const index = Number(button.dataset.faqIndex);
       faqOpenIndex = faqOpenIndex === index ? -1 : index;
       render();
+    });
+  });
+  document.querySelectorAll('[data-language]').forEach((button) => {
+    button.addEventListener('click', () => {
+      selectedAppLanguage = button.dataset.language;
+      pageHistory.pop();
+      currentPage = 'language';
+      render();
+    });
+  });
+  document.querySelectorAll('[data-account-action]').forEach((button) => {
+    button.addEventListener('click', () => {
+      document.querySelector('.account-notice').textContent = `${button.dataset.accountAction} 기능은 인증 서버 연결 후 이용할 수 있습니다.`;
     });
   });
 
