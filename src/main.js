@@ -9,6 +9,9 @@ const icons = {
   back: '<path d="m15 18-6-6 6-6"/>',
   home: '<path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/>',
   more: '<circle cx="5" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none"/>',
+  menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+  settings: '<circle cx="12" cy="12" r="3"/><path d="m19.4 15 .1.1 1.4 1.1-1.4 2.4-1.7-.7a8 8 0 0 1-1.8 1l-.3 1.8h-2.8l-.3-1.8a8 8 0 0 1-1.8-1l-1.7.7-1.4-2.4L7.9 15a8 8 0 0 1 0-2l-1.4-1.1 1.4-2.4 1.7.7a8 8 0 0 1 1.8-1l.3-1.8h2.8l.3 1.8a8 8 0 0 1 1.8 1l1.7-.7 1.4 2.4-1.4 1.1a8 8 0 0 1 0 2Z"/>',
+  train: '<rect x="5" y="3" width="14" height="16" rx="3"/><path d="M8 7h8v5H8zM8 22l2-3m6 3-2-3M5 15h14M8 16h.01M16 16h.01"/>',
   pin: '<path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/><path d="M8 21h8"/>',
   translate: '<path d="M4 5h9v8H9l-3 3v-3H4Z"/><path d="M11 9h9v8h-2v3l-3-3h-4Z"/><path d="M7 8h3M8.5 6.5v3"/><path d="m14 14 1.5-3 1.5 3M14.5 13h2"/>',
   mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6"/>',
@@ -82,16 +85,40 @@ function routeScreen() {
 }
 
 function guideScreen() {
+  const isTransfer = /환승|2호선|4호선|서울역|공항철도|지하철/.test(destination.trim());
   const place = destination.trim() || '경복궁';
+  const route = isTransfer
+    ? {
+        scene: 'station-scene',
+        instruction: '직진 → 4호선 표지판 따라 왼쪽 · 약 8분',
+        question: '4호선으로 갈아타려면 어디로 가요?',
+        answer: 'Go straight through this passage, then follow the Line 4 signs and turn left. It takes about 8 minutes.'
+      }
+    : {
+        scene: 'walk-scene',
+        instruction: `도보 → ${place} 방향 직진 · 약 12분`,
+        question: `${place} 가려면 어디로 가요?`,
+        answer: `Go straight toward ${place}. It is about a 12-minute walk from Anguk Station.`
+      };
   return `<main class="screen guide-screen">
-    <header class="guide-header"><button class="icon-button" data-action="back" aria-label="뒤로 가기">${icon('back', 34)}</button><strong>2SPEAKER</strong><span></span></header>
+    <header class="guide-header">
+      <button class="guide-control" data-page="more" aria-label="더보기">${icon('menu', 30)}</button>
+      <strong>2SPEAKER</strong>
+      <button class="guide-control" data-page="language" aria-label="설정">${icon('settings', 30)}</button>
+    </header>
     <section class="route-visual" aria-label="실시간 길찾기 안내">
-      <div class="route-road"><span class="road-line"></span><span class="direction-arrow">↑</span><span class="destination-pin">${icon('pin', 34)} ${place}</span></div>
-      <div class="route-instruction">${icon('walk', 28)}<span>도보 → ${place} 방향 직진 · 약 12분</span></div>
+      <div class="route-scene ${route.scene}">
+        ${isTransfer
+          ? `<div class="transfer-banner"><span class="line-badge line-two">2</span><span class="line-name">2호선<small>Line 2</small></span><strong class="transfer-arrow">→</strong><span class="line-badge line-four">4</span><span class="line-name">4호선<small>Line 4</small></span><span class="transfer-label">${icon('train', 28)}<span>갈아타는 곳<small>Transfer</small></span></span></div>
+             <div class="station-sign"><span class="line-badge line-four">4</span><strong>4호선</strong><span>표지판 따라 ↑</span></div>
+             <span class="direction-arrow turn-left">←</span>`
+          : `<div class="destination-sign"><strong>↑</strong><span>${place}<small>Gyeongbokgung</small></span></div><span class="direction-arrow">↑</span>`}
+      </div>
+      <div class="route-instruction">${icon('walk', 28)}<span>${route.instruction}</span></div>
     </section>
     <section class="guide-dialogue">
-      <p class="bubble question">${place} 가려면<br>어디로 가요?</p>
-      <p class="bubble answer">Go straight toward ${place}. It is about a 12-minute walk.</p>
+      <p class="bubble question">${route.question}</p>
+      <p class="bubble answer">${route.answer}</p>
     </section>
     ${bottomNav()}
   </main>`;
