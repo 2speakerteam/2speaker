@@ -118,12 +118,12 @@ function homeScreen() {
 function routeScreen() {
   const safeDestination = escapeHtml(destination);
   return `<main class="screen content-screen">
-    ${header('길찾기')}
+    ${header(routeEntryMode === 'simple' ? '목적지 검색' : '길찾기')}
     <section class="page-body route-entry-body">
       <form class="route-form" id="route-form"><div class="large-input"><label class="sr-only" for="route-destination">목적지</label>
         <input id="route-destination" value="${safeDestination}" placeholder="어디로 가세요?" inputmode="search">
         ${routeEntryMode === 'dual' ? `<button class="route-voice-button" type="button" data-action="route-voice" aria-label="음성으로 목적지 말하기">${icon('mic', 27)}</button>
-        <button class="route-text-button" type="button" data-action="route-text" aria-label="문자로 목적지 입력"><svg width="48" height="30" viewBox="0 0 48 30" fill="none" aria-hidden="true"><path d="M11 7h23c3.5 0 5.7-2.1 7.1-5l.7 4.6c.2 1.5-.3 2.5-1.2 3.4 2.4 1.9 3.4 4.5 3.4 7.2C44 23 40.5 27 34 27H11C4.5 27 1 23 1 17S4.5 7 11 7Z" fill="#4d9de8" fill-opacity=".45" stroke="#41a2ff" stroke-width="1.6"/></svg></button>` : ''}
+        <button class="route-text-button" type="button" data-action="route-text" aria-label="문자로 목적지 입력"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3.2c-5.1 0-9.2 3.4-9.2 7.8s4.1 7.8 9.2 7.8c.8 0 1.6-.1 2.3-.3l3.7 2.2c.5.3 1.1-.1 1-.7l-.5-3.3a7.2 7.2 0 0 0 3.5-5.7c0-4.4-4.1-7.8-9.2-7.8Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg></button>` : ''}
         <button class="route-submit" type="submit" aria-label="문자로 길찾기 시작" ${destination.trim() ? '' : 'hidden'}>${icon('arrow', 25)}</button>
       </div></form>
     </section>
