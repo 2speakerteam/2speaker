@@ -17,6 +17,7 @@ const icons = {
   speechLetters: '<path d="M13.5 7.2h7a1.5 1.5 0 0 1 1.5 1.5v6.4a1.5 1.5 0 0 1-1.5 1.5h-.3v2.8L17 16.6h-3.4a1.5 1.5 0 0 1-1.5-1.5v-1.4"/><path d="M4 3.2h8.3a1.6 1.6 0 0 1 1.6 1.6v6.8a1.6 1.6 0 0 1-1.6 1.6H8l-3.5 2.9v-2.9H4a1.6 1.6 0 0 1-1.6-1.6V4.8A1.6 1.6 0 0 1 4 3.2Z"/><text x="8.2" y="10.8" fill="#c8efff" stroke="none" font-family="Arial, sans-serif" font-size="6.8" text-anchor="middle">A</text><text x="18" y="14" fill="#21d6ff" stroke="none" font-family="sans-serif" font-size="6" font-weight="500" text-anchor="middle">가</text>',
   back: '<path d="m15 18-6-6 6-6"/>',
   home: '<path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/>',
+  homeActive: '<path fill="currentColor" fill-rule="evenodd" stroke="none" d="M12 2.5 1.5 11.5l1.7 1.9L5 12v8.1c0 .8.6 1.4 1.4 1.4h4.2v-6h2.8v6h4.2c.8 0 1.4-.6 1.4-1.4V12l1.8 1.4 1.7-1.9L12 2.5Zm1.2 17.4h-2.4v-4.8h2.4v4.8Z"/>',
   more: '<circle cx="5" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none"/>',
   menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
   settings: '<circle cx="12" cy="12" r="3"/><path d="m19.4 15 .1.1 1.4 1.1-1.4 2.4-1.7-.7a8 8 0 0 1-1.8 1l-.3 1.8h-2.8l-.3-1.8a8 8 0 0 1-1.8-1l-1.7.7-1.4-2.4L7.9 15a8 8 0 0 1 0-2l-1.4-1.1 1.4-2.4 1.7.7a8 8 0 0 1 1.8-1l.3-1.8h2.8l.3 1.8a8 8 0 0 1 1.8 1l1.7-.7 1.4 2.4-1.4 1.1a8 8 0 0 1 0 2Z"/>',
@@ -55,7 +56,7 @@ function escapeHtml(value) {
 
 function bottomNav() {
   return `<nav class="bottom-nav" aria-label="하단 메뉴">
-    <button class="nav-item ${currentPage === 'home' ? 'active' : ''}" data-page="home">${icon('home')}<span>홈</span></button>
+    <button class="nav-item ${currentPage === 'home' ? 'active' : ''}" data-page="home">${icon(currentPage === 'home' ? 'homeActive' : 'home')}<span>홈</span></button>
     <button class="nav-item ${currentPage === 'more' ? 'active' : ''}" data-page="more">${icon('more')}<span>더보기</span></button>
   </nav>`;
 }
