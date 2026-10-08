@@ -123,8 +123,7 @@ function routeScreen() {
       <form class="route-form" id="route-form"><div class="large-input"><label class="sr-only" for="route-destination">목적지</label>
         <input id="route-destination" value="${safeDestination}" placeholder="어디로 가세요?" inputmode="search">
         ${routeEntryMode === 'dual' ? `<button class="route-voice-button" type="button" data-action="route-voice" aria-label="음성으로 목적지 말하기">${icon('mic', 27)}</button>
-        <button class="route-text-button" type="button" data-action="route-text" aria-label="문자로 목적지 입력"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3.2c-5.1 0-9.2 3.4-9.2 7.8s4.1 7.8 9.2 7.8c.8 0 1.6-.1 2.3-.3l3.7 2.2c.5.3 1.1-.1 1-.7l-.5-3.3a7.2 7.2 0 0 0 3.5-5.7c0-4.4-4.1-7.8-9.2-7.8Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg></button>` : ''}
-        <button class="route-submit" type="submit" aria-label="문자로 길찾기 시작" ${destination.trim() ? '' : 'hidden'}>${icon('arrow', 25)}</button>
+        <button class="route-text-button" type="button" data-action="route-text" aria-label="문자로 목적지 입력"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3.2c-5.1 0-9.2 3.4-9.2 7.8s4.1 7.8 9.2 7.8c.8 0 1.6-.1 2.3-.3l3.7 2.2c.5.3 1.1-.1 1-.7l-.5-3.3a7.2 7.2 0 0 0 3.5-5.7c0-4.4-4.1-7.8-9.2-7.8Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg></button>` : `<button class="route-submit" type="submit" aria-label="목적지 검색" ${destination.trim() ? '' : 'hidden'}>${icon('arrow', 25)}</button>`}
       </div></form>
     </section>
     ${bottomNav()}
@@ -565,5 +564,6 @@ function goBack() {
 }
 
 render();
+
 
 
