@@ -97,11 +97,11 @@ function homeScreen() {
       </svg>
       <h1>2SPEAKER</h1>
     </section>
-    <button class="destination-search" id="home-voice-search" type="button" aria-label="음성으로 목적지 말하기">
+    <form class="destination-search" id="destination-form">
       ${icon('search', 34)}
-      <span class="destination-prompt">어디로 가세요?</span>
-      <span class="search-arrow" aria-hidden="true">${icon('arrow', 31)}</span>
-    </button>
+      <input value="${escapeHtml(destination)}" placeholder="어디로 가세요?" aria-label="목적지">
+      <button class="search-arrow" type="submit" aria-label="길찾기 시작">${icon('arrow', 31)}</button>
+    </form>
     <section class="feature-grid" aria-label="주요 기능">
       <button class="feature-card" data-page="route">
         <span class="feature-icon">${icon('pinRoute', 66)}</span><strong>길찾기</strong><span>경로·대중교통</span>
@@ -122,6 +122,7 @@ function routeScreen() {
       <form class="route-form" id="route-form"><div class="large-input"><label class="sr-only" for="route-destination">목적지</label>
         <input id="route-destination" value="${safeDestination}" placeholder="어디로 가세요?" inputmode="search">
         <button class="route-voice-button" type="button" data-action="route-voice" aria-label="음성으로 목적지 말하기">${icon('mic', 27)}</button>
+        <button class="route-text-button" type="button" data-action="route-text" aria-label="문자로 목적지 입력">${icon('message', 25)}</button>
         <button class="route-submit" type="submit" aria-label="문자로 길찾기 시작" ${destination.trim() ? '' : 'hidden'}>${icon('arrow', 25)}</button>
       </div></form>
     </section>
@@ -420,8 +421,9 @@ function render() {
     });
   });
 
-  document.querySelector('#home-voice-search')?.addEventListener('click', startVoiceDestination);
+  const routeInput = document.querySelector('#route-destination');
   document.querySelector('[data-action="route-voice"]')?.addEventListener('click', startVoiceDestination);
+  document.querySelector('[data-action="route-text"]')?.addEventListener('click', () => routeInput?.focus());
   document.querySelector('[data-action="voice-close"]')?.addEventListener('click', closeVoiceDestination);
   document.querySelector('[data-action="voice-retry"]')?.addEventListener('click', startVoiceDestination);
   document.querySelector('[data-action="voice-text-fallback"]')?.addEventListener('click', () => {
@@ -430,7 +432,14 @@ function render() {
     document.querySelector('#route-destination')?.focus();
   });
 
-  const routeInput = document.querySelector('#route-destination');
+  const homeInput = document.querySelector('#destination-form input');
+  homeInput?.addEventListener('input', (event) => { destination = event.target.value; });
+  document.querySelector('#destination-form')?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    destination = homeInput.value.trim();
+    navigate('route');
+    document.querySelector('#route-destination')?.focus();
+  });
   routeInput?.addEventListener('input', (event) => {
     destination = event.target.value;
     document.querySelector('.route-submit').hidden = !destination.trim();
