@@ -8,6 +8,7 @@ let voiceSearchOpen = false;
 let voiceSearchState = 'idle';
 let voiceSearchMessage = '';
 let activeDestinationRecognition = null;
+let routeEntryMode = 'dual';
 const sentTextMessages = [];
 let textSendNotice = '';
 const pageHistory = [];
@@ -97,11 +98,11 @@ function homeScreen() {
       </svg>
       <h1>2SPEAKER</h1>
     </section>
-    <form class="destination-search" id="destination-form">
+    <button class="destination-search" id="home-search" type="button" aria-label="목적지 검색 화면 열기">
       ${icon('search', 34)}
-      <input value="${escapeHtml(destination)}" placeholder="어디로 가세요?" aria-label="목적지">
-      <button class="search-arrow" type="submit" aria-label="길찾기 시작">${icon('arrow', 31)}</button>
-    </form>
+      <span class="destination-prompt">어디로 가세요?</span>
+      <span class="search-arrow" aria-hidden="true">${icon('arrow', 31)}</span>
+    </button>
     <section class="feature-grid" aria-label="주요 기능">
       <button class="feature-card" data-page="route">
         <span class="feature-icon">${icon('pinRoute', 66)}</span><strong>길찾기</strong><span>경로·대중교통</span>
@@ -121,8 +122,8 @@ function routeScreen() {
     <section class="page-body route-entry-body">
       <form class="route-form" id="route-form"><div class="large-input"><label class="sr-only" for="route-destination">목적지</label>
         <input id="route-destination" value="${safeDestination}" placeholder="어디로 가세요?" inputmode="search">
-        <button class="route-voice-button" type="button" data-action="route-voice" aria-label="음성으로 목적지 말하기">${icon('mic', 27)}</button>
-        <button class="route-text-button" type="button" data-action="route-text" aria-label="문자로 목적지 입력">${icon('message', 25)}</button>
+        ${routeEntryMode === 'dual' ? `<button class="route-voice-button" type="button" data-action="route-voice" aria-label="음성으로 목적지 말하기">${icon('mic', 27)}</button>
+        <button class="route-text-button" type="button" data-action="route-text" aria-label="문자로 목적지 입력"><svg width="48" height="30" viewBox="0 0 48 30" fill="none" aria-hidden="true"><path d="M11 7h23c3.5 0 5.7-2.1 7.1-5l.7 4.6c.2 1.5-.3 2.5-1.2 3.4 2.4 1.9 3.4 4.5 3.4 7.2C44 23 40.5 27 34 27H11C4.5 27 1 23 1 17S4.5 7 11 7Z" fill="#4d9de8" fill-opacity=".45" stroke="#41a2ff" stroke-width="1.6"/></svg></button>` : ''}
         <button class="route-submit" type="submit" aria-label="문자로 길찾기 시작" ${destination.trim() ? '' : 'hidden'}>${icon('arrow', 25)}</button>
       </div></form>
     </section>
@@ -380,7 +381,10 @@ function render() {
   root.innerHTML = `<div class="app-shell">${screens[currentPage]()}${voiceSearchOpen ? voiceDestinationDialog() : ''}</div>`;
 
   document.querySelectorAll('[data-page]').forEach((button) => {
-    button.addEventListener('click', () => navigate(button.dataset.page));
+    button.addEventListener('click', () => {
+      if (button.dataset.page === 'route') routeEntryMode = 'dual';
+      navigate(button.dataset.page);
+    });
   });
   document.querySelectorAll('[data-action="back"]').forEach((button) => {
     button.addEventListener('click', goBack);
@@ -432,11 +436,9 @@ function render() {
     document.querySelector('#route-destination')?.focus();
   });
 
-  const homeInput = document.querySelector('#destination-form input');
-  homeInput?.addEventListener('input', (event) => { destination = event.target.value; });
-  document.querySelector('#destination-form')?.addEventListener('submit', (event) => {
-    event.preventDefault();
-    destination = homeInput.value.trim();
+  document.querySelector('#home-search')?.addEventListener('click', () => {
+    routeEntryMode = 'simple';
+    destination = '';
     navigate('route');
     document.querySelector('#route-destination')?.focus();
   });
