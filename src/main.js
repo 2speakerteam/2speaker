@@ -8,6 +8,8 @@ let faqOpenIndex = 3;
 const icons = {
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
   arrow: '<path d="M5 12h14"/><path d="m14 7 5 5-5 5"/>',
+  pinRoute: '<path d="M12 21s-7-6.2-7-11a7 7 0 1 1 14 0c0 4.8-7 11-7 11Z"/><circle cx="12" cy="10" r="2.6"/><path d="M12 21h4.5a3.5 3.5 0 0 1 3.5 2.5"/>',
+  speechLetters: '<path d="M3 3.5h12v10H8l-3.5 3v-3H3z"/><path d="M9 8h12v10h-3v3L14.5 18H9z"/><text x="5.5" y="10.7" fill="currentColor" stroke="none" font-size="7" font-family="system-ui,sans-serif" font-weight="700">A</text><text x="13" y="15.1" fill="currentColor" stroke="none" font-size="6.5" font-family="system-ui,sans-serif" font-weight="700">가</text>',
   back: '<path d="m15 18-6-6 6-6"/>',
   home: '<path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/>',
   more: '<circle cx="5" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none"/>',
@@ -76,10 +78,10 @@ function homeScreen() {
     </form>
     <section class="feature-grid" aria-label="주요 기능">
       <button class="feature-card" data-page="route">
-        <span class="feature-icon">${icon('pin', 66)}</span><strong>길찾기</strong><span>경로·대중교통</span>
+        <span class="feature-icon">${icon('pinRoute', 66)}</span><strong>길찾기</strong><span>경로·대중교통</span>
       </button>
       <button class="feature-card" data-page="translation">
-        <span class="feature-icon">${icon('translate', 66)}</span><strong>통역</strong><span>실시간 대화번역</span>
+        <span class="feature-icon">${icon('speechLetters', 66)}</span><strong>통역</strong><span>실시간 대화번역</span>
       </button>
     </section>
     ${bottomNav()}
