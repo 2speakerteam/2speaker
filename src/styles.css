@@ -42,9 +42,9 @@ body {
 .brand-block h1 { margin: 8px 0 0; font-size: clamp(27px, 5vh, 40px); line-height: 1; letter-spacing: -.025em; }
 
 .destination-search { width: 100%; height: 66px; display: flex; align-items: center; gap: 14px; margin: clamp(22px, 4.5vh, 58px) auto 0; padding: 7px 9px 7px 20px; border: 1.5px solid var(--line); border-radius: 40px; background: rgba(0, 31, 56, .42); max-width: 620px; text-align: left; cursor: pointer; }
-.destination-prompt { min-width: 0; flex: 1; color: var(--muted); font-size: clamp(20px, 5vw, 28px); }
+.destination-search input { min-width: 0; flex: 1; border: 0; outline: 0; color: white; background: transparent; font-size: clamp(20px, 5vw, 28px); }
 input::placeholder { color: var(--muted); opacity: 1; }
-.search-arrow { display: grid; place-items: center; width: 50px; height: 50px; flex: 0 0 50px; border-radius: 50%; background: linear-gradient(135deg, #08a6ce, #0b7fa8); }
+.search-arrow { display: grid; place-items: center; width: 50px; height: 50px; flex: 0 0 50px; padding: 0; border: 0; border-radius: 50%; background: linear-gradient(135deg, #08a6ce, #0b7fa8); cursor: pointer; }
 
 .feature-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; max-width: 620px; margin: clamp(18px, 3.5vh, 38px) auto 0; }
 .feature-card { min-height: clamp(150px, 27vh, 242px); display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1.3px solid var(--line); border-radius: 24px; background: rgba(0, 35, 63, .36); cursor: pointer; }
@@ -68,7 +68,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .route-entry-body .large-input { height: clamp(58px, 7vh, 114px); padding-inline: clamp(24px, 4vw, 42px); border-radius: 38px; background: rgba(0, 31, 56, .3); }
 .large-input input { min-width: 0; flex: 1; border: 0; outline: 0; color: white; background: transparent; font-size: clamp(22px, 6vw, 31px); }
 .route-form { display: grid; gap: 18px; }
-.route-voice-button, .route-submit { width: 42px; height: 42px; flex: 0 0 42px; display: grid; place-items: center; border: 0; border-radius: 50%; color: var(--cyan); background: rgba(8, 118, 157, .24); cursor: pointer; }
+.route-voice-button, .route-text-button, .route-submit { width: 42px; height: 42px; flex: 0 0 42px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; color: var(--cyan); background: rgba(8, 118, 157, .24); cursor: pointer; }
 .route-submit { color: white; background: linear-gradient(135deg, #08a6ce, #0b7fa8); }
 .route-submit[hidden] { display: none; }
 .voice-search-overlay { position: fixed; z-index: 30; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(0, 9, 23, .76); }
