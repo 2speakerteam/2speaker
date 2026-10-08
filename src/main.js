@@ -2,6 +2,7 @@ const root = document.querySelector('#root');
 let currentPage = 'home';
 let destination = '';
 let selectedAppLanguage = '한국어';
+let selectedUserLanguage = '한국어';
 const pageHistory = [];
 let faqOpenIndex = 3;
 
@@ -146,7 +147,7 @@ function translationScreen() {
   return `<main class="screen content-screen">
     ${header('통역')}
     <section class="page-body translation-body">
-      <button class="language-row"><strong>내 언어</strong><span>한국어 ${icon('chevron', 26)}</span></button>
+      <button class="language-row" data-page="user-language-list" aria-label="내 언어 선택"><strong>내 언어</strong><span>${selectedUserLanguage} ${icon('chevron', 26)}</span></button>
       <p class="supporting-copy">상대 언어는 AI가 자동 인식합니다.</p>
       <h2>대화 방식</h2>
       <button class="mode-card" data-page="voice">
@@ -234,6 +235,13 @@ function languageListScreen() {
   </main>`;
 }
 
+function userLanguageListScreen() {
+  const languages = ['한국어', 'English', '日本語', '中文', 'Español', 'Français', 'Deutsch'];
+  return `<main class="screen content-screen">${header('내 언어 선택')}
+    <section class="page-body language-list">${languages.map((language) => `<button data-user-language="${language}" aria-pressed="${language === selectedUserLanguage}"><span>${language}</span>${language === selectedUserLanguage ? icon('check', 30) : ''}</button>`).join('')}</section>
+  </main>`;
+}
+
 function helpScreen() {
   const items = [['사용 방법', 'howto'], ['문의 / 오류 신고', 'contact'], ['자주 묻는 질문', 'faq'], ['서비스 정보', 'service']];
   return `<main class="screen content-screen">${header('도움말')}
@@ -313,7 +321,8 @@ function render() {
   const screens = {
     home: homeScreen, route: routeScreen, guide: guideScreen, translation: translationScreen,
     voice: voiceScreen, text: textScreen, more: moreScreen, login: loginScreen,
-    language: languageScreen, 'language-list': languageListScreen, help: helpScreen,
+    language: languageScreen, 'language-list': languageListScreen,
+    'user-language-list': userLanguageListScreen, help: helpScreen,
     service: serviceScreen,
     howto: howtoScreen,
     contact: contactScreen,
@@ -360,6 +369,14 @@ function render() {
       selectedAppLanguage = button.dataset.language;
       pageHistory.pop();
       currentPage = 'language';
+      render();
+    });
+  });
+  document.querySelectorAll('[data-user-language]').forEach((button) => {
+    button.addEventListener('click', () => {
+      selectedUserLanguage = button.dataset.userLanguage;
+      pageHistory.pop();
+      currentPage = 'translation';
       render();
     });
   });
