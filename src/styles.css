@@ -143,6 +143,8 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .message-composer { position: absolute; left: 20px; right: 20px; bottom: calc(18px + env(safe-area-inset-bottom)); max-width: 620px; height: 68px; margin: auto; display: flex; align-items: center; padding: 7px 8px 7px 20px; border: 1px solid rgba(31, 168, 219, .7); border-radius: 25px; background: rgba(0, 35, 63, .94); }
 .message-composer input { min-width: 0; flex: 1; border: 0; outline: 0; color: white; background: transparent; font-size: 18px; }
 .message-composer button { width: 52px; height: 52px; display: grid; place-items: center; border: 0; border-radius: 50%; color: #4fdcff; background: #064c7f; cursor: pointer; }
+.message-notice { max-width: 620px; margin: 14px auto 90px; color: #a9c7e5; font-size: 14px; line-height: 1.5; text-align: center; }
+.message-notice:empty { display: none; }
 .menu-screen { position: absolute; z-index: 20; inset: 0; min-height: 100dvh; padding: 0; overflow: hidden; background: transparent; }
 .menu-underlay { position: absolute; inset: 0; overflow: hidden; }
 .menu-underlay > .screen { min-height: 100%; }
