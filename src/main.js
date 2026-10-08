@@ -2,6 +2,7 @@ const root = document.querySelector('#root');
 let currentPage = 'home';
 let destination = '';
 const pageHistory = [];
+let faqOpenIndex = 3;
 
 const icons = {
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
@@ -25,7 +26,8 @@ const icons = {
   help: '<circle cx="12" cy="12" r="9"/><path d="M9.8 9a2.4 2.4 0 1 1 3.4 2.2c-.8.4-1.2.9-1.2 1.8M12 17h.01"/>',
   mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
   lock: '<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
-  check: '<path d="m5 12 4 4L19 6"/>'
+  check: '<path d="m5 12 4 4L19 6"/>',
+  sparkles: '<path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Z"/><path d="m19 15 .9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15ZM5 2l.7 1.8L7.5 4.5l-1.8.7L5 7l-.7-1.8L2.5 4.5l1.8-.7L5 2Z"/>'
 };
 
 function icon(name, size = 28) {
@@ -228,6 +230,50 @@ function helpScreen() {
   </main>`;
 }
 
+function howtoScreen() {
+  return `<main class="screen content-screen">${header('사용 방법')}
+    <section class="page-body howto-card">
+      <article class="howto-step"><span class="howto-icon">${icon('pin', 46)}</span><div><h2>길찾기</h2><p>목적지를 말하거나 입력하세요.<br>AI가 경로와 다음 행동을 바로 안내합니다.</p></div></article>
+      <article class="howto-step"><span class="howto-icon">${icon('translate', 46)}</span><div><h2>통역</h2><p>상대방과 그대로 대화하세요.<br>AI가 언어를 자동 인식해 실시간 통역합니다.</p></div></article>
+      <article class="howto-step"><span class="howto-icon">${icon('sparkles', 46)}</span><div><h2>핵심</h2><p>말하면 AI가 알아서 처리합니다.</p></div></article>
+    </section>
+  </main>`;
+}
+
+const faqItems = [
+  ['2SPEAKER는 어떻게 사용하나요?', '목적지를 말하거나 입력하고, 통역이 필요하면 바로 대화를 시작하세요. AI가 상황에 맞게 알아서 처리합니다.'],
+  ['길찾기는 어떻게 시작하나요?', '가고 싶은 곳을 말하거나 입력하세요. AI가 경로와 다음 행동을 바로 안내합니다.'],
+  ['통역은 어떻게 시작하나요?', '상대방과 그대로 대화를 시작하세요. AI가 언어를 자동 인식해 실시간 통역합니다.'],
+  ['상대 언어를 설정해야 하나요?', '아니요. AI가 상대방의 언어를 자동으로 인식합니다.'],
+  ['로그인 없이 사용할 수 있나요?', '아니요. 회원가입 및 로그인 후 이용할 수 있습니다.']
+];
+
+function faqScreen() {
+  return `<main class="screen content-screen">${header('자주 묻는 질문')}
+    <section class="page-body faq-list" aria-label="자주 묻는 질문 목록">
+      ${faqItems.map(([question, answer], index) => `<article class="faq-item ${faqOpenIndex === index ? 'open' : ''}">
+        <button class="faq-question" data-faq-index="${index}" aria-expanded="${faqOpenIndex === index}"><span>${question}</span>${icon('chevron', 28)}</button>
+        ${faqOpenIndex === index ? `<p class="faq-answer"><strong>A.</strong> ${answer}</p>` : ''}
+      </article>`).join('')}
+    </section>
+  </main>`;
+}
+
+function contactScreen() {
+  return `<main class="screen content-screen">${header('문의 / 오류 신고')}
+    <section class="page-body contact-card">
+      <form id="contact-form">
+        <label for="contact-type">문의 유형</label>
+        <select id="contact-type" aria-label="문의 유형"><option>길찾기 오류</option><option>통역 오류</option><option>이용 문의</option><option>기타</option></select>
+        <label for="contact-message">내용</label>
+        <textarea id="contact-message" required placeholder="문제가 있었던 내용을 입력하세요"></textarea>
+        <button class="contact-submit" type="submit">보내기</button>
+        <p class="contact-notice" role="status" aria-live="polite"></p>
+      </form>
+    </section>
+  </main>`;
+}
+
 function infoScreen(title, copy) {
   return `<main class="screen content-screen">${header(title)}<section class="page-body info-copy"><p>${copy}</p></section></main>`;
 }
@@ -246,9 +292,9 @@ function render() {
     voice: voiceScreen, text: textScreen, more: moreScreen, login: loginScreen,
     language: languageScreen, 'language-list': languageListScreen, help: helpScreen,
     service: serviceScreen,
-    howto: () => infoScreen('사용 방법', '길찾기에서는 목적지를 입력한 뒤 안내를 따라 이동합니다.<br><br>통역에서는 음성 또는 문자를 선택해 대화를 시작합니다.'),
-    contact: () => infoScreen('문의 / 오류 신고', '이용 중 불편한 점이나 오류 내용을 남길 수 있는 화면입니다.'),
-    faq: () => infoScreen('자주 묻는 질문', '2SPEAKER 사용법과 길찾기·통역 기능에 대한 자주 묻는 질문을 확인합니다.'),
+    howto: howtoScreen,
+    contact: contactScreen,
+    faq: faqScreen,
     terms: () => infoScreen('이용약관', '2SPEAKER 이용약관은 서비스 공개 전 최종 내용을 반영합니다.'),
     privacy: () => infoScreen('개인정보처리방침', '2SPEAKER 개인정보처리방침은 서비스 공개 전 최종 내용을 반영합니다.')
   };
@@ -259,6 +305,13 @@ function render() {
   });
   document.querySelectorAll('[data-action="back"]').forEach((button) => {
     button.addEventListener('click', goBack);
+  });
+  document.querySelectorAll('[data-faq-index]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const index = Number(button.dataset.faqIndex);
+      faqOpenIndex = faqOpenIndex === index ? -1 : index;
+      render();
+    });
   });
 
   const homeInput = document.querySelector('.destination-search input');
@@ -273,6 +326,10 @@ function render() {
     event.preventDefault(); navigate('guide');
   });
   document.querySelector('.message-composer')?.addEventListener('submit', (event) => event.preventDefault());
+  document.querySelector('#contact-form')?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    document.querySelector('.contact-notice').textContent = '문의 접수는 서버 연결 후 이용할 수 있습니다.';
+  });
 }
 
 function navigate(page) {
