@@ -4,6 +4,10 @@ let destination = '';
 let selectedAppLanguage = '한국어';
 let selectedUserLanguage = '한국어';
 let voicePaused = false;
+let voiceSearchOpen = false;
+let voiceSearchState = 'idle';
+let voiceSearchMessage = '';
+let activeDestinationRecognition = null;
 const sentTextMessages = [];
 let textSendNotice = '';
 const pageHistory = [];
@@ -61,6 +65,22 @@ function bottomNav() {
   </nav>`;
 }
 
+function voiceDestinationDialog() {
+  const waiting = voiceSearchState === 'starting' || voiceSearchState === 'listening';
+  return `<div class="voice-search-overlay">
+    <section class="voice-search-dialog" role="dialog" aria-modal="true" aria-labelledby="voice-search-title">
+      <button class="voice-search-close" type="button" data-action="voice-close" aria-label="음성 입력 닫기">×</button>
+      <span class="voice-search-mic ${waiting ? 'listening' : ''}">${icon('mic', 52)}</span>
+      <h2 id="voice-search-title">어디로 가세요?</h2>
+      <p role="status" aria-live="polite">${escapeHtml(voiceSearchMessage)}</p>
+      ${waiting ? '' : `<div class="voice-search-actions">
+        <button type="button" data-action="voice-retry">다시 말하기</button>
+        <button type="button" data-action="voice-text-fallback">문자로 입력</button>
+      </div>`}
+    </section>
+  </div>`;
+}
+
 function header(title) {
   return `<header class="page-header">
     <button class="icon-button" data-action="back" aria-label="뒤로 가기">${icon('back', 34)}</button>
@@ -69,7 +89,6 @@ function header(title) {
 }
 
 function homeScreen() {
-  const safeDestination = escapeHtml(destination);
   return `<main class="screen home-screen">
     <section class="brand-block" aria-label="2SPEAKER">
       <svg class="brand-mark" viewBox="145 210 540 420" role="img" aria-label="2S 로고" xmlns="http://www.w3.org/2000/svg">
@@ -78,11 +97,11 @@ function homeScreen() {
       </svg>
       <h1>2SPEAKER</h1>
     </section>
-    <form class="destination-search" id="destination-form">
+    <button class="destination-search" id="home-voice-search" type="button" aria-label="음성으로 목적지 말하기">
       ${icon('search', 34)}
-      <input value="${safeDestination}" placeholder="어디로 가세요?" aria-label="목적지">
-      <button type="submit" aria-label="길찾기 시작">${icon('arrow', 31)}</button>
-    </form>
+      <span class="destination-prompt">어디로 가세요?</span>
+      <span class="search-arrow" aria-hidden="true">${icon('arrow', 31)}</span>
+    </button>
     <section class="feature-grid" aria-label="주요 기능">
       <button class="feature-card" data-page="route">
         <span class="feature-icon">${icon('pinRoute', 66)}</span><strong>길찾기</strong><span>경로·대중교통</span>
@@ -100,9 +119,11 @@ function routeScreen() {
   return `<main class="screen content-screen">
     ${header('길찾기')}
     <section class="page-body route-entry-body">
-      <form class="route-form" id="route-form"><label class="large-input"><span class="sr-only">목적지</span>
+      <form class="route-form" id="route-form"><div class="large-input"><label class="sr-only" for="route-destination">목적지</label>
         <input id="route-destination" value="${safeDestination}" placeholder="어디로 가세요?" inputmode="search">
-      </label></form>
+        <button class="route-voice-button" type="button" data-action="route-voice" aria-label="음성으로 목적지 말하기">${icon('mic', 27)}</button>
+        <button class="route-submit" type="submit" aria-label="문자로 길찾기 시작" ${destination.trim() ? '' : 'hidden'}>${icon('arrow', 25)}</button>
+      </div></form>
     </section>
     ${bottomNav()}
   </main>`;
@@ -355,7 +376,7 @@ function render() {
       ['6. 개인정보 문의', '개인정보와 관련된 문의는 2SPEAKER 문의 / 오류 신고를 통해 접수할 수 있습니다.']
     ])
   };
-  root.innerHTML = `<div class="app-shell">${screens[currentPage]()}</div>`;
+  root.innerHTML = `<div class="app-shell">${screens[currentPage]()}${voiceSearchOpen ? voiceDestinationDialog() : ''}</div>`;
 
   document.querySelectorAll('[data-page]').forEach((button) => {
     button.addEventListener('click', () => navigate(button.dataset.page));
@@ -399,16 +420,32 @@ function render() {
     });
   });
 
-  const homeInput = document.querySelector('.destination-search input');
-  homeInput?.addEventListener('input', (event) => { destination = event.target.value; });
-  document.querySelector('#destination-form')?.addEventListener('submit', (event) => {
-    event.preventDefault(); navigate('route');
+  document.querySelector('#home-voice-search')?.addEventListener('click', startVoiceDestination);
+  document.querySelector('[data-action="route-voice"]')?.addEventListener('click', startVoiceDestination);
+  document.querySelector('[data-action="voice-close"]')?.addEventListener('click', closeVoiceDestination);
+  document.querySelector('[data-action="voice-retry"]')?.addEventListener('click', startVoiceDestination);
+  document.querySelector('[data-action="voice-text-fallback"]')?.addEventListener('click', () => {
+    closeVoiceDestination();
+    if (currentPage !== 'route') navigate('route');
+    document.querySelector('#route-destination')?.focus();
   });
 
   const routeInput = document.querySelector('#route-destination');
-  routeInput?.addEventListener('input', (event) => { destination = event.target.value; });
+  routeInput?.addEventListener('input', (event) => {
+    destination = event.target.value;
+    document.querySelector('.route-submit').hidden = !destination.trim();
+  });
+  routeInput?.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      routeInput.form.requestSubmit();
+    }
+  });
   document.querySelector('#route-form')?.addEventListener('submit', (event) => {
-    event.preventDefault(); navigate('guide');
+    event.preventDefault();
+    destination = routeInput.value.trim();
+    if (destination) navigate('guide');
+    else routeInput.focus();
   });
   document.querySelector('.message-composer')?.addEventListener('submit', (event) => {
     event.preventDefault();
@@ -423,6 +460,84 @@ function render() {
     event.preventDefault();
     document.querySelector('.contact-notice').textContent = '문의 접수는 서버 연결 후 이용할 수 있습니다.';
   });
+}
+
+function closeVoiceDestination() {
+  const recognition = activeDestinationRecognition;
+  activeDestinationRecognition = null;
+  if (recognition) recognition.abort();
+  voiceSearchOpen = false;
+  voiceSearchState = 'idle';
+  render();
+}
+
+function startVoiceDestination() {
+  if (activeDestinationRecognition) {
+    activeDestinationRecognition.abort();
+    activeDestinationRecognition = null;
+  }
+  voiceSearchOpen = true;
+  voiceSearchState = 'starting';
+  voiceSearchMessage = '마이크를 준비하고 있어요.';
+  render();
+
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    voiceSearchState = 'error';
+    voiceSearchMessage = '이 브라우저는 음성 입력을 지원하지 않아요. 길찾기에서 문자로 입력할 수 있어요.';
+    render();
+    return;
+  }
+
+  const recognition = new SpeechRecognition();
+  activeDestinationRecognition = recognition;
+  recognition.lang = ({ 한국어: 'ko-KR', English: 'en-US', 日本語: 'ja-JP', 中文: 'zh-CN', Español: 'es-ES', Français: 'fr-FR', Deutsch: 'de-DE' })[selectedAppLanguage] || 'ko-KR';
+  recognition.interimResults = false;
+  recognition.maxAlternatives = 1;
+  recognition.onstart = () => {
+    if (activeDestinationRecognition !== recognition) return;
+    voiceSearchState = 'listening';
+    voiceSearchMessage = '목적지를 말씀해주세요.';
+    render();
+  };
+  recognition.onresult = (event) => {
+    if (activeDestinationRecognition !== recognition) return;
+    const spokenDestination = event.results[0]?.[0]?.transcript?.trim();
+    if (!spokenDestination) return;
+    destination = spokenDestination;
+    activeDestinationRecognition = null;
+    recognition.stop();
+    voiceSearchOpen = false;
+    voiceSearchState = 'idle';
+    navigate('guide');
+  };
+  recognition.onerror = (event) => {
+    if (activeDestinationRecognition !== recognition || event.error === 'aborted') return;
+    voiceSearchState = 'error';
+    voiceSearchMessage = event.error === 'not-allowed' || event.error === 'service-not-allowed'
+      ? '마이크 사용을 허용하면 목적지를 말할 수 있어요.'
+      : event.error === 'no-speech'
+        ? '목적지를 듣지 못했어요. 다시 말하기를 눌러주세요.'
+        : '음성 입력을 시작하지 못했어요. 다시 시도해주세요.';
+    render();
+  };
+  recognition.onend = () => {
+    if (activeDestinationRecognition !== recognition) return;
+    activeDestinationRecognition = null;
+    if (voiceSearchOpen && voiceSearchState !== 'error') {
+      voiceSearchState = 'idle';
+      voiceSearchMessage = '듣기가 끝났어요. 다시 말하기를 눌러주세요.';
+      render();
+    }
+  };
+  try {
+    recognition.start();
+  } catch {
+    activeDestinationRecognition = null;
+    voiceSearchState = 'error';
+    voiceSearchMessage = '음성 입력을 시작하지 못했어요. 다시 시도해주세요.';
+    render();
+  }
 }
 
 function navigate(page) {
