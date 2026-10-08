@@ -140,7 +140,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .text-bubble p { margin: 12px 0 7px; font-size: clamp(21px, 5vw, 28px); font-weight: 700; }
 .text-bubble strong { color: #22d8ff; font-size: clamp(20px, 5vw, 26px); }
 .text-bubble.me { justify-self: end; }
-.message-composer { position: fixed; left: 20px; right: 20px; bottom: calc(18px + env(safe-area-inset-bottom)); max-width: 620px; height: 68px; margin: auto; display: flex; align-items: center; padding: 7px 8px 7px 20px; border: 1px solid rgba(31, 168, 219, .7); border-radius: 25px; background: rgba(0, 35, 63, .94); }
+.message-composer { position: absolute; left: 20px; right: 20px; bottom: calc(18px + env(safe-area-inset-bottom)); max-width: 620px; height: 68px; margin: auto; display: flex; align-items: center; padding: 7px 8px 7px 20px; border: 1px solid rgba(31, 168, 219, .7); border-radius: 25px; background: rgba(0, 35, 63, .94); }
 .message-composer input { min-width: 0; flex: 1; border: 0; outline: 0; color: white; background: transparent; font-size: 18px; }
 .message-composer button { width: 52px; height: 52px; display: grid; place-items: center; border: 0; border-radius: 50%; color: #4fdcff; background: #064c7f; cursor: pointer; }
 .menu-screen { padding: 0; background: rgba(0, 10, 20, .72); }
