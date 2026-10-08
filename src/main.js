@@ -46,14 +46,12 @@ function header(title) {
 function homeScreen() {
   return `<main class="screen home-screen">
     <section class="brand-block" aria-label="2SPEAKER">
-      <svg class="brand-mark" viewBox="0 0 160 120" role="img" aria-label="2S 로고" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <svg class="brand-mark" viewBox="0 0 220 120" role="img" aria-label="2S 로고" fill="none" xmlns="http://www.w3.org/2000/svg">
         <g stroke="url(#brand-gradient)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M69 88H20V82c0-10 6-17 17-26l22-18c10-8 12-18 5-26-9-10-27-8-34 3-2 3-3 7-4 11"/>
-          <path d="M77 96H12V83c0-14 8-24 22-35l23-19c4-3 6-7 5-10-2-6-12-8-18-4-3 2-5 5-6 9"/>
-          <path d="M102 30c-4-8-15-10-22-4-7 6-5 15 5 20l18 8c17 8 20 25 8 38-13 14-38 12-48-3-2-3-3-6-4-9"/>
-          <path d="M91 23c-9-9-24-9-33 0-10 10-6 24 7 31l19 9c9 4 12 11 8 18-6 10-23 10-30 1"/>
+          <path d="M84 96H24V86c0-13 9-22 23-33l26-21c9-7 11-16 5-23-8-9-25-9-34 0-4 4-6 9-7 14"/>
+          <path d="M194 37c-7-14-25-19-39-12-17 8-17 27 1 36l25 12c17 8 18 25 5 36-15 12-41 7-48-10"/>
         </g>
-        <defs><linearGradient id="brand-gradient" x1="20" y1="20" x2="130" y2="95" gradientUnits="userSpaceOnUse"><stop stop-color="#16E8F5"/><stop offset="1" stop-color="#0BC9F3"/></linearGradient></defs>
+        <defs><linearGradient id="brand-gradient" x1="25" y1="20" x2="195" y2="100" gradientUnits="userSpaceOnUse"><stop stop-color="#16E8F5"/><stop offset="1" stop-color="#0BC9F3"/></linearGradient></defs>
       </svg>
       <h1>2SPEAKER</h1>
     </section>
