@@ -69,7 +69,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .large-input input { min-width: 0; flex: 1; border: 0; outline: 0; color: white; background: transparent; font-size: clamp(22px, 6vw, 31px); }
 .route-form { display: grid; gap: 18px; }
 .route-voice-button, .route-text-button, .route-submit { width: 42px; height: 42px; flex: 0 0 42px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; color: var(--cyan); background: rgba(8, 118, 157, .24); cursor: pointer; }
-.route-text-button { width: 52px; flex-basis: 52px; background: transparent; }
+.route-text-button { background: transparent; }
 .route-text-button svg { display: block; }
 .route-submit { color: white; background: linear-gradient(135deg, #08a6ce, #0b7fa8); }
 .route-submit[hidden] { display: none; }
