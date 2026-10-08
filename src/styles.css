@@ -163,8 +163,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .message-composer { position: absolute; z-index: 3; left: 20px; right: 20px; bottom: calc(18px + env(safe-area-inset-bottom)); max-width: 620px; height: 68px; margin: auto; display: flex; align-items: center; padding: 7px 8px 7px 20px; border: 1px solid rgba(31, 168, 219, .7); border-radius: 25px; background: rgba(0, 35, 63, .94); }
 .message-composer input { min-width: 0; flex: 1; border: 0; outline: 0; color: white; background: transparent; font-size: 18px; }
 .message-composer button { width: 52px; height: 52px; display: grid; place-items: center; border: 0; border-radius: 50%; color: #4fdcff; background: #064c7f; cursor: pointer; }
-.message-notice { width: min(100%, 560px); margin: 0 auto; padding: 9px 12px; border-radius: 14px; color: #a9c7e5; background: rgba(0, 22, 40, .92); font-size: 14px; line-height: 1.5; text-align: center; }
-.message-notice:empty { display: none; }
+.translation-pending { display: block; margin-top: 12px; color: #a9c7e5; font-size: 13px; font-weight: 400; line-height: 1.5; }
 .menu-screen { position: absolute; z-index: 20; inset: 0; min-height: 100dvh; padding: 0; overflow: hidden; background: transparent; }
 .menu-underlay { position: absolute; inset: 0; overflow: hidden; }
 .menu-underlay > .screen { min-height: 100%; }
