@@ -13,7 +13,7 @@ const icons = {
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
   arrow: '<path d="M5 12h14"/><path d="m14 7 5 5-5 5"/>',
   play: '<path d="m8 5 11 7-11 7z"/>',
-  pinRoute: '<path d="M12 2.1a5.8 5.8 0 0 0-5.8 5.8c0 3.8 5.8 8.8 5.8 8.8s5.8-5 5.8-8.8A5.8 5.8 0 0 0 12 2.1Z"/><circle cx="12" cy="7.9" r="2"/><path d="M3 22h10.5a3.5 3.5 0 0 0 3.5-3.5v-.2"/>',
+  pinRoute: '<path d="M12 2.1a5.8 5.8 0 0 0-5.8 5.8c0 3.8 5.8 8.8 5.8 8.8s5.8-5 5.8-8.8A5.8 5.8 0 0 0 12 2.1Z"/><circle cx="12" cy="7.9" r="2"/><path d="M7.2 22h7.1a3.5 3.5 0 0 0 3.5-3.5v-.5"/>',
   speechLetters: '<path d="M11.4 7.2h6.8a1.5 1.5 0 0 1 1.5 1.5v6.1a1.5 1.5 0 0 1-1.5 1.5h-.4v2.8l-3.2-2.8h-3.2"/><path d="M4 3.2h8.3a1.6 1.6 0 0 1 1.6 1.6v6.8a1.6 1.6 0 0 1-1.6 1.6H8l-3.5 2.9v-2.9H4a1.6 1.6 0 0 1-1.6-1.6V4.8A1.6 1.6 0 0 1 4 3.2Z"/><path d="m6.1 10.7 1.7-4.8 1.8 4.8M6.8 9h2.1" fill="none" stroke="#c8efff" stroke-width="1.05"/><path d="M14.2 9.2h2.7v2.6M18 7.9v6.1M18 10.5h2" fill="none" stroke="#21d6ff" stroke-width="1.05"/>',
   back: '<path d="m15 18-6-6 6-6"/>',
   home: '<path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/>',
