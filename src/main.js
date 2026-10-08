@@ -13,8 +13,8 @@ const icons = {
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
   arrow: '<path d="M5 12h14"/><path d="m14 7 5 5-5 5"/>',
   play: '<path d="m8 5 11 7-11 7z"/>',
-  pinRoute: '<path d="M12 2.8a6.7 6.7 0 0 0-6.7 6.7c0 4.6 6.7 10.9 6.7 10.9s6.7-6.3 6.7-10.9A6.7 6.7 0 0 0 12 2.8Z"/><circle cx="12" cy="9.5" r="2.3"/><path d="M3.2 22h9.3a4.5 4.5 0 0 0 4.5-4.5V16"/>',
-  speechLetters: '<path d="M10.4 7.5h8.3a1.7 1.7 0 0 1 1.7 1.7v6.3a1.7 1.7 0 0 1-1.7 1.7h-.5v3.1l-3.6-3.1h-2.5"/><path d="M4.1 3.2h8.7a1.7 1.7 0 0 1 1.7 1.7v7.3a1.7 1.7 0 0 1-1.7 1.7H8l-3.4 3v-3H4.1a1.7 1.7 0 0 1-1.7-1.7V4.9a1.7 1.7 0 0 1 1.7-1.7Z"/><path d="m6.4 11 1.9-5.2 2 5.2M7.1 9.1h2.5" fill="none" stroke="#c8efff" stroke-width="1.15"/><path d="M12.2 8.5h3.5v3M18.1 8.1v6.8M16.3 11.3h1.8" fill="none" stroke="#21d6ff" stroke-width="1.15"/>',
+  pinRoute: '<path d="M12 2.1a5.8 5.8 0 0 0-5.8 5.8c0 3.8 5.8 8.8 5.8 8.8s5.8-5 5.8-8.8A5.8 5.8 0 0 0 12 2.1Z"/><circle cx="12" cy="7.9" r="2"/><path d="M3 22h10.5a3.5 3.5 0 0 0 3.5-3.5v-.2"/>',
+  speechLetters: '<path d="M11.4 7.2h6.8a1.5 1.5 0 0 1 1.5 1.5v6.1a1.5 1.5 0 0 1-1.5 1.5h-.4v2.8l-3.2-2.8h-3.2"/><path d="M4 3.2h8.3a1.6 1.6 0 0 1 1.6 1.6v6.8a1.6 1.6 0 0 1-1.6 1.6H8l-3.5 2.9v-2.9H4a1.6 1.6 0 0 1-1.6-1.6V4.8A1.6 1.6 0 0 1 4 3.2Z"/><path d="m6.1 10.7 1.7-4.8 1.8 4.8M6.8 9h2.1" fill="none" stroke="#c8efff" stroke-width="1.05"/><path d="M14.2 9.2h2.7v2.6M18 7.9v6.1M18 10.5h2" fill="none" stroke="#21d6ff" stroke-width="1.05"/>',
   back: '<path d="m15 18-6-6 6-6"/>',
   home: '<path d="m3 11 9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/>',
   more: '<circle cx="5" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none"/>',
@@ -39,7 +39,8 @@ const icons = {
 };
 
 function icon(name, size = 28) {
-  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name]}</svg>`;
+  const featureStroke = name === 'pinRoute' || name === 'speechLetters' ? '1.45' : '1.8';
+  return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${featureStroke}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name]}</svg>`;
 }
 
 function escapeHtml(value) {
