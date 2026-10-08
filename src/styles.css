@@ -63,7 +63,9 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .icon-button { width: 48px; height: 48px; display: grid; place-items: center; border: 0; background: transparent; cursor: pointer; }
 .header-spacer { width: 48px; }
 .page-body { max-width: 620px; margin: 74px auto 0; }
+.route-entry-body { margin-top: clamp(54px, 8vh, 125px); }
 .large-input { display: flex; height: 80px; padding: 0 28px; border: 1.5px solid var(--cyan); border-radius: 32px; align-items: center; }
+.route-entry-body .large-input { height: clamp(58px, 7vh, 114px); padding-inline: clamp(24px, 4vw, 42px); border-radius: 38px; background: rgba(0, 31, 56, .3); }
 .large-input input { width: 100%; border: 0; outline: 0; color: white; background: transparent; font-size: clamp(22px, 6vw, 31px); }
 .route-form { display: grid; gap: 18px; }
 .route-start { min-height: 58px; display: flex; align-items: center; justify-content: center; gap: 10px; border: 1px solid rgba(38, 216, 255, .8); border-radius: 20px; color: white; background: linear-gradient(135deg, #078bb5, #06527b); cursor: pointer; font-weight: 700; font-size: 19px; }
