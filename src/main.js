@@ -72,10 +72,10 @@ function homeScreen() {
 function routeScreen() {
   return `<main class="screen content-screen">
     ${header('길찾기')}
-    <section class="page-body">
+    <section class="page-body route-entry-body">
       <form class="route-form" id="route-form"><label class="large-input"><span class="sr-only">목적지</span>
         <input id="route-destination" value="${destination}" placeholder="어디로 가세요?" inputmode="search">
-      </label><button class="route-start" type="submit">안내 시작 ${icon('arrow', 24)}</button></form>
+      </label></form>
     </section>
     ${bottomNav()}
   </main>`;
@@ -229,7 +229,6 @@ function render() {
 
   const routeInput = document.querySelector('#route-destination');
   routeInput?.addEventListener('input', (event) => { destination = event.target.value; });
-  if (currentPage === 'route') routeInput?.focus();
   document.querySelector('#route-form')?.addEventListener('submit', (event) => {
     event.preventDefault(); navigate('guide');
   });
