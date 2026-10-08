@@ -64,7 +64,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .header-spacer { width: 48px; }
 .page-body { max-width: 620px; margin: 74px auto 0; }
 .route-entry-body { margin-top: clamp(54px, 8vh, 125px); }
-.large-input { display: flex; height: 80px; padding: 0 28px; border: 1.5px solid var(--cyan); border-radius: 32px; align-items: center; }
+.large-input { display: flex; width: 100%; min-width: 0; height: 80px; padding: 0 28px; border: 1.5px solid var(--cyan); border-radius: 32px; align-items: center; }
 .route-entry-body .large-input { height: clamp(58px, 7vh, 114px); padding-inline: clamp(24px, 4vw, 42px); border-radius: 38px; background: rgba(0, 31, 56, .3); }
 .large-input input { min-width: 0; flex: 1; border: 0; outline: 0; color: white; background: transparent; font-size: clamp(22px, 6vw, 31px); }
 .route-form { display: grid; gap: 18px; }
