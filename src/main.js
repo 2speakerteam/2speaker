@@ -220,8 +220,8 @@ function textScreen() {
       <article class="text-bubble other"><span>상대방</span><p>Where is the station?</p><strong>역이 어디예요?</strong></article>
       <article class="text-bubble me"><span>나</span><p>이쪽으로 가세요.</p><strong>Go this way.</strong></article>
       ${outgoingMessages}
+      <p class="message-notice" role="status" aria-live="polite">${textSendNotice}</p>
     </section>
-    <p class="message-notice" role="status" aria-live="polite">${textSendNotice}</p>
     <form class="message-composer"><input required placeholder="메시지를 입력하세요." aria-label="번역할 메시지"><button type="submit" aria-label="메시지 보내기">${icon('send', 28)}</button></form>
   </main>`;
 }
