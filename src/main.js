@@ -476,6 +476,8 @@ function render() {
     sentTextMessages.push(message);
     textSendNotice = '메시지를 화면에 추가했어요. 실제 번역은 번역 서버 연결 후 제공됩니다.';
     render();
+    const dialogue = document.querySelector('.text-dialogue');
+    if (dialogue) dialogue.scrollTop = dialogue.scrollHeight;
   });
   document.querySelector('#contact-form')?.addEventListener('submit', (event) => {
     event.preventDefault();
