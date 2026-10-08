@@ -151,6 +151,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .menu-list button > span { color: #16e3f4; }
 .menu-list strong { font-size: 20px; }
 .account-body { display: grid; gap: 20px; margin-top: 34px; }
+.account-notice { margin: 0 4px; color: #a8ecf8; font-size: 15px; line-height: 1.5; }
 .account-card { padding: 25px 22px; border: 1px solid rgba(31, 168, 219, .5); border-radius: 22px; background: rgba(3, 45, 74, .5); }
 .account-card h2 { margin: 0 0 23px; font-size: 28px; }
 .account-card > p { color: var(--muted); }
@@ -169,6 +170,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .language-list button, .list-card button { width: 100%; min-height: 72px; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; border: 0; border-bottom: 1px solid rgba(124, 186, 217, .28); color: white; background: transparent; cursor: pointer; font-size: 21px; text-align: left; }
 .language-list button:last-child, .list-card button:last-child { border-bottom: 0; }
 .language-list button:first-child svg { color: #18e4f4; }
+.language-list button[aria-pressed="true"] svg { color: #18e4f4; }
 .list-card { margin-top: 38px; }
 .list-card button { min-height: 88px; font-size: 23px; }
 .list-card em { color: var(--muted); font-style: normal; font-size: 19px; }
@@ -177,6 +179,16 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .service-body article h2 { margin: 0; font-size: 30px; }.service-body article p { margin: 12px 0 0; color: var(--muted); font-size: 19px; }
 .service-body .list-card { margin-top: 20px; }
 .info-copy { padding: 24px; border: 1px solid rgba(31, 168, 219, .45); border-radius: 22px; color: #d9e9f5; background: rgba(4, 48, 78, .42); font-size: 18px; line-height: 1.75; }
+.version-card { margin-top: 42px; padding: 28px 24px; border: 1px solid rgba(31, 168, 219, .52); border-radius: 22px; color: var(--muted); background: rgba(4, 48, 78, .44); font-size: 20px; }
+.version-card p { margin: 18px 0; }
+.version-card p:first-child { font-size: 24px; }
+.version-card hr { border: 0; border-top: 1px solid rgba(31, 168, 219, .4); }
+.legal-body { margin-top: 32px; padding-inline: 8px; color: #d3e4f2; }
+.legal-body article { padding: 21px 8px; border-bottom: 1px solid rgba(31, 168, 219, .46); }
+.legal-body article:first-child { padding-top: 8px; }
+.legal-body article:last-child { border-bottom: 0; }
+.legal-body h2 { margin: 0 0 10px; color: white; font-size: 22px; }
+.legal-body p { margin: 0; font-size: 18px; line-height: 1.75; white-space: normal; overflow-wrap: anywhere; }
 .howto-card { margin-top: 36px; padding: 8px 24px; border: 1px solid rgba(31, 168, 219, .55); border-radius: 23px; background: rgba(4, 48, 78, .46); }
 .howto-step { min-height: 166px; display: grid; grid-template-columns: 82px 1fr; gap: 22px; align-items: center; padding: 24px 8px; border-bottom: 1px solid rgba(31, 168, 219, .38); }
 .howto-step:last-child { border-bottom: 0; }
