@@ -89,6 +89,16 @@ function header(title) {
   </header>`;
 }
 
+function conversationHeader(title) {
+  return `<header class="conversation-header">
+    <div class="conversation-brand-row"><strong>2SPEAKER</strong></div>
+    <div class="page-header conversation-title">
+      <button class="icon-button" data-action="back" aria-label="뒤로 가기">${icon('back', 34)}</button>
+      <h1>${title}</h1><span class="header-spacer"></span>
+    </div>
+  </header>`;
+}
+
 function homeScreen() {
   return `<main class="screen home-screen">
     <section class="brand-block" aria-label="2SPEAKER">
@@ -192,7 +202,7 @@ function translationScreen() {
 
 function voiceScreen() {
   return `<main class="screen content-screen conversation-screen">
-    ${header('음성으로 대화')}
+    ${conversationHeader('음성으로 대화')}
     <section class="conversation-body">
       <p class="translating">${voicePaused ? '일시정지' : '통역 중'}</p>
       <article class="speech-block"><span>상대방</span><p>Where is the station?</p><strong>역이 어디예요?</strong></article>
@@ -205,7 +215,7 @@ function voiceScreen() {
 function textScreen() {
   const outgoingMessages = sentTextMessages.map((message) => `<article class="text-bubble me"><span>나</span><p>${escapeHtml(message)}</p></article>`).join('');
   return `<main class="screen content-screen conversation-screen text-screen">
-    ${header('문자로 대화')}
+    ${conversationHeader('문자로 대화')}
     <section class="text-dialogue">
       <article class="text-bubble other"><span>상대방</span><p>Where is the station?</p><strong>역이 어디예요?</strong></article>
       <article class="text-bubble me"><span>나</span><p>이쪽으로 가세요.</p><strong>Go this way.</strong></article>
