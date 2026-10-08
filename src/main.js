@@ -3,12 +3,16 @@ let currentPage = 'home';
 let destination = '';
 let selectedAppLanguage = '한국어';
 let selectedUserLanguage = '한국어';
+let voicePaused = false;
+const sentTextMessages = [];
+let textSendNotice = '';
 const pageHistory = [];
 let faqOpenIndex = 3;
 
 const icons = {
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
   arrow: '<path d="M5 12h14"/><path d="m14 7 5 5-5 5"/>',
+  play: '<path d="m8 5 11 7-11 7z"/>',
   pinRoute: '<path d="M12 21s-7-6.2-7-11a7 7 0 1 1 14 0c0 4.8-7 11-7 11Z"/><circle cx="12" cy="10" r="2.6"/><path d="M12 21h4.5a3.5 3.5 0 0 1 3.5 2.5"/>',
   speechLetters: '<path d="M3 3.5h12v10H8l-3.5 3v-3H3z"/><path d="M9 8h12v10h-3v3L14.5 18H9z"/><text x="5.5" y="10.7" fill="currentColor" stroke="none" font-size="7" font-family="system-ui,sans-serif" font-weight="700">A</text><text x="13" y="15.1" fill="currentColor" stroke="none" font-size="6.5" font-family="system-ui,sans-serif" font-weight="700">가</text>',
   back: '<path d="m15 18-6-6 6-6"/>',
@@ -166,22 +170,25 @@ function voiceScreen() {
   return `<main class="screen content-screen conversation-screen">
     ${header('음성으로 대화')}
     <section class="conversation-body">
-      <p class="translating">통역 중</p>
+      <p class="translating">${voicePaused ? '일시정지' : '통역 중'}</p>
       <article class="speech-block"><span>상대방</span><p>Where is the station?</p><strong>역이 어디예요?</strong></article>
       <article class="speech-block mine"><span>나</span><p>이쪽으로 가세요.</p><strong>Go this way.</strong></article>
     </section>
-    <button class="pause-button">${icon('pause', 30)}<span>일시정지</span></button>
+    <button class="pause-button" data-action="voice-toggle" aria-pressed="${voicePaused}">${icon(voicePaused ? 'play' : 'pause', 30)}<span>${voicePaused ? '계속하기' : '일시정지'}</span></button>
   </main>`;
 }
 
 function textScreen() {
+  const outgoingMessages = sentTextMessages.map((message) => `<article class="text-bubble me"><span>나</span><p>${escapeHtml(message)}</p></article>`).join('');
   return `<main class="screen content-screen conversation-screen text-screen">
     ${header('문자로 대화')}
     <section class="text-dialogue">
       <article class="text-bubble other"><span>상대방</span><p>Where is the station?</p><strong>역이 어디예요?</strong></article>
       <article class="text-bubble me"><span>나</span><p>이쪽으로 가세요.</p><strong>Go this way.</strong></article>
+      ${outgoingMessages}
     </section>
-    <form class="message-composer"><input placeholder="메시지를 입력하세요." aria-label="번역할 메시지"><button type="submit" aria-label="메시지 보내기">${icon('send', 28)}</button></form>
+    <p class="message-notice" role="status" aria-live="polite">${textSendNotice}</p>
+    <form class="message-composer"><input required placeholder="메시지를 입력하세요." aria-label="번역할 메시지"><button type="submit" aria-label="메시지 보내기">${icon('send', 28)}</button></form>
   </main>`;
 }
 
@@ -357,6 +364,10 @@ function render() {
   document.querySelectorAll('[data-action="menu-close"]').forEach((button) => {
     button.addEventListener('click', goBack);
   });
+  document.querySelector('[data-action="voice-toggle"]')?.addEventListener('click', () => {
+    voicePaused = !voicePaused;
+    render();
+  });
   document.querySelectorAll('[data-faq-index]').forEach((button) => {
     button.addEventListener('click', () => {
       const index = Number(button.dataset.faqIndex);
@@ -397,7 +408,15 @@ function render() {
   document.querySelector('#route-form')?.addEventListener('submit', (event) => {
     event.preventDefault(); navigate('guide');
   });
-  document.querySelector('.message-composer')?.addEventListener('submit', (event) => event.preventDefault());
+  document.querySelector('.message-composer')?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const input = event.currentTarget.querySelector('input');
+    const message = input.value.trim();
+    if (!message) return;
+    sentTextMessages.push(message);
+    textSendNotice = '메시지를 화면에 추가했어요. 실제 번역은 번역 서버 연결 후 제공됩니다.';
+    render();
+  });
   document.querySelector('#contact-form')?.addEventListener('submit', (event) => {
     event.preventDefault();
     document.querySelector('.contact-notice').textContent = '문의 접수는 서버 연결 후 이용할 수 있습니다.';
