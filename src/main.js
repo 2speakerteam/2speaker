@@ -47,7 +47,7 @@ function homeScreen() {
   return `<main class="screen home-screen">
     <section class="brand-block" aria-label="2SPEAKER">
       <svg class="brand-mark" viewBox="145 210 540 420" role="img" aria-label="2S 로고" xmlns="http://www.w3.org/2000/svg">
-        <defs><filter id="neon-only" color-interpolation-filters="sRGB"><feColorMatrix values="0 0 0 0 0  0 0 0 0 .88  0 0 0 0 1  -1 1 0 0 -.035"/></filter></defs>
+        <defs><filter id="neon-only" color-interpolation-filters="sRGB"><feColorMatrix values="0 0 0 0 0  0 0 0 0 .88  0 0 0 0 1  -1 1.2 .2 0 -.25"/></filter></defs>
         <image href="/public/2speaker-logo.png" x="0" y="0" width="823" height="1000" filter="url(#neon-only)"/>
       </svg>
       <h1>2SPEAKER</h1>
