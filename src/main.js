@@ -32,6 +32,16 @@ function icon(name, size = 28) {
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name]}</svg>`;
 }
 
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, (character) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  })[character]);
+}
+
 function bottomNav() {
   return `<nav class="bottom-nav" aria-label="하단 메뉴">
     <button class="nav-item ${currentPage === 'home' ? 'active' : ''}" data-page="home">${icon('home')}<span>홈</span></button>
@@ -47,6 +57,7 @@ function header(title) {
 }
 
 function homeScreen() {
+  const safeDestination = escapeHtml(destination);
   return `<main class="screen home-screen">
     <section class="brand-block" aria-label="2SPEAKER">
       <svg class="brand-mark" viewBox="145 210 540 420" role="img" aria-label="2S 로고" xmlns="http://www.w3.org/2000/svg">
@@ -57,7 +68,7 @@ function homeScreen() {
     </section>
     <form class="destination-search" id="destination-form">
       ${icon('search', 34)}
-      <input value="${destination}" placeholder="어디로 가세요?" aria-label="목적지">
+      <input value="${safeDestination}" placeholder="어디로 가세요?" aria-label="목적지">
       <button type="submit" aria-label="길찾기 시작">${icon('arrow', 31)}</button>
     </form>
     <section class="feature-grid" aria-label="주요 기능">
@@ -73,11 +84,12 @@ function homeScreen() {
 }
 
 function routeScreen() {
+  const safeDestination = escapeHtml(destination);
   return `<main class="screen content-screen">
     ${header('길찾기')}
     <section class="page-body route-entry-body">
       <form class="route-form" id="route-form"><label class="large-input"><span class="sr-only">목적지</span>
-        <input id="route-destination" value="${destination}" placeholder="어디로 가세요?" inputmode="search">
+        <input id="route-destination" value="${safeDestination}" placeholder="어디로 가세요?" inputmode="search">
       </label></form>
     </section>
     ${bottomNav()}
@@ -85,8 +97,9 @@ function routeScreen() {
 }
 
 function guideScreen() {
-  const isTransfer = /환승|2호선|4호선|서울역|공항철도|지하철/.test(destination.trim());
-  const place = destination.trim() || '경복궁';
+  const rawPlace = destination.trim() || '경복궁';
+  const isTransfer = /환승|2호선|4호선|서울역|공항철도|지하철/.test(rawPlace);
+  const place = escapeHtml(rawPlace);
   const route = isTransfer
     ? {
         scene: 'station-scene',
@@ -276,4 +289,5 @@ function goBack() {
 }
 
 render();
+
 
