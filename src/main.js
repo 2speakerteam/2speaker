@@ -46,12 +46,9 @@ function header(title) {
 function homeScreen() {
   return `<main class="screen home-screen">
     <section class="brand-block" aria-label="2SPEAKER">
-      <svg class="brand-mark" viewBox="0 0 220 120" role="img" aria-label="2S 로고" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <g stroke="url(#brand-gradient)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M84 96H24V86c0-13 9-22 23-33l26-21c9-7 11-16 5-23-8-9-25-9-34 0-4 4-6 9-7 14"/>
-          <path d="M194 37c-7-14-25-19-39-12-17 8-17 27 1 36l25 12c17 8 18 25 5 36-15 12-41 7-48-10"/>
-        </g>
-        <defs><linearGradient id="brand-gradient" x1="25" y1="20" x2="195" y2="100" gradientUnits="userSpaceOnUse"><stop stop-color="#16E8F5"/><stop offset="1" stop-color="#0BC9F3"/></linearGradient></defs>
+      <svg class="brand-mark" viewBox="145 210 540 420" role="img" aria-label="2S 로고" xmlns="http://www.w3.org/2000/svg">
+        <defs><filter id="neon-only" color-interpolation-filters="sRGB"><feColorMatrix values="0 0 0 0 0  0 0 0 0 .88  0 0 0 0 1  -1 1 0 0 -.035"/></filter></defs>
+        <image href="/public/2speaker-logo.png" x="0" y="0" width="823" height="1000" filter="url(#neon-only)"/>
       </svg>
       <h1>2SPEAKER</h1>
     </section>
