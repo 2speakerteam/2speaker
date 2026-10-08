@@ -41,10 +41,10 @@ body {
 .brand-mark { display: block; width: clamp(100px, 17vh, 152px); height: auto; overflow: visible; filter: drop-shadow(0 0 13px rgba(0, 217, 255, .22)); }
 .brand-block h1 { margin: 8px 0 0; font-size: clamp(27px, 5vh, 40px); line-height: 1; letter-spacing: -.025em; }
 
-.destination-search { height: 66px; display: flex; align-items: center; gap: 14px; margin: clamp(22px, 4.5vh, 58px) auto 0; padding: 7px 9px 7px 20px; border: 1.5px solid var(--line); border-radius: 40px; background: rgba(0, 31, 56, .42); max-width: 620px; }
-.destination-search input { min-width: 0; flex: 1; border: 0; outline: 0; color: white; background: transparent; font-size: clamp(20px, 5vw, 28px); }
+.destination-search { width: 100%; height: 66px; display: flex; align-items: center; gap: 14px; margin: clamp(22px, 4.5vh, 58px) auto 0; padding: 7px 9px 7px 20px; border: 1.5px solid var(--line); border-radius: 40px; background: rgba(0, 31, 56, .42); max-width: 620px; text-align: left; cursor: pointer; }
+.destination-prompt { min-width: 0; flex: 1; color: var(--muted); font-size: clamp(20px, 5vw, 28px); }
 input::placeholder { color: var(--muted); opacity: 1; }
-.destination-search button { display: grid; place-items: center; width: 50px; height: 50px; flex: 0 0 50px; border: 0; border-radius: 50%; background: linear-gradient(135deg, #08a6ce, #0b7fa8); cursor: pointer; }
+.search-arrow { display: grid; place-items: center; width: 50px; height: 50px; flex: 0 0 50px; border-radius: 50%; background: linear-gradient(135deg, #08a6ce, #0b7fa8); }
 
 .feature-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; max-width: 620px; margin: clamp(18px, 3.5vh, 38px) auto 0; }
 .feature-card { min-height: clamp(150px, 27vh, 242px); display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1.3px solid var(--line); border-radius: 24px; background: rgba(0, 35, 63, .36); cursor: pointer; }
@@ -66,8 +66,22 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .route-entry-body { margin-top: clamp(54px, 8vh, 125px); }
 .large-input { display: flex; height: 80px; padding: 0 28px; border: 1.5px solid var(--cyan); border-radius: 32px; align-items: center; }
 .route-entry-body .large-input { height: clamp(58px, 7vh, 114px); padding-inline: clamp(24px, 4vw, 42px); border-radius: 38px; background: rgba(0, 31, 56, .3); }
-.large-input input { width: 100%; border: 0; outline: 0; color: white; background: transparent; font-size: clamp(22px, 6vw, 31px); }
+.large-input input { min-width: 0; flex: 1; border: 0; outline: 0; color: white; background: transparent; font-size: clamp(22px, 6vw, 31px); }
 .route-form { display: grid; gap: 18px; }
+.route-voice-button, .route-submit { width: 42px; height: 42px; flex: 0 0 42px; display: grid; place-items: center; border: 0; border-radius: 50%; color: var(--cyan); background: rgba(8, 118, 157, .24); cursor: pointer; }
+.route-submit { color: white; background: linear-gradient(135deg, #08a6ce, #0b7fa8); }
+.route-submit[hidden] { display: none; }
+.voice-search-overlay { position: fixed; z-index: 30; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(0, 9, 23, .76); }
+.voice-search-dialog { position: relative; width: min(100%, 420px); padding: 42px 24px 28px; border: 1px solid var(--line); border-radius: 30px; background: linear-gradient(150deg, #003251, #001b32); text-align: center; box-shadow: 0 20px 70px rgba(0, 0, 0, .4); }
+.voice-search-close { position: absolute; top: 12px; right: 18px; border: 0; background: transparent; color: var(--muted); font-size: 32px; line-height: 1; cursor: pointer; }
+.voice-search-mic { width: 94px; height: 94px; display: grid; place-items: center; margin: 0 auto 20px; border: 1px solid var(--line); border-radius: 50%; color: var(--cyan); background: rgba(13, 125, 160, .23); }
+.voice-search-mic.listening { animation: mic-pulse 1.5s ease-in-out infinite; }
+.voice-search-dialog h2 { margin: 0; font-size: 28px; }
+.voice-search-dialog p { min-height: 48px; margin: 15px 0 0; color: var(--muted); font-size: 17px; line-height: 1.4; }
+.voice-search-actions { display: flex; justify-content: center; gap: 10px; margin-top: 18px; }
+.voice-search-actions button { min-height: 44px; padding: 0 14px; border: 1px solid var(--line); border-radius: 16px; background: rgba(4, 63, 99, .8); cursor: pointer; }
+.voice-search-actions button:first-child { color: #001b32; background: var(--cyan); }
+@keyframes mic-pulse { 50% { box-shadow: 0 0 0 12px rgba(33, 214, 255, .11); } }
 .route-start { min-height: 58px; display: flex; align-items: center; justify-content: center; gap: 10px; border: 1px solid rgba(38, 216, 255, .8); border-radius: 20px; color: white; background: linear-gradient(135deg, #078bb5, #06527b); cursor: pointer; font-weight: 700; font-size: 19px; }
 
 .translation-body { margin-top: 46px; }
