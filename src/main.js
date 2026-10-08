@@ -61,7 +61,7 @@ function escapeHtml(value) {
 
 function bottomNav() {
   return `<nav class="bottom-nav" aria-label="하단 메뉴">
-    <button class="nav-item ${currentPage === 'home' ? 'active' : ''}" data-page="home">${icon(currentPage === 'home' ? 'homeActive' : 'home')}<span>홈</span></button>
+    <button class="nav-item ${currentPage === 'home' ? 'active' : ''}" data-page="home">${icon('homeActive')}<span>홈</span></button>
     <button class="nav-item ${currentPage === 'more' ? 'active' : ''}" data-page="more">${icon('more')}<span>더보기</span></button>
   </nav>`;
 }
