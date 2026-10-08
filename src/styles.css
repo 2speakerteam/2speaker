@@ -98,6 +98,9 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .mode-copy strong { font-size: 24px; font-weight: 600; }
 .mode-copy small { color: var(--muted); font-size: 17px; }
 .mode-card > svg { color: #8eb8db; }
+.conversation-brand-row { height: 42px; display: grid; place-items: center; }
+.conversation-brand-row strong { padding: 7px 22px; border-radius: 24px; color: white; background: #02060b; font-size: 16px; letter-spacing: .03em; }
+.conversation-title { height: 58px; }
 .guide-screen { padding-inline: 20px; }
 .guide-header { height: 54px; display: grid; grid-template-columns: 48px 1fr 48px; align-items: center; text-align: center; }
 .guide-header strong { width: max-content; justify-self: center; padding: 8px 22px; border-radius: 24px; color: white; background: #02060b; font-size: 18px; letter-spacing: .03em; }
@@ -133,7 +136,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .bubble.answer { justify-self: end; border-color: #14f4dd; background: linear-gradient(135deg, rgba(0, 139, 145, .88), rgba(0, 84, 92, .7)); border-bottom-right-radius: 5px; }
 
 .conversation-screen { padding-bottom: calc(94px + env(safe-area-inset-bottom)); }
-.conversation-body, .text-dialogue { max-width: 620px; margin: 34px auto 0; }
+.conversation-body, .text-dialogue { max-width: 620px; margin: 8px auto 0; }
 .translating { margin: 0 0 48px; text-align: center; color: #b9cde0; font-size: 21px; }
 .speech-block { padding: 0 0 34px; border-bottom: 1px solid rgba(46, 162, 205, .56); }
 .speech-block + .speech-block { padding-top: 34px; border-bottom: 0; }
