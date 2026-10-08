@@ -183,13 +183,20 @@ function textScreen() {
 }
 
 function moreScreen() {
+  const previousPage = pageHistory[pageHistory.length - 1] || 'home';
+  const backgroundScreens = {
+    home: homeScreen, route: routeScreen, guide: guideScreen, translation: translationScreen,
+    voice: voiceScreen, text: textScreen
+  };
+  const background = (backgroundScreens[previousPage] || homeScreen)();
   const menuItems = [
     ['user', '로그인 / 회원가입', 'login'],
     ['globe', '언어', 'language'],
     ['help', '도움말', 'help']
   ];
   return `<main class="screen menu-screen">
-    <section class="menu-panel"><button class="menu-close" data-page="home" aria-label="메뉴 닫기">×</button>
+    <div class="menu-underlay" inert>${background}</div><div class="menu-scrim"></div>
+    <section class="menu-panel"><button class="menu-close" data-action="menu-close" aria-label="메뉴 닫기">×</button>
       <div class="menu-list">${menuItems.map(([name, label, page]) => `<button data-page="${page}"><span>${icon(name, 36)}</span><strong>${label}</strong>${icon('chevron', 26)}</button>`).join('')}</div>
     </section>
   </main>`;
@@ -334,6 +341,9 @@ function render() {
     button.addEventListener('click', () => navigate(button.dataset.page));
   });
   document.querySelectorAll('[data-action="back"]').forEach((button) => {
+    button.addEventListener('click', goBack);
+  });
+  document.querySelectorAll('[data-action="menu-close"]').forEach((button) => {
     button.addEventListener('click', goBack);
   });
   document.querySelectorAll('[data-faq-index]').forEach((button) => {
