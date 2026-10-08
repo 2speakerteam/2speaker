@@ -453,7 +453,8 @@ function render() {
   });
   routeInput?.addEventListener('input', (event) => {
     destination = event.target.value;
-    document.querySelector('.route-submit').hidden = !destination.trim();
+    const routeSubmit = document.querySelector('.route-submit');
+    if (routeSubmit) routeSubmit.hidden = !destination.trim();
   });
   routeInput?.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
