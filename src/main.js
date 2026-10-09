@@ -34,7 +34,7 @@ const icons = {
   homeActive: '<path fill="currentColor" stroke="none" d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z"/>',
   more: '<circle cx="5" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none"/>',
   menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
-  settings: '<circle cx="12" cy="12" r="3"/><path d="m19.4 15 .1.1 1.4 1.1-1.4 2.4-1.7-.7a8 8 0 0 1-1.8 1l-.3 1.8h-2.8l-.3-1.8a8 8 0 0 1-1.8-1l-1.7.7-1.4-2.4L7.9 15a8 8 0 0 1 0-2l-1.4-1.1 1.4-2.4 1.7.7a8 8 0 0 1 1.8-1l.3-1.8h2.8l.3 1.8a8 8 0 0 1 1.8 1l1.7-.7 1.4 2.4-1.4 1.1a8 8 0 0 1 0 2Z"/>',
+  settings: '<circle cx="12" cy="12" r="3.5"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1-1.5 2.5-.1-.1a1.6 1.6 0 0 0-1.8.3 1.6 1.6 0 0 0-.6 1.4v.1h-3v-.1a1.6 1.6 0 0 0-1.1-1.5 1.6 1.6 0 0 0-1.8.3l-.1.1-2.5-1.5.1-.1a1.6 1.6 0 0 0-.3-1.8 1.6 1.6 0 0 0-1.4-.6h-.1v-3h.1a1.6 1.6 0 0 0 1.5-1.1 1.6 1.6 0 0 0-.3-1.8l-.1-.1 1.5-2.5.1.1a1.6 1.6 0 0 0 1.8-.3 1.6 1.6 0 0 0 .6-1.4V5h3v.1a1.6 1.6 0 0 0 1.1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1 2.5 1.5-.1.1a1.6 1.6 0 0 0 .3 1.8 1.6 1.6 0 0 0 1.4.6h.1v3h-.1a1.6 1.6 0 0 0-1.5 1.1Z"/>',
   train: '<rect x="5" y="3" width="14" height="16" rx="3"/><path d="M8 7h8v5H8zM8 22l2-3m6 3-2-3M5 15h14M8 16h.01M16 16h.01"/>',
   pin: '<path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/><path d="M8 21h8"/>',
   translate: '<path d="M4 5h9v8H9l-3 3v-3H4Z"/><path d="M11 9h9v8h-2v3l-3-3h-4Z"/><path d="M7 8h3M8.5 6.5v3"/><path d="m14 14 1.5-3 1.5 3M14.5 13h2"/>',
