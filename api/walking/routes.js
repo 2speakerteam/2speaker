@@ -62,9 +62,18 @@ module.exports = async function handler(req, res) {
     if (!Number.isFinite(totalTime) || totalTime <= 0) {
       return res.status(404).json({ error: '이 구간의 도보 경로를 찾지 못했어요.' });
     }
+    const paths = (payload.features || [])
+      .filter((feature) => feature?.geometry?.type === 'LineString')
+      .map((feature) => (feature.geometry.coordinates || [])
+        .filter((point) => Array.isArray(point) && point.length >= 2
+          && coordinate(point[0], 124, 133) !== null
+          && coordinate(point[1], 33, 40) !== null)
+        .map(([longitude, latitude]) => [Number(longitude), Number(latitude)]))
+      .filter((path) => path.length > 1);
     return res.status(200).json({
       totalTime,
-      totalDistance: Number.isFinite(totalDistance) && totalDistance >= 0 ? totalDistance : null
+      totalDistance: Number.isFinite(totalDistance) && totalDistance >= 0 ? totalDistance : null,
+      paths
     });
   } catch {
     return res.status(502).json({ error: '보행 경로 API에 연결하지 못했어요.' });
