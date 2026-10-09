@@ -241,19 +241,19 @@ function guideScreen() {
       <div class="route-scene" style="background:#12384d">
         <div class="naver-map" id="naver-map" aria-label="지도"></div>
         <div class="destination-sign"><span>${place}<small>${english ? 'Destination' : '목적지'}</small></span></div>
+        <div class="walk-preview-scene" id="walk-preview-scene" role="region" aria-label="${english ? 'Walking street view' : '도보 로드뷰'}" hidden>
+          <div class="walk-preview-panorama" id="walk-preview-panorama" aria-label="${english ? 'Street view along the walking route' : '도보 경로의 실제 거리뷰'}"></div>
+          <button class="walk-preview-map-button" type="button" id="walk-preview-close">${english ? 'Show map' : '지도보기'}</button>
+          <div class="walk-preview-arrow" id="walk-preview-arrow" aria-hidden="true" hidden><span>↑</span><small>${english ? 'Next direction' : '다음 방향'}</small></div>
+        </div>
       </div>
-      <button class="route-instruction walk-action" type="button" aria-label="${english ? 'Show walking route' : '도보 경로 보기'}" disabled>${icon('walk', 28)}<span>${loading}</span></button>
+      <button class="route-instruction walk-action" type="button" aria-label="${english ? 'Show walking street view' : '도보 로드뷰 보기'}" aria-expanded="false" aria-controls="walk-preview-scene walk-preview" disabled>${icon('walk', 28)}<span>${loading}</span></button>
     </section>
     <section class="walk-preview" id="walk-preview" aria-label="${english ? 'Walking street-view preview' : '도보 로드뷰 미리보기'}" hidden>
       <div class="walk-preview-header">
         <div><small>${english ? 'Street-view route preview' : '도보 로드뷰 미리보기'}</small><h2>${escapeHtml(routeOrigin || (english ? 'Your location' : '현재 위치'))} → ${place}</h2></div>
-        <button type="button" id="walk-preview-close" aria-label="${english ? 'Close street view' : '로드뷰 닫기'}">${english ? 'Close' : '닫기'}</button>
       </div>
-      <div class="walk-preview-scene">
-        <div class="walk-preview-panorama" id="walk-preview-panorama" aria-label="${english ? 'Street view along the walking route' : '도보 경로의 실제 거리뷰'}"></div>
-        <div class="walk-preview-arrow" id="walk-preview-arrow" aria-hidden="true" hidden><span>↑</span><small>${english ? 'Next direction' : '다음 방향'}</small></div>
-        <p class="walk-preview-message" id="walk-preview-message" role="status"></p>
-      </div>
+      <p class="walk-preview-message" id="walk-preview-message" role="status"></p>
       <div class="walk-preview-controls">
         <button type="button" id="walk-preview-prev">${english ? 'Previous' : '이전'}</button>
         <button type="button" id="walk-preview-play">${english ? 'Pause' : '일시정지'}</button>
@@ -1228,6 +1228,14 @@ function stopWalkPreview(hidePanel = false) {
   state.playing = false;
   try { state.panorama?.setVisible(false); } catch { /* Viewer may already be detached. */ }
   state.viewer.replaceChildren();
+  state.scene.hidden = true;
+  state.visual.classList.remove('walk-preview-open');
+  state.mapElement.inert = false;
+  state.mapElement.removeAttribute('aria-hidden');
+  state.walkButton?.setAttribute('aria-expanded', 'false');
+  state.prev.onclick = state.next.onclick = state.play.onclick = state.close.onclick = null;
+  state.visual.removeEventListener('keydown', state.onKeyDown);
+  state.panel.removeEventListener('keydown', state.onKeyDown);
   if (hidePanel && state.panel.isConnected) state.panel.hidden = true;
   walkPreviewState = null;
 }
@@ -1236,15 +1244,26 @@ function startWalkPreview(context, choice) {
   stopWalkPreview(true);
   const panel = document.querySelector('#walk-preview');
   const viewer = document.querySelector('#walk-preview-panorama');
-  if (!panel || !viewer) return;
+  const scene = document.querySelector('#walk-preview-scene');
+  const visual = scene?.closest('.route-visual');
+  const mapElement = visual?.querySelector('.naver-map');
+  const walkButton = visual?.querySelector('.walk-action');
+  if (!panel || !viewer || !scene || !visual || !mapElement) return;
   const frames = walkPreviewFrames(choice.paths);
   if (!frames.length) return;
   panel.hidden = false;
+  scene.hidden = false;
+  visual.classList.add('walk-preview-open');
+  mapElement.inert = true;
+  mapElement.setAttribute('aria-hidden', 'true');
+  walkButton?.setAttribute('aria-expanded', 'true');
   const state = {
     ...context,
-    panel, viewer, frames, index: 0, playing: true, loading: false,
+    panel, viewer, scene, visual, mapElement, walkButton,
+    close: scene.querySelector('#walk-preview-close'),
+    frames, index: 0, playing: true, loading: false,
     timer: null, panorama: null,
-    arrow: panel.querySelector('#walk-preview-arrow'),
+    arrow: scene.querySelector('#walk-preview-arrow'),
     message: panel.querySelector('#walk-preview-message'),
     progress: panel.querySelector('#walk-preview-progress-text'),
     progressBar: panel.querySelector('#walk-preview-progress-bar'),
@@ -1284,7 +1303,6 @@ function startWalkPreview(context, choice) {
     state.viewer.style.visibility = 'hidden';
     state.arrow.hidden = true;
     const position = new state.maps.LatLng(frame.position[1], frame.position[0]);
-    state.map.setCenter(position);
     if (!state.maps.Panorama) {
       state.loading = false;
       state.message.textContent = state.english ? 'Street view is unavailable here. Follow the map route.' : '이 구간은 거리뷰를 볼 수 없어요. 지도 경로를 확인해 주세요.';
@@ -1348,19 +1366,19 @@ function startWalkPreview(context, choice) {
       scheduleNext();
     }
   };
-  state.prev.addEventListener('click', () => {
+  state.prev.onclick = () => {
     state.playing = false;
     clearTimeout(state.timer);
     state.play.textContent = state.english ? 'Play' : '자동 재생';
     showFrame(state.index - 1);
-  });
-  state.next.addEventListener('click', () => {
+  };
+  state.next.onclick = () => {
     state.playing = false;
     clearTimeout(state.timer);
     state.play.textContent = state.english ? 'Play' : '자동 재생';
     showFrame(state.index + 1);
-  });
-  state.play.addEventListener('click', () => {
+  };
+  state.play.onclick = () => {
     if (!valid()) return;
     if (state.index === frames.length - 1 && !state.playing) showFrame(0);
     state.playing = !state.playing;
@@ -1369,10 +1387,22 @@ function startWalkPreview(context, choice) {
       : (state.english ? 'Play' : '자동 재생');
     if (state.playing && !state.loading) scheduleNext();
     else if (!state.playing) clearTimeout(state.timer);
-  });
-  panel.querySelector('#walk-preview-close').addEventListener('click', () => stopWalkPreview(true));
+  };
+  state.close.onclick = () => {
+    stopWalkPreview(true);
+    walkButton?.focus({ preventScroll: true });
+  };
+  state.onKeyDown = (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      state.close.onclick?.();
+    }
+  };
+  visual.addEventListener('keydown', state.onKeyDown);
+  panel.addEventListener('keydown', state.onKeyDown);
   showFrame(0);
-  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  state.close.focus({ preventScroll: true });
+  visual.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function selectGuideTransport(mode, userInitiated = false) {
