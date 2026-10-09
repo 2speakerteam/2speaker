@@ -1477,17 +1477,20 @@ function startWalkPreview(context, choice) {
         state.panorama.setPosition(position);
       } else {
         state.panorama = new state.maps.Panorama(viewer, {
-          position, pov: { pan: walkPreviewBearing(frame.position, frame.ahead), tilt: 0, fov: 75 },
+          position, pov: { pan: (walkPreviewBearing(frame.position, frame.ahead) + 180) % 360 - 180, tilt: 0, fov: 75 },
           zoomControl: true, aroundControl: false, flightSpot: false
         });
         const instance = state.panorama;
         state.maps.Event.addListener(instance, 'pano_status', (status) => {
           if (!valid() || state.panorama !== instance || !state.loading) return;
-          clearTimeout(state.timer);
           if (status !== 'OK') {
             unavailable(state.english ? 'No street image for this section. See the route on the map.' : '이 구간에는 거리뷰가 없어요. 지도 경로를 확인해 주세요.');
-            return;
           }
+          // OK only confirms the lookup; getLocation may still describe the previous image.
+        });
+        const onPanoramaReady = () => {
+          if (!valid() || state.panorama !== instance || !state.loading) return;
+          clearTimeout(state.timer);
           const frameNow = frames[state.index];
           const capture = state.panorama.getLocation()?.coord;
           const capturePoint = capture && [capture.lng(), capture.lat()];
@@ -1498,7 +1501,7 @@ function startWalkPreview(context, choice) {
           try {
             // Route-relative heading avoids looking backwards when the photo snaps past the target.
             state.panorama.setPov({
-              pan: walkPreviewBearing(frameNow.position, frameNow.ahead), tilt: 0, fov: 75
+              pan: (walkPreviewBearing(frameNow.position, frameNow.ahead) + 180) % 360 - 180, tilt: 0, fov: 75
             });
           } catch {
             // If camera control is unavailable, keep the panorama navigable by hand.
@@ -1511,7 +1514,9 @@ function startWalkPreview(context, choice) {
             + (state.english ? ` · Street image${photoDate ? ` from ${photoDate}` : ''}`
               : ` · 거리뷰${photoDate ? ` 촬영 ${photoDate}` : ''}`);
           scheduleNext();
-        });
+        };
+        state.maps.Event.addListener(instance, 'pano_changed', onPanoramaReady);
+        state.maps.Event.addListener(instance, 'init', onPanoramaReady);
       }
     } catch {
       unavailable(state.english ? 'Street view could not be opened.' : '거리뷰를 열지 못했어요. 지도 경로를 확인해 주세요.');
