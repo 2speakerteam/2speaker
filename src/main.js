@@ -933,7 +933,7 @@ function selectGuideTransport(mode) {
   const choice = guideTransportRoutes[mode];
   const context = guideTransportContext;
   if (!choice || !context || context.requestId !== routeRequestToken || currentPage !== 'guide') return;
-  const { maps, map, start, end, instruction, english } = context;
+  const { maps, map, start, end, english } = context;
   document.querySelectorAll('[data-transport]').forEach((button) => {
     button.setAttribute('aria-pressed', String(button.dataset.transport === mode));
   });
@@ -955,7 +955,6 @@ function selectGuideTransport(mode) {
     drawTransitItinerary(maps, map, choice.itinerary, start, end);
     summary = `${english ? { BUS: 'Bus', SUBWAY: 'Subway' }[mode] : { BUS: '버스', SUBWAY: '지하철' }[mode]} · ${transportText(mode, choice.itinerary, english)}`;
   }
-  if (instruction) instruction.textContent = summary;
   setGuideAnswer(english
     ? `Route from ${routeOrigin || 'your location'} to ${destination}: ${summary}.`
     : `${routeOrigin || '현재 위치'}에서 ${destination}까지 ${summary} 경로를 확인했어요.`);
@@ -971,6 +970,26 @@ async function requestNaverTransitRoute(maps, map, start, end, isCurrent, instru
     endX: end.longitude,
     endY: end.latitude
   };
+  if (instruction) instruction.textContent = english ? 'Checking walking time...' : '도보 시간을 확인하고 있어요.';
+  fetch('/api/walking/routes', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(coordinates)
+  }).then(async (response) => {
+    const payload = await response.json().catch(() => ({}));
+    if (!isCurrent() || !instruction) return;
+    const seconds = Number(payload.totalTime);
+    instruction.textContent = response.ok && Number.isFinite(seconds) && seconds > 0
+      ? (english
+        ? `Walk · about ${Math.max(1, Math.ceil(seconds / 60))} min`
+        : `도보 · 약 ${Math.max(1, Math.ceil(seconds / 60))}분`)
+      : (english ? 'Walking time unavailable' : '도보 시간 확인 불가');
+  }).catch(() => {
+    if (isCurrent() && instruction) {
+      instruction.textContent = english ? 'Walking time unavailable' : '도보 시간 확인 불가';
+    }
+  });
+
   const [transitResult, taxiResult] = await Promise.allSettled([
     fetch('/api/transit/routes', {
       method: 'POST',
@@ -1052,7 +1071,6 @@ async function requestNaverTransitRoute(maps, map, start, end, isCurrent, instru
   else if (guideTransportRoutes.TAXI) selectGuideTransport('TAXI');
   else {
     const message = transitError || (english ? 'No route found for this trip.' : '이 구간의 경로를 찾지 못했어요.');
-    if (instruction) instruction.textContent = message;
     setGuideAnswer(message);
   }
 }
