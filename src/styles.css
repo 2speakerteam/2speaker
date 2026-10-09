@@ -109,6 +109,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .guide-header { height: 54px; display: grid; grid-template-columns: 48px 1fr 48px; align-items: center; text-align: center; }
 .guide-header strong { width: max-content; justify-self: center; padding: 8px 22px; border-radius: 24px; color: white; background: #02060b; font-size: 18px; letter-spacing: .03em; }
 .guide-control { width: 44px; height: 44px; display: grid; place-items: center; border: 0; color: var(--cyan); background: transparent; cursor: pointer; }
+.guide-control svg { display: block; width: 30px; height: 30px; flex: 0 0 30px; aspect-ratio: 1; }
 .route-visual { max-width: 620px; margin: 12px auto 0; overflow: visible; }
 .route-scene { position: relative; height: clamp(200px, 33vh, 410px); overflow: hidden; border: 1px solid rgba(49, 206, 255, .24); border-radius: 23px; isolation: isolate; }
 .station-scene { background: url('/public/route-guides/subway-transfer.svg') center 54% / cover no-repeat, #12384d; }
@@ -133,7 +134,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .destination-sign strong { font-size: 29px; line-height: 1; }
 .destination-sign span { font-size: 17px; font-weight: 700; }
 .destination-sign small { display: block; font-size: 9px; }
-.direction-arrow { position: absolute; z-index: 3; left: 50%; bottom: 20%; transform: translateX(-50%); color: #20d5ff; font-size: 76px; line-height: 1; text-shadow: 0 0 16px #0ec8f1; }
+.direction-arrow { position: absolute; z-index: 3; left: 50%; bottom: 20%; transform: translateX(-50%); color: #20d5ff; font-size: 58px; line-height: 1; text-shadow: 0 0 12px #0ec8f1; }
 .direction-arrow.turn-left { left: 27%; bottom: 37%; }
 .route-instruction { position: relative; z-index: 4; display: flex; align-items: center; gap: 13px; min-height: 62px; margin: -36px 0 0; padding: 12px 18px; border: 1px solid #20d7ff; border-radius: 27px; color: white; background: rgba(3, 38, 59, .96); font-size: clamp(15px, 3.7vw, 20px); }
 .route-instruction span { min-width: 0; }
