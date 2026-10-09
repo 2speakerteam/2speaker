@@ -9,6 +9,8 @@ let voiceSearchState = 'idle';
 let voiceSearchMessage = '';
 let activeDestinationRecognition = null;
 let routeEntryMode = 'dual';
+const naverMapClientId = window.__2SPEAKER_CONFIG__?.naverMapClientId?.trim() ?? '';
+let naverMapsLoadPromise = null;
 const sentTextMessages = [];
 let textSendNotice = '';
 const pageHistory = [];
@@ -170,6 +172,7 @@ function guideScreen() {
     </header>
     <section class="route-visual" aria-label="실시간 길찾기 안내">
       <div class="route-scene ${route.scene}">
+        <div class="naver-map" id="naver-map" aria-label="네이버 지도"></div>
         ${isTransfer
           ? `<div class="transfer-banner"><span class="line-badge line-two">2</span><span class="line-name">2호선<small>Line 2</small></span><strong class="transfer-arrow">→</strong><span class="line-badge line-four">4</span><span class="line-name">4호선<small>Line 4</small></span><span class="transfer-label">${icon('train', 28)}<span>갈아타는 곳<small>Transfer</small></span></span></div>
              <div class="station-sign"><span class="line-badge line-four">4</span><strong>4호선</strong><span>표지판 따라 ↑</span></div>
@@ -398,6 +401,8 @@ function render() {
   };
   root.innerHTML = `<div class="app-shell">${screens[currentPage]()}${voiceSearchOpen ? voiceDestinationDialog() : ''}</div>`;
 
+  if (currentPage === 'guide') initializeNaverMap();
+
   if (currentPage === 'text') {
     const dialogue = document.querySelector('.text-dialogue');
     if (dialogue) dialogue.scrollTop = dialogue.scrollHeight;
@@ -500,6 +505,72 @@ function render() {
   });
 }
 
+function loadNaverMaps() {
+  if (!naverMapClientId) return Promise.reject(new Error('NAVER_MAP_CLIENT_ID is not configured.'));
+  if (window.naver?.maps?.Map) return Promise.resolve(window.naver.maps);
+  if (naverMapsLoadPromise) return naverMapsLoadPromise;
+
+  const loadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement('script');
+    script.src = `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${encodeURIComponent(naverMapClientId)}`;
+    script.async = true;
+    script.onload = () => {
+      if (window.naver?.maps?.Map) resolve(window.naver.maps);
+      else {
+        script.remove();
+        reject(new Error('NAVER Maps loaded without its Map API.'));
+      }
+    };
+    script.onerror = () => {
+      script.remove();
+      reject(new Error('NAVER Maps could not be loaded.'));
+    };
+    document.head.append(script);
+  });
+
+  naverMapsLoadPromise = loadPromise.catch((error) => {
+    naverMapsLoadPromise = null;
+    throw error;
+  });
+  return naverMapsLoadPromise;
+}
+
+function initializeNaverMap() {
+  const container = document.querySelector('#naver-map');
+  const scene = container?.closest('.route-scene');
+  if (!container || !scene) return;
+
+  const failMap = () => {
+    if (document.querySelector('#naver-map') !== container) return;
+    scene.classList.add('map-failed');
+  };
+
+  if (!naverMapClientId) {
+    failMap();
+    return;
+  }
+
+  loadNaverMaps().then((maps) => {
+    if (currentPage !== 'guide' || document.querySelector('#naver-map') !== container) return;
+    const center = new maps.LatLng(37.5665, 126.978);
+    new maps.Map(container, {
+      center,
+      zoom: 15,
+      minZoom: 7,
+      maxZoom: 20,
+      mapTypeControl: false,
+      zoomControl: true,
+      zoomControlOptions: { position: maps.Position.TOP_RIGHT },
+      scaleControl: false,
+      logoControl: true,
+      mapDataControl: false
+    });
+    scene.classList.add('map-ready');
+  }).catch(() => {
+    failMap();
+  });
+}
+
 function closeVoiceDestination() {
   const recognition = activeDestinationRecognition;
   activeDestinationRecognition = null;
@@ -592,6 +663,7 @@ function goBack() {
 }
 
 render();
+
 
 
 

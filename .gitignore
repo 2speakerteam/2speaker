@@ -6,3 +6,7 @@ node_modules/
 outputs/preview/
 work/
 미니멀 네온 2S 모노그램 아이콘_흰여백제거.png
+dist/
+.env*
+!.env.example
+
