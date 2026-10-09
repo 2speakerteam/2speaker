@@ -991,14 +991,15 @@ function initializeNearbyMap() {
 // Verified pedestrian entrance for the adjoining Yongmasan forest facilities.
 // Place-name geocoding can resolve to a park centroid far from the public entrance.
 // Keep this as a small, source-verified exception; do not infer shortcuts elsewhere.
-function localPedestrianEntranceQuery(query) {
+function localPedestrianEntrance(query) {
   const name = String(query ?? '').replace(/[\s·ㆍ.,]/g, '');
   if (/^(?:용마산)?(?:아토피)?치유의숲(?:입구)?$/.test(name)
     || /^용마산유아숲체험(?:원|장)(?:입구)?$/.test(name)
     || /^용마산녹색복지숲(?:입구)?$/.test(name)) {
-    return '서울특별시 중랑구 용마산로94길 64-126';
+    // Naver address geocode for 서울 중랑구 용마산로94길 64-126 (verified 2026-10-09).
+    return { longitude: 127.1010085, latitude: 37.5867885 };
   }
-  return query;
+  return null;
 }
 
 function geocodeDestination(maps, query) {
@@ -1603,14 +1604,11 @@ async function requestGuideRoute(naverMaps, container, scene, requestId) {
 
   try {
     const query = destination.trim() || '경복궁';
-    const geocodeQuery = localPedestrianEntranceQuery(query);
     let end = null;
 
     if (naverMaps) {
-      end = await geocodeDestination(naverMaps, geocodeQuery).catch(() => null);
-      if (!end && geocodeQuery !== query) {
-        end = await geocodeDestination(naverMaps, query).catch(() => null);
-      }
+      end = localPedestrianEntrance(query)
+        || await geocodeDestination(naverMaps, query).catch(() => null);
       if (!isCurrent()) return;
     }
 
