@@ -45,7 +45,7 @@ const icons = {
 };
 
 function icon(name, size = 28) {
-  const featureStroke = name === 'pinRoute' || name === 'speechLetters' ? '1.45' : '1.8';
+  const featureStroke = name === 'pinRoute' ? '1.32' : name === 'speechLetters' ? '1.35' : '1.8';
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${featureStroke}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icons[name]}</svg>`;
 }
 
