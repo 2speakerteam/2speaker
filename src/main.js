@@ -104,7 +104,7 @@ function homeScreen() {
     <section class="brand-block" aria-label="2SPEAKER">
       <svg class="brand-mark" viewBox="145 210 540 420" role="img" aria-label="2S 로고" xmlns="http://www.w3.org/2000/svg">
         <defs>
-          <filter id="neon-only" color-interpolation-filters="sRGB"><feColorMatrix values="0 0 0 0 0  0 0 0 0 .88  0 0 0 0 .96  -1.25 2.5 -1.25 0 -.03"/></filter>
+          <filter id="neon-only" color-interpolation-filters="sRGB"><feColorMatrix values="0 0 0 0 0  0 0 0 0 .96  0 0 0 0 .98  -1.25 2.5 -1.25 0 -.03"/></filter>
           <clipPath id="logo-two-clip"><rect x="145" y="210" width="272" height="420"/></clipPath>
           <clipPath id="logo-s-clip"><rect x="417" y="210" width="268" height="420"/></clipPath>
         </defs>
