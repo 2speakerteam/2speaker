@@ -1039,7 +1039,11 @@ async function requestNaverTransitRoute(maps, map, start, end, isCurrent, instru
     } else {
       updateTransportChoice('TAXI', response.status === 503
         ? (english ? 'Car API not connected' : '자동차 API 연결 필요')
-        : (english ? 'Taxi route unavailable' : '택시 경로 이용 불가'), false);
+        : response.status === 401 || response.status === 403
+          ? (english ? 'Car API access needed' : '자동차 API 권한 필요')
+          : response.status === 429
+            ? (english ? 'Request limit reached' : '요청 한도 초과')
+            : (english ? 'Taxi route unavailable' : '택시 경로 이용 불가'), false);
     }
   } else updateTransportChoice('TAXI', english ? 'Taxi route unavailable' : '택시 경로 이용 불가', false);
 
