@@ -2,6 +2,7 @@ const root = document.querySelector('#root');
 let currentPage = 'home';
 let destination = '';
 let routeOrigin = '';
+let routeLanguage = 'ko';
 let selectedAppLanguage = '한국어';
 let selectedUserLanguage = '한국어';
 let voicePaused = false;
@@ -72,21 +73,46 @@ function escapeHtml(value) {
 function parseRouteRequest(raw) {
   const input = String(raw ?? '').trim().replace(/\s+/g, ' ');
   let phrase = input.replace(/[?!.。！？]+$/g, '').trim();
+  const language = /[A-Za-z]/.test(phrase) && !/[\uac00-\ud7a3]/.test(phrase) ? 'en' : 'ko';
   let origin = '';
-  const currentLocation = phrase.match(/^(?:여기서|이곳에서|현재\s*위치에서|내\s*위치에서|지금\s*있는\s*곳에서)\s*(.+)$/);
-  if (currentLocation) phrase = currentLocation[1].trim();
-  else {
-    const explicitOrigin = phrase.match(/^(.+?)(?:에서|부터)\s+(.+)$/);
-    if (explicitOrigin) {
-      origin = explicitOrigin[1].trim();
-      phrase = explicitOrigin[2].trim();
+  if (language === 'en') {
+    const fromTo = phrase.match(/\bfrom\s+(.+?)\s+to\s+(.+)$/i);
+    const toFrom = !fromTo && phrase.match(/\bto\s+(.+?)\s+from\s+(.+)$/i);
+    if (fromTo) {
+      origin = fromTo[1].trim();
+      phrase = fromTo[2].trim();
+    } else if (toFrom) {
+      origin = toFrom[2].trim();
+      phrase = toFrom[1].trim();
+    } else {
+      const destinationOnly = phrase.match(/\b(?:get|go|travel)\s+to\s+(.+)$/i);
+      if (destinationOnly) phrase = destinationOnly[1].trim();
+      else {
+        const direct = phrase.match(/^(.+?)\s+to\s+(.+)$/i);
+        if (direct) {
+          origin = direct[1].trim();
+          phrase = direct[2].trim();
+        }
+      }
     }
+    if (/^(?:here|my location|current location)$/i.test(origin)) origin = '';
+    phrase = phrase.replace(/\s+(?:by\s+(?:bus|subway|train|transit)|please)$/i, '').trim();
+  } else {
+    const currentLocation = phrase.match(/^(?:여기서|이곳에서|현재\s*위치에서|내\s*위치에서|지금\s*있는\s*곳에서)\s*(.+)$/);
+    if (currentLocation) phrase = currentLocation[1].trim();
+    else {
+      const explicitOrigin = phrase.match(/^(.+?)(?:에서|부터)\s+(.+)$/);
+      if (explicitOrigin) {
+        origin = explicitOrigin[1].trim();
+        phrase = explicitOrigin[2].trim();
+      }
+    }
+    const withQuestion = phrase.match(/^(.+?)(?:까지|으로|로)\s+(?:어떻게|가려면|가는|가나요|가요|갈|길|찾아|안내|알려|추천).*/);
+    if (withQuestion) phrase = withQuestion[1];
+    else phrase = phrase.replace(/(?:까지|으로)$/, '');
+    phrase = phrase.replace(/\s+(?:가는 길|가는 방법|가려면|어떻게 가나요|길찾기).*$/, '').trim();
   }
-  const withQuestion = phrase.match(/^(.+?)(?:까지|으로|로)\s+(?:어떻게|가려면|가는|가나요|가요|갈|길|찾아|안내|알려|추천).*/);
-  if (withQuestion) phrase = withQuestion[1];
-  else phrase = phrase.replace(/(?:까지|으로)$/, '');
-  phrase = phrase.replace(/\s+(?:가는 길|가는 방법|가려면|어떻게 가나요|길찾기).*$/, '').trim();
-  return { origin, destination: phrase || input };
+  return { origin, destination: phrase || input, language };
 }
 
 function bottomNav() {
@@ -178,9 +204,15 @@ function routeScreen() {
 function guideScreen() {
   const rawPlace = destination.trim() || '경복궁';
   const place = escapeHtml(rawPlace);
-  const question = routeOrigin
-    ? `${escapeHtml(routeOrigin)}에서 ${place}까지 어떻게 가나요?`
-    : `${place}까지 어떻게 가나요?`;
+  const english = routeLanguage === 'en';
+  const question = english
+    ? (routeOrigin
+      ? `How do I get from ${escapeHtml(routeOrigin)} to ${place}?`
+      : `How do I get to ${place}?`)
+    : (routeOrigin
+      ? `${escapeHtml(routeOrigin)}에서 ${place}까지 어떻게 가나요?`
+      : `${place}까지 어떻게 가나요?`);
+  const loading = english ? 'Finding a route...' : '경로를 확인하고 있어요.';
   return `<main class="screen guide-screen">
     <header class="guide-header">
       <button class="guide-control" data-page="more" aria-label="더보기">${icon('menu', 30)}</button>
@@ -190,13 +222,13 @@ function guideScreen() {
     <section class="route-visual" aria-label="길찾기 안내">
       <div class="route-scene" style="background:#12384d">
         <div class="naver-map" id="naver-map" aria-label="지도"></div>
-        <div class="destination-sign"><span>${place}<small>목적지</small></span></div>
+        <div class="destination-sign"><span>${place}<small>${english ? 'Destination' : '목적지'}</small></span></div>
       </div>
-      <div class="route-instruction">${icon('walk', 28)}<span>경로를 확인하고 있어요.</span></div>
+      <div class="route-instruction">${icon('walk', 28)}<span>${loading}</span></div>
     </section>
     <section class="guide-dialogue">
       <p class="bubble question">${question}</p>
-      <p class="bubble answer">경로를 찾고 있어요.</p>
+      <p class="bubble answer">${loading}</p>
     </section>
     ${bottomNav()}
   </main>`;
@@ -482,6 +514,7 @@ function render() {
     routeEntryMode = 'simple';
     destination = '';
     routeOrigin = '';
+    routeLanguage = 'ko';
     navigate('route');
     document.querySelector('#route-destination')?.focus();
   });
@@ -501,6 +534,7 @@ function render() {
     const parsed = parseRouteRequest(routeInput.value);
     destination = parsed.destination;
     routeOrigin = parsed.origin;
+    routeLanguage = parsed.language;
     if (destination) navigate('guide');
     else routeInput.focus();
   });
@@ -752,8 +786,19 @@ async function resolveRouteStart(naverMaps, originQuery) {
 
 function routeErrorMessage(error) {
   const message = error instanceof Error ? error.message : '';
-  if (/ZERO_RESULTS|NOT_FOUND/i.test(message)) return '장소를 찾지 못했어요. 역 이름이나 주소를 다시 확인해 주세요.';
-  if (/REQUEST_DENIED|API_KEY|ApiNotActivated|PERMISSION_DENIED/i.test(message)) return '지도 검색 연결을 확인하지 못했어요. 잠시 후 다시 시도해 주세요.';
+  const english = routeLanguage === 'en';
+  if (/ZERO_RESULTS|NOT_FOUND|장소를 찾지 못했/i.test(message)) {
+    return english ? 'Place not found. Check the station name or address.' : '장소를 찾지 못했어요. 역 이름이나 주소를 다시 확인해 주세요.';
+  }
+  if (/REQUEST_DENIED|API_KEY|ApiNotActivated|PERMISSION_DENIED|지도 검색 연결/i.test(message)) {
+    return english ? 'Map search is unavailable. Please try again later.' : '지도 검색 연결을 확인하지 못했어요. 잠시 후 다시 시도해 주세요.';
+  }
+  if (english) {
+    if (/위치 권한/.test(message)) return 'Allow location access to use your current position as the starting point.';
+    if (/사용 권한|요청 한도|무료 한도/.test(message)) return 'TMAP access or the daily request limit needs to be checked.';
+    if (/경로를 찾지|경로를 받지|대중교통 API/.test(message)) return 'No transit route was returned. Please try again later.';
+    return 'Could not load a route. Please try again later.';
+  }
   if (/[\uac00-\ud7a3]/.test(message)) return message;
   return '길찾기 중 오류가 발생했어요. 잠시 후 다시 시도해 주세요.';
 }
@@ -843,12 +888,7 @@ async function searchGoogleDestination(maps, query) {
   }
 
   const { Geocoder } = await maps.importLibrary('geocoding');
-  let response;
-  try {
-    response = await new Geocoder().geocode({ address: query });
-  } catch (error) {
-    throw new Error(routeErrorMessage(error));
-  }
+  const response = await new Geocoder().geocode({ address: query });
   const result = response.results?.[0];
   const location = result?.geometry?.location;
   if (!location) throw new Error('목적지 위치를 찾지 못했어요. 주소나 장소명을 확인해 주세요.');
@@ -869,7 +909,7 @@ async function requestNaverTransitRoute(maps, map, start, end, isCurrent, instru
       endX: end.longitude,
       endY: end.latitude,
       count: 3,
-      lang: 0,
+      lang: routeLanguage === 'en' ? 1 : 0,
       format: 'json'
     })
   });
@@ -880,13 +920,21 @@ async function requestNaverTransitRoute(maps, map, start, end, isCurrent, instru
   if (!isCurrent()) return;
 
   drawTransitItinerary(maps, map, itinerary, start, end);
+  const english = routeLanguage === 'en';
+  const modeNames = english
+    ? { BUS: 'Bus', SUBWAY: 'Subway', TRAIN: 'Train', EXPRESSBUS: 'Express bus' }
+    : { BUS: '버스', SUBWAY: '지하철', TRAIN: '기차', EXPRESSBUS: '시외버스' };
   const modes = [...new Set((itinerary.legs ?? []).map((leg) => leg.mode).filter((mode) => mode !== 'WALK'))]
-    .map((mode) => ({ BUS: '버스', SUBWAY: '지하철', TRAIN: '기차', EXPRESSBUS: '시외버스' }[mode] || mode));
+    .map((mode) => modeNames[mode] || mode);
   const minutes = Math.max(1, Math.round(Number(itinerary.totalTime || 0) / 60));
   const transferCount = Number(itinerary.transferCount || 0);
-  const summary = `${modes.join('·') || '도보'} · 약 ${minutes}분 · 환승 ${transferCount}회`;
+  const summary = english
+    ? `${modes.join(' · ') || 'Walking'} · about ${minutes} min · ${transferCount} transfer${transferCount === 1 ? '' : 's'}`
+    : `${modes.join('·') || '도보'} · 약 ${minutes}분 · 환승 ${transferCount}회`;
   if (instruction) instruction.textContent = summary;
-  setGuideAnswer(`${routeOrigin || '현재 위치'}에서 ${destination}까지 ${summary} 경로를 지도에 표시했어요.`);
+  setGuideAnswer(english
+    ? `Route from ${routeOrigin || 'your location'} to ${destination}: ${summary}. Shown on the map.`
+    : `${routeOrigin || '현재 위치'}에서 ${destination}까지 ${summary} 경로를 지도에 표시했어요.`);
 }
 
 async function requestGoogleTransitRoute(maps, map, start, end, isCurrent, instruction) {
@@ -923,9 +971,12 @@ async function requestGoogleTransitRoute(maps, map, start, end, isCurrent, instr
 
   const durationMillis = Number(route.durationMillis || route.staticDurationMillis || 0);
   const minutes = Math.max(1, Math.round(durationMillis / 60000));
-  const summary = `대중교통 · 약 ${minutes}분`;
+  const english = routeLanguage === 'en';
+  const summary = english ? `Transit · about ${minutes} min` : `대중교통 · 약 ${minutes}분`;
   if (instruction) instruction.textContent = summary;
-  setGuideAnswer(`${routeOrigin || '현재 위치'}에서 ${destination}까지 ${summary} 경로를 지도에 표시했어요.`);
+  setGuideAnswer(english
+    ? `Showing a route from ${routeOrigin || 'your location'} to ${destination} on the map. ${summary}.`
+    : `${routeOrigin || '현재 위치'}에서 ${destination}까지 ${summary} 경로를 지도에 표시했어요.`);
 }
 
 async function requestGuideRoute(naverMaps, container, scene, requestId) {
@@ -935,7 +986,9 @@ async function requestGuideRoute(naverMaps, container, scene, requestId) {
     && routeMapContainer === container
     && document.querySelector('#naver-map') === container;
 
-  if (instruction) instruction.textContent = '현재 위치와 목적지를 확인하고 있어요.';
+  if (instruction) instruction.textContent = routeLanguage === 'en'
+    ? 'Checking the starting point and destination...'
+    : '출발지와 목적지를 확인하고 있어요.';
 
   try {
     const query = destination.trim() || '경복궁';
@@ -1027,6 +1080,7 @@ function startVoiceDestination() {
     const parsed = parseRouteRequest(spokenDestination);
     destination = parsed.destination;
     routeOrigin = parsed.origin;
+    routeLanguage = parsed.language;
     activeDestinationRecognition = null;
     recognition.stop();
     voiceSearchOpen = false;
