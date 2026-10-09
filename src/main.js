@@ -20,6 +20,8 @@ let routeMapContainer = null;
 let routeMapProvider = null;
 let routeMapOverlays = [];
 let routeRequestToken = 0;
+let guideTransportRoutes = {};
+let guideTransportContext = null;
 const sentTextMessages = [];
 let textSendNotice = '';
 const pageHistory = [];
@@ -225,6 +227,12 @@ function guideScreen() {
         <div class="destination-sign"><span>${place}<small>${english ? 'Destination' : '목적지'}</small></span></div>
       </div>
       <div class="route-instruction">${icon('walk', 28)}<span>${loading}</span></div>
+    </section>
+    <section class="transport-options" aria-label="${english ? 'Compare transport options' : '교통수단 비교'}">
+      ${['BUS', 'SUBWAY', 'TAXI'].map((mode) => {
+        const label = english ? { BUS: 'Bus', SUBWAY: 'Subway', TAXI: 'Taxi' }[mode] : { BUS: '버스', SUBWAY: '지하철', TAXI: '택시' }[mode];
+        return `<button class="transport-option" type="button" data-transport="${mode}" disabled aria-pressed="false"><strong>${label}</strong><small>${english ? 'Checking...' : '확인 중...'}</small></button>`;
+      }).join('')}
     </section>
     <section class="guide-dialogue">
       <p class="bubble question">${question}</p>
@@ -459,6 +467,9 @@ function render() {
       if (button.dataset.page === 'route') routeEntryMode = 'dual';
       navigate(button.dataset.page);
     });
+  });
+  document.querySelectorAll('[data-transport]').forEach((button) => {
+    button.addEventListener('click', () => selectGuideTransport(button.dataset.transport));
   });
   document.querySelectorAll('[data-action="back"]').forEach((button) => {
     button.addEventListener('click', goBack);
@@ -899,42 +910,148 @@ async function searchGoogleDestination(maps, query) {
   };
 }
 
-async function requestNaverTransitRoute(maps, map, start, end, isCurrent, instruction) {
-  const response = await fetch('/api/transit/routes', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      startX: start.longitude,
-      startY: start.latitude,
-      endX: end.longitude,
-      endY: end.latitude,
-      count: 3,
-      lang: routeLanguage === 'en' ? 1 : 0,
-      format: 'json'
-    })
-  });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload.error || '대중교통 경로를 불러오지 못했어요.');
-  const itinerary = payload?.metaData?.plan?.itineraries?.[0];
-  if (!itinerary) throw new Error('이 출발지와 목적지 사이의 경로를 찾지 못했어요.');
-  if (!isCurrent()) return;
-
-  drawTransitItinerary(maps, map, itinerary, start, end);
-  const english = routeLanguage === 'en';
-  const modeNames = english
-    ? { BUS: 'Bus', SUBWAY: 'Subway', TRAIN: 'Train', EXPRESSBUS: 'Express bus' }
-    : { BUS: '버스', SUBWAY: '지하철', TRAIN: '기차', EXPRESSBUS: '시외버스' };
-  const modes = [...new Set((itinerary.legs ?? []).map((leg) => leg.mode).filter((mode) => mode !== 'WALK'))]
-    .map((mode) => modeNames[mode] || mode);
+function transportText(mode, itinerary, english) {
+  if (!itinerary) return english ? 'No route found' : '경로 없음';
   const minutes = Math.max(1, Math.round(Number(itinerary.totalTime || 0) / 60));
   const transferCount = Number(itinerary.transferCount || 0);
-  const summary = english
-    ? `${modes.join(' · ') || 'Walking'} · about ${minutes} min · ${transferCount} transfer${transferCount === 1 ? '' : 's'}`
-    : `${modes.join('·') || '도보'} · 약 ${minutes}분 · 환승 ${transferCount}회`;
+  const modes = new Set((itinerary.legs ?? []).map((leg) => leg.mode));
+  const mixed = modes.has('BUS') && (modes.has('SUBWAY') || modes.has('TRAIN'));
+  const prefix = mixed ? (english ? 'Bus + subway · ' : '버스+지하철 · ') : '';
+  return english
+    ? `${prefix}about ${minutes} min · ${transferCount} transfer${transferCount === 1 ? '' : 's'}`
+    : `${prefix}약 ${minutes}분 · 환승 ${transferCount}회`;
+}
+
+function updateTransportChoice(mode, description, available) {
+  const button = document.querySelector(`[data-transport="${mode}"]`);
+  if (!button) return;
+  button.disabled = !available;
+  button.querySelector('small').textContent = description;
+}
+
+function selectGuideTransport(mode) {
+  const choice = guideTransportRoutes[mode];
+  const context = guideTransportContext;
+  if (!choice || !context || context.requestId !== routeRequestToken || currentPage !== 'guide') return;
+  const { maps, map, start, end, instruction, english } = context;
+  document.querySelectorAll('[data-transport]').forEach((button) => {
+    button.setAttribute('aria-pressed', String(button.dataset.transport === mode));
+  });
+
+  let summary;
+  if (mode === 'TAXI') {
+    // A separate car-routing entitlement supplies the taxi estimate. Do not fabricate one.
+    clearRouteOverlays();
+    const bounds = new maps.LatLngBounds();
+    const startPoint = new maps.LatLng(start.latitude, start.longitude);
+    const endPoint = new maps.LatLng(end.latitude, end.longitude);
+    bounds.extend(startPoint);
+    bounds.extend(endPoint);
+    routeMapOverlays.push(new maps.Marker({ map, position: startPoint, title: '출발지' }));
+    routeMapOverlays.push(new maps.Marker({ map, position: endPoint, title: destination.trim() }));
+    map.fitBounds(bounds, 36);
+    summary = choice.summary;
+  } else {
+    drawTransitItinerary(maps, map, choice.itinerary, start, end);
+    summary = `${english ? { BUS: 'Bus', SUBWAY: 'Subway' }[mode] : { BUS: '버스', SUBWAY: '지하철' }[mode]} · ${transportText(mode, choice.itinerary, english)}`;
+  }
   if (instruction) instruction.textContent = summary;
   setGuideAnswer(english
-    ? `Route from ${routeOrigin || 'your location'} to ${destination}: ${summary}. Shown on the map.`
-    : `${routeOrigin || '현재 위치'}에서 ${destination}까지 ${summary} 경로를 지도에 표시했어요.`);
+    ? `Route from ${routeOrigin || 'your location'} to ${destination}: ${summary}.`
+    : `${routeOrigin || '현재 위치'}에서 ${destination}까지 ${summary} 경로를 확인했어요.`);
+}
+
+async function requestNaverTransitRoute(maps, map, start, end, isCurrent, instruction) {
+  const english = routeLanguage === 'en';
+  guideTransportRoutes = {};
+  guideTransportContext = { maps, map, start, end, instruction, english, requestId: routeRequestToken };
+  const coordinates = {
+    startX: start.longitude,
+    startY: start.latitude,
+    endX: end.longitude,
+    endY: end.latitude
+  };
+  const [transitResult, taxiResult] = await Promise.allSettled([
+    fetch('/api/transit/routes', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ...coordinates, count: 10, lang: english ? 1 : 0, format: 'json' })
+    }),
+    fetch('/api/taxi/routes', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(coordinates)
+    })
+  ]);
+  if (!isCurrent()) return;
+
+  let transitError = '';
+  if (transitResult.status === 'fulfilled') {
+    const response = transitResult.value;
+    const payload = await response.json().catch(() => ({}));
+    if (!isCurrent()) return;
+    if (response.ok) {
+      const itineraries = payload?.metaData?.plan?.itineraries ?? [];
+      const modesOf = (itinerary) => new Set((itinerary.legs ?? []).map((leg) => leg.mode));
+      const pureBus = itineraries.find((itinerary) => {
+        const modes = modesOf(itinerary);
+        return modes.has('BUS') && !modes.has('SUBWAY') && !modes.has('TRAIN');
+      });
+      const pureSubway = itineraries.find((itinerary) => {
+        const modes = modesOf(itinerary);
+        return (modes.has('SUBWAY') || modes.has('TRAIN')) && !modes.has('BUS');
+      });
+      const bus = pureBus || itineraries.find((itinerary) => modesOf(itinerary).has('BUS'));
+      const subway = pureSubway || itineraries.find((itinerary) => {
+        const modes = modesOf(itinerary);
+        return (modes.has('SUBWAY') || modes.has('TRAIN')) && itinerary !== bus;
+      });
+      if (bus) {
+        guideTransportRoutes.BUS = { itinerary: bus };
+        updateTransportChoice('BUS', transportText('BUS', bus, english), true);
+      } else updateTransportChoice('BUS', english ? 'No bus route' : '버스 경로 없음', false);
+      if (subway) {
+        guideTransportRoutes.SUBWAY = { itinerary: subway };
+        updateTransportChoice('SUBWAY', transportText('SUBWAY', subway, english), true);
+      } else updateTransportChoice('SUBWAY', english ? 'No subway route' : '지하철 경로 없음', false);
+    } else {
+      transitError = payload.error || (english ? 'Transit route unavailable' : '대중교통 경로를 불러오지 못했어요.');
+    }
+  } else transitError = english ? 'Transit route unavailable' : '대중교통 경로를 불러오지 못했어요.';
+
+  if (transitError) {
+    updateTransportChoice('BUS', english ? 'Unavailable' : '이용 불가', false);
+    updateTransportChoice('SUBWAY', english ? 'Unavailable' : '이용 불가', false);
+  }
+
+  if (taxiResult.status === 'fulfilled') {
+    const response = taxiResult.value;
+    const payload = await response.json().catch(() => ({}));
+    if (!isCurrent()) return;
+    if (response.ok && Number(payload.totalTime) > 0) {
+      const minutes = Math.max(1, Math.round(Number(payload.totalTime) / 60));
+      const fare = payload.taxiFare === null || payload.taxiFare === undefined ? NaN : Number(payload.taxiFare);
+      const fareText = Number.isFinite(fare) && fare >= 0
+        ? (english ? ` · est. ₩${fare.toLocaleString()}` : ` · 예상 ${fare.toLocaleString()}원`)
+        : '';
+      const summary = english ? `Taxi · about ${minutes} min${fareText}` : `택시 · 약 ${minutes}분${fareText}`;
+      guideTransportRoutes.TAXI = { summary };
+      updateTransportChoice('TAXI', english ? `about ${minutes} min${fareText}` : `약 ${minutes}분${fareText}`, true);
+    } else {
+      updateTransportChoice('TAXI', response.status === 503
+        ? (english ? 'Car API not connected' : '자동차 API 연결 필요')
+        : (english ? 'Taxi route unavailable' : '택시 경로 이용 불가'), false);
+    }
+  } else updateTransportChoice('TAXI', english ? 'Taxi route unavailable' : '택시 경로 이용 불가', false);
+
+  if (guideTransportRoutes.BUS) selectGuideTransport('BUS');
+  else if (guideTransportRoutes.SUBWAY) selectGuideTransport('SUBWAY');
+  else if (guideTransportRoutes.TAXI) selectGuideTransport('TAXI');
+  else {
+    const message = transitError || (english ? 'No route found for this trip.' : '이 구간의 경로를 찾지 못했어요.');
+    if (instruction) instruction.textContent = message;
+    setGuideAnswer(message);
+  }
 }
 
 async function requestGoogleTransitRoute(maps, map, start, end, isCurrent, instruction) {
