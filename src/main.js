@@ -20,6 +20,7 @@ let routeMap = null;
 let routeMapContainer = null;
 let routeMapProvider = null;
 let routeMapOverlays = [];
+let nearbyInfoWindow = null;
 let routeRequestToken = 0;
 let guideTransportRoutes = {};
 let guideTransportContext = null;
@@ -800,7 +801,7 @@ function renderNearbyGroup(title, places, error, type) {
   if (error) return `<section class="nearby-group"><h2>${heading}</h2><p class="nearby-empty">${escapeHtml(error)}</p></section>`;
   if (!places.length) return `<section class="nearby-group"><h2>${heading}</h2><p class="nearby-empty">반경 2km 안에서 검색된 승강장이 없어요.</p></section>`;
   return `<section class="nearby-group"><h2>${heading}</h2><ol>${places.map((place, index) =>
-    `<li class="nearby-place"><span class="nearby-place-badge ${type}">${index + 1}</span><span><strong>${escapeHtml(place.name)}</strong><small>${escapeHtml(place.address || '주소 정보 없음')} · 약 ${Math.round(place.distanceMeters)}m</small></span></li>`
+    `<li><button class="nearby-place" type="button" data-nearby-type="${type}" data-nearby-index="${index}" aria-pressed="false"><span class="nearby-place-badge ${type}">${index + 1}</span><span><strong>${escapeHtml(place.name)}</strong><small>${escapeHtml(place.address || '주소 정보 없음')} · 약 ${Math.round(place.distanceMeters)}m</small></span></button></li>`
   ).join('')}</ol></section>`;
 }
 
@@ -849,6 +850,21 @@ function initializeNearbyMap() {
       return;
     }
     const map = createNaverMap(maps, container, scene, data.center);
+    const markers = new Map();
+    nearbyInfoWindow = new maps.InfoWindow();
+    const focusPlace = (type, index, scrollToMap) => {
+      const place = (type === 'taxi' ? taxi : bus)[index];
+      if (!place || !isCurrent()) return;
+      const point = new maps.LatLng(place.latitude, place.longitude);
+      map.setZoom(17);
+      map.panTo(point);
+      nearbyInfoWindow.setContent(`<div class="nearby-info"><strong>${escapeHtml(place.name)}</strong><small>${escapeHtml(place.address || '주소 정보 없음')} · 약 ${Math.round(place.distanceMeters)}m</small></div>`);
+      nearbyInfoWindow.open(map, point);
+      results.querySelectorAll('[data-nearby-type]').forEach((button) => {
+        button.setAttribute('aria-pressed', String(button.dataset.nearbyType === type && Number(button.dataset.nearbyIndex) === index));
+      });
+      if (scrollToMap) scene.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    };
     const bounds = new maps.LatLngBounds();
     const centerPoint = new maps.LatLng(data.center.latitude, data.center.longitude);
     bounds.extend(centerPoint);
@@ -857,16 +873,26 @@ function initializeNearbyMap() {
       for (const [index, place] of places.entries()) {
         const point = new maps.LatLng(place.latitude, place.longitude);
         bounds.extend(point);
-        routeMapOverlays.push(new maps.Marker({
+        const marker = new maps.Marker({
           map, position: point, title: place.name,
           icon: {
             content: `<span class="nearby-map-pin ${type}">${type === 'taxi' ? '택시' : '버스'} ${index + 1}</span>`,
             anchor: new maps.Point(30, 20)
           }
-        }));
+        });
+        markers.set(`${type}:${index}`, marker);
+        routeMapOverlays.push(marker);
+        maps.Event.addListener(marker, 'click', () => focusPlace(type, index, false));
       }
     }
     if (count) map.fitBounds(bounds, 35);
+    results.querySelectorAll('[data-nearby-type]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const type = button.dataset.nearbyType;
+        const index = Number(button.dataset.nearbyIndex);
+        if (markers.has(`${type}:${index}`)) focusPlace(type, index, true);
+      });
+    });
   })().catch((error) => {
     if (!isCurrent()) return;
     instruction.textContent = '주변 승강장을 확인하지 못했어요.';
@@ -955,6 +981,8 @@ function routeLinePoints(maps, lineString) {
 }
 
 function clearRouteOverlays() {
+  nearbyInfoWindow?.close();
+  nearbyInfoWindow = null;
   routeMapOverlays.forEach((overlay) => overlay.setMap(null));
   routeMapOverlays = [];
 }
