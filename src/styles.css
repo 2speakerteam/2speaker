@@ -105,7 +105,8 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .conversation-brand-row { height: 42px; display: grid; place-items: center; }
 .conversation-brand-row strong { padding: 7px 22px; border-radius: 24px; color: white; background: #02060b; font-size: 16px; letter-spacing: .03em; }
 .conversation-title { height: 58px; }
-.guide-screen { padding-inline: 20px; padding-bottom: calc(170px + env(safe-area-inset-bottom)); }
+.guide-screen { padding-inline: 20px; padding-bottom: 28px; }
+.guide-screen .bottom-nav { position: relative; z-index: 1; left: auto; right: auto; bottom: auto; width: auto; transform: none; margin: 28px -20px -28px; border-radius: 40px 40px 42px 42px; }
 .guide-header { height: 54px; display: grid; grid-template-columns: 48px 1fr 48px; align-items: center; text-align: center; }
 .guide-header strong { width: max-content; justify-self: center; padding: 8px 22px; border-radius: 24px; color: white; background: #02060b; font-size: 18px; letter-spacing: .03em; }
 .guide-control { width: 44px; height: 44px; display: grid; place-items: center; border: 0; color: var(--cyan); background: transparent; cursor: pointer; }
@@ -271,6 +272,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
   .faq-question { padding-inline: 17px; }
   .faq-answer { padding-inline: 18px; }
   .guide-screen { padding-inline: 14px; }
+  .guide-screen .bottom-nav { margin-inline: -14px; }
   .transfer-banner { inset-inline: 8px; gap: 5px; padding-inline: 7px; }
   .line-badge { width: 30px; height: 30px; flex-basis: 30px; font-size: 20px; }
   .line-name { font-size: 12px; }
