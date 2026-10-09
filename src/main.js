@@ -1055,6 +1055,8 @@ async function requestNaverTransitRoute(maps, map, start, end, isCurrent, instru
 }
 
 async function requestGoogleTransitRoute(maps, map, start, end, isCurrent, instruction) {
+  const options = document.querySelector('.transport-options');
+  if (options) options.style.display = 'none';
   const { Route } = await maps.importLibrary('routes');
   const { routes = [] } = await Route.computeRoutes({
     origin: { lat: start.latitude, lng: start.longitude },
