@@ -259,7 +259,7 @@ function guideScreen() {
         <button type="button" id="walk-preview-next">${english ? 'Next' : '다음'} →</button>
       </div>
       <div class="walk-preview-progress"><span id="walk-preview-progress-text"></span><div><span id="walk-preview-progress-bar"></span></div></div>
-      <p class="walk-preview-note">${english ? 'Junction-focused preview. Photos may be old or missing; missing junction views pause playback. Check the map and local signs.' : '갈림길 전후를 천천히 보여주는 미리보기예요. 해당 지점의 거리뷰가 없으면 멈춰요. 지도와 현장 표지를 함께 확인해 주세요.'}</p>
+      <p class="walk-preview-note">${english ? 'Junction-focused preview. Nearby photos are labelled and sections without imagery are skipped automatically. Check the map and local signs.' : '갈림길 전후를 천천히 보여주는 미리보기예요. 가까운 경로 사진은 주변 거리뷰로 표시하고, 사진 없는 구간은 자동으로 건너뛰어요. 지도와 현장 표지도 확인해 주세요.'}</p>
     </section>
     <section class="transport-options" aria-label="${english ? 'Compare transport options' : '교통수단 비교'}">
       ${['BUS', 'SUBWAY', 'TAXI'].map((mode) => {
@@ -1328,6 +1328,29 @@ function walkPreviewFrames(paths, maneuvers = []) {
   return frames.sort((a, b) => a.meters - b.meters);
 }
 
+// A nearby photograph is context, not proof of the exact turn location.
+function walkPreviewPhotoContext(capture, frame, paths) {
+  if (!capture || !capture.every(Number.isFinite)) return null;
+  let closest = null;
+  const cos = Math.cos(capture[1] * Math.PI / 180);
+  for (const path of paths || []) {
+    for (let i = 1; i < path.length; i += 1) {
+      const a = path[i - 1], b = path[i];
+      const dx = (b[0] - a[0]) * cos, dy = b[1] - a[1];
+      const length2 = dx * dx + dy * dy;
+      if (!length2) continue;
+      const t = Math.max(0, Math.min(1,
+        ((capture[0] - a[0]) * cos * dx + (capture[1] - a[1]) * dy) / length2));
+      const point = [a[0] + (b[0] - a[0]) * t, a[1] + dy * t];
+      const lateral = walkPreviewDistance(capture, point);
+      if (!closest || lateral < closest.lateral) closest = { lateral, heading: walkPreviewBearing(a, b) };
+    }
+  }
+  const offset = walkPreviewDistance(capture, frame.position);
+  if (!closest || closest.lateral > 25 || offset > 80) return null;
+  return { ...closest, offset, nearby: offset > 20 };
+}
+
 function walkPreviewCue(frame, english) {
   const action = english
     ? { left: 'Turn left', right: 'Turn right', uturn: 'Turn back', straight: 'Check the path ahead' }[frame.direction]
@@ -1392,7 +1415,7 @@ function startWalkPreview(context, choice) {
     panel, viewer, scene, visual, mapElement, walkButton,
     close: scene.querySelector('#walk-preview-close'),
     frames, index: 0, playing: true, loading: false,
-    timer: null, panorama: null, fallbackMarker: null,
+    timer: null, panorama: null, fallbackMarker: null, skippedScenes: 0, shownScenes: 0,
     message: panel.querySelector('#walk-preview-message'),
     progress: panel.querySelector('#walk-preview-progress-text'),
     progressBar: panel.querySelector('#walk-preview-progress-bar'),
@@ -1437,11 +1460,25 @@ function startWalkPreview(context, choice) {
     }
     state.message.textContent = walkPreviewCue(frames[state.index], state.english) + ' · ' + message;
     updateButtons();
-    // Do not silently skip a missing entrance/junction photograph.
-    if (frames[state.index].important) {
+    // Missing imagery must not strand playback on a map at the first campus/alley point.
+    // Keep manual inspection paused, but auto-play scans forward to the next available view.
+    state.skippedScenes += 1;
+    if (state.playing && state.index < frames.length - 1) {
+      let nextIndex = state.index + 1;
+      const focus = frames[state.index].focusMeters;
+      if (focus !== null) {
+        while (nextIndex < frames.length - 1 && frames[nextIndex].focusMeters === focus) nextIndex += 1;
+      }
+      state.message.textContent += state.english
+        ? ' · Looking for the next available street image…' : ' · 다음 거리뷰가 있는 구간으로 이동 중이에요.';
+      state.timer = setTimeout(() => showFrame(nextIndex), 350);
+    } else if (state.playing) {
       state.playing = false;
-      state.play.textContent = state.english ? 'Continue' : '계속 재생';
-    } else scheduleNext();
+      state.play.textContent = state.english ? 'Replay' : '다시 보기';
+      if (!state.shownScenes) state.message.textContent = state.english
+        ? 'No usable street images were found along this route. Please use the map.'
+        : '이 경로에서 사용할 수 있는 거리뷰를 찾지 못했어요. 지도를 확인해 주세요.';
+    }
   };
   const showFrame = (index) => {
     if (!valid()) return;
@@ -1494,14 +1531,15 @@ function startWalkPreview(context, choice) {
           const frameNow = frames[state.index];
           const capture = state.panorama.getLocation()?.coord;
           const capturePoint = capture && [capture.lng(), capture.lat()];
-          if (!capturePoint || walkPreviewDistance(capturePoint, frameNow.position) > (frameNow.important ? 20 : 40)) {
+          const photoContext = walkPreviewPhotoContext(capturePoint, frameNow, choice.paths);
+          if (!photoContext) {
             unavailable(state.english ? 'No close street image for this route point. Check the map.' : '이 지점과 가까운 거리뷰가 없어요. 다른 길 사진 대신 지도를 확인해 주세요.');
             return;
           }
           try {
             // Route-relative heading avoids looking backwards when the photo snaps past the target.
             state.panorama.setPov({
-              pan: (walkPreviewBearing(frameNow.position, frameNow.ahead) + 180) % 360 - 180, tilt: 0, fov: 75
+              pan: ((photoContext.nearby ? photoContext.heading : walkPreviewBearing(frameNow.position, frameNow.ahead)) + 180) % 360 - 180, tilt: 0, fov: 75
             });
           } catch {
             // If camera control is unavailable, keep the panorama navigable by hand.
@@ -1510,7 +1548,14 @@ function startWalkPreview(context, choice) {
           updateButtons();
           state.viewer.style.visibility = 'visible';
           const photoDate = state.panorama.getLocation()?.photodate;
-          state.message.textContent = walkPreviewCue(frameNow, state.english)
+          state.shownScenes += 1;
+          const cue = photoContext.nearby
+            ? (state.english ? `Nearby street view · about ${Math.round(photoContext.offset)} m from the preview point; check the map for the turn`
+              : `주변 거리뷰 · 안내 지점에서 약 ${Math.round(photoContext.offset)}m 떨어진 촬영 위치예요. 꺾는 위치는 지도를 함께 확인해 주세요.`)
+            : walkPreviewCue(frameNow, state.english);
+          const skipped = state.skippedScenes
+            ? (state.english ? ' · Sections without street imagery were skipped' : ' · 거리뷰 없는 일부 구간은 건너뛰었어요') : '';
+          state.message.textContent = cue + skipped
             + (state.english ? ` · Street image${photoDate ? ` from ${photoDate}` : ''}`
               : ` · 거리뷰${photoDate ? ` 촬영 ${photoDate}` : ''}`);
           scheduleNext();
