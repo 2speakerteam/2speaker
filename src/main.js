@@ -3,6 +3,7 @@ let currentPage = 'home';
 let destination = '';
 let routeOrigin = '';
 let routeLanguage = 'ko';
+let nearbyStopRequest = null;
 let selectedAppLanguage = '한국어';
 let selectedUserLanguage = '한국어';
 let voicePaused = false;
@@ -70,6 +71,18 @@ function escapeHtml(value) {
     '"': '&quot;',
     "'": '&#39;'
   })[character]);
+}
+
+function parseNearbyStopRequest(raw) {
+  const input = String(raw ?? '').trim().replace(/\s+/g, ' ');
+  const taxi = /택시\s*(?:승강장|정류장|타는\s*곳)|taxi\s*(?:stand|rank)/i.test(input);
+  const bus = /버스\s*(?:정류장|승강장|정류소|타는\s*곳)|bus\s*stop/i.test(input);
+  if (!taxi && !bus) return null;
+  let anchor = input.split(/근처|주변|가까운|인근/)[0].trim();
+  if (anchor === input) anchor = input.split(/택시|버스|taxi|bus/i)[0].trim();
+  anchor = anchor.replace(/^(?:여기|이곳|현재\s*위치|내\s*위치)(?:에서)?$/,'')
+    .replace(/(?:에서|의|에|까지)$/,'').trim();
+  return { anchor, taxi, bus, raw: input };
 }
 
 function parseRouteRequest(raw) {
@@ -242,6 +255,29 @@ function guideScreen() {
   </main>`;
 }
 
+function nearbyScreen() {
+  const request = nearbyStopRequest || { anchor: '', taxi: true, bus: true };
+  const place = escapeHtml(request.anchor || '현재 위치');
+  return `<main class="screen guide-screen nearby-screen">
+    <header class="guide-header">
+      <button class="guide-control" data-page="more" aria-label="더보기">${icon('menu', 30)}</button>
+      <strong>2SPEAKER</strong>
+      <button class="guide-control" data-page="language" aria-label="설정">${icon('settings', 30)}</button>
+    </header>
+    <section class="route-visual" aria-label="주변 승강장 지도">
+      <div class="route-scene" style="background:#12384d">
+        <div class="naver-map" id="naver-map" aria-label="주변 승강장 지도"></div>
+        <div class="destination-sign"><span>${place}<small>기준 위치</small></span></div>
+      </div>
+      <div class="route-instruction">${icon('pinRoute', 28)}<span>근처 승강장을 찾고 있어요.</span></div>
+    </section>
+    <section class="nearby-results" aria-live="polite">
+      <p class="nearby-status">지도와 승강장 목록을 불러오는 중이에요.</p>
+    </section>
+    ${bottomNav()}
+  </main>`;
+}
+
 function translationScreen() {
   return `<main class="screen content-screen">
     ${header('통역')}
@@ -294,7 +330,7 @@ function textScreen() {
 function moreScreen() {
   const previousPage = pageHistory[pageHistory.length - 1] || 'home';
   const backgroundScreens = {
-    home: homeScreen, route: routeScreen, guide: guideScreen, translation: translationScreen,
+    home: homeScreen, route: routeScreen, guide: guideScreen, nearby: nearbyScreen, translation: translationScreen,
     voice: voiceScreen, text: textScreen
   };
   const background = (backgroundScreens[previousPage] || homeScreen)();
@@ -455,6 +491,7 @@ function render() {
   root.innerHTML = `<div class="app-shell">${screens[currentPage]()}${voiceSearchOpen ? voiceDestinationDialog() : ''}</div>`;
 
   if (currentPage === 'guide') initializeNaverMap();
+  if (currentPage === 'nearby') initializeNearbyMap();
 
   if (currentPage === 'text') {
     const dialogue = document.querySelector('.text-dialogue');
@@ -542,6 +579,12 @@ function render() {
   });
   document.querySelector('#route-form')?.addEventListener('submit', (event) => {
     event.preventDefault();
+    const nearby = parseNearbyStopRequest(routeInput.value);
+    if (nearby) {
+      nearbyStopRequest = nearby;
+      navigate('nearby');
+      return;
+    }
     const parsed = parseRouteRequest(routeInput.value);
     destination = parsed.destination;
     routeOrigin = parsed.origin;
@@ -750,6 +793,85 @@ function initializeNaverMap() {
     if (naverMaps) createNaverMap(naverMaps, container, scene, { latitude: 37.5665, longitude: 126.978 });
     requestGuideRoute(naverMaps, container, scene, requestId).catch(failMap);
   })().catch(failMap);
+}
+
+function renderNearbyGroup(title, places, error, type) {
+  const heading = escapeHtml(title);
+  if (error) return `<section class="nearby-group"><h2>${heading}</h2><p class="nearby-empty">${escapeHtml(error)}</p></section>`;
+  if (!places.length) return `<section class="nearby-group"><h2>${heading}</h2><p class="nearby-empty">반경 2km 안에서 검색된 승강장이 없어요.</p></section>`;
+  return `<section class="nearby-group"><h2>${heading}</h2><ol>${places.map((place, index) =>
+    `<li class="nearby-place"><span class="nearby-place-badge ${type}">${index + 1}</span><span><strong>${escapeHtml(place.name)}</strong><small>${escapeHtml(place.address || '주소 정보 없음')} · 약 ${Math.round(place.distanceMeters)}m</small></span></li>`
+  ).join('')}</ol></section>`;
+}
+
+function initializeNearbyMap() {
+  const container = document.querySelector('#naver-map');
+  const scene = container?.closest('.route-scene');
+  const results = document.querySelector('.nearby-results');
+  const instruction = document.querySelector('.route-instruction span');
+  const request = nearbyStopRequest;
+  if (!container || !scene || !results || !request) return;
+  clearRouteOverlays();
+  routeMap = null;
+  routeMapProvider = null;
+  routeMapContainer = container;
+  const requestId = ++routeRequestToken;
+  const isCurrent = () => requestId === routeRequestToken
+    && currentPage === 'nearby'
+    && routeMapContainer === container
+    && document.querySelector('#naver-map') === container;
+  (async () => {
+    const params = new URLSearchParams();
+    if (request.anchor) params.set('anchor', request.anchor);
+    else {
+      const position = await getCurrentPosition();
+      if (!isCurrent()) return;
+      if (!isKoreaCoordinate(position)) throw new Error('국내 위치에서만 주변 승강장을 검색할 수 있어요.');
+      params.set('lat', String(position.latitude));
+      params.set('lon', String(position.longitude));
+    }
+    const response = await fetch(`/api/places/nearby?${params}`);
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error || '근처 승강장을 찾지 못했어요.');
+    if (!isCurrent()) return;
+    const taxi = request.taxi ? (data.taxi || []) : [];
+    const bus = request.bus ? (data.bus || []) : [];
+    const count = taxi.length + bus.length;
+    instruction.textContent = count
+      ? `${data.center.name} 근처 승강장 ${count}곳을 찾았어요.`
+      : '근처에서 검색된 승강장이 없어요.';
+    results.innerHTML = `${request.taxi ? renderNearbyGroup('택시 승강장', taxi, data.errors?.taxi, 'taxi') : ''}
+      ${request.bus ? renderNearbyGroup('버스 정류장', bus, data.errors?.bus, 'bus') : ''}`;
+    const maps = await loadNaverMaps().catch(() => null);
+    if (!isCurrent()) return;
+    if (!maps) {
+      results.insertAdjacentHTML('afterbegin', '<p class="nearby-empty">지도 연결을 확인해 주세요. 검색 결과는 아래 목록에서 볼 수 있어요.</p>');
+      return;
+    }
+    const map = createNaverMap(maps, container, scene, data.center);
+    const bounds = new maps.LatLngBounds();
+    const centerPoint = new maps.LatLng(data.center.latitude, data.center.longitude);
+    bounds.extend(centerPoint);
+    routeMapOverlays.push(new maps.Marker({ map, position: centerPoint, title: data.center.name || '기준 위치' }));
+    for (const [type, places] of [['taxi', taxi], ['bus', bus]]) {
+      for (const [index, place] of places.entries()) {
+        const point = new maps.LatLng(place.latitude, place.longitude);
+        bounds.extend(point);
+        routeMapOverlays.push(new maps.Marker({
+          map, position: point, title: place.name,
+          icon: {
+            content: `<span class="nearby-map-pin ${type}">${type === 'taxi' ? '택시' : '버스'} ${index + 1}</span>`,
+            anchor: new maps.Point(30, 20)
+          }
+        }));
+      }
+    }
+    if (count) map.fitBounds(bounds, 35);
+  })().catch((error) => {
+    if (!isCurrent()) return;
+    instruction.textContent = '주변 승강장을 확인하지 못했어요.';
+    results.innerHTML = `<p class="nearby-empty">${escapeHtml(error.message || '잠시 후 다시 시도해 주세요.')}</p>`;
+  });
 }
 
 function geocodeDestination(maps, query) {
@@ -1217,15 +1339,19 @@ function startVoiceDestination() {
     if (activeDestinationRecognition !== recognition) return;
     const spokenDestination = event.results[0]?.[0]?.transcript?.trim();
     if (!spokenDestination) return;
-    const parsed = parseRouteRequest(spokenDestination);
-    destination = parsed.destination;
-    routeOrigin = parsed.origin;
-    routeLanguage = parsed.language;
+    const nearby = parseNearbyStopRequest(spokenDestination);
+    if (nearby) nearbyStopRequest = nearby;
+    else {
+      const parsed = parseRouteRequest(spokenDestination);
+      destination = parsed.destination;
+      routeOrigin = parsed.origin;
+      routeLanguage = parsed.language;
+    }
     activeDestinationRecognition = null;
     recognition.stop();
     voiceSearchOpen = false;
     voiceSearchState = 'idle';
-    navigate('guide');
+    navigate(nearby ? 'nearby' : 'guide');
   };
   recognition.onerror = (event) => {
     if (activeDestinationRecognition !== recognition || event.error === 'aborted') return;
