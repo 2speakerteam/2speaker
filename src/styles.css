@@ -150,6 +150,21 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .bubble.question { justify-self: start; border-color: #168cff; background: linear-gradient(135deg, rgba(14, 89, 177, .82), rgba(17, 70, 134, .6)); border-bottom-left-radius: 5px; }
 .bubble.answer { justify-self: end; border-color: #14f4dd; background: linear-gradient(135deg, rgba(0, 139, 145, .88), rgba(0, 84, 92, .7)); border-bottom-right-radius: 5px; }
 
+.nearby-results { max-width: 620px; margin: 16px auto 0; display: grid; gap: 14px; }
+.nearby-group { padding: 14px 16px; border: 1px solid rgba(49, 206, 255, .55); border-radius: 20px; background: rgba(2, 39, 61, .9); }
+.nearby-group h2 { margin: 0 0 10px; font-size: 19px; }
+.nearby-group ol { margin: 0; padding: 0; display: grid; gap: 10px; list-style: none; }
+.nearby-place { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+.nearby-place span:last-child { display: grid; gap: 2px; min-width: 0; }
+.nearby-place strong { font-size: 16px; overflow-wrap: anywhere; }
+.nearby-place small { color: #b2d2e6; font-size: 13px; overflow-wrap: anywhere; }
+.nearby-place-badge { width: 27px; height: 27px; flex: 0 0 27px; display: grid; place-items: center; border-radius: 50%; color: #fff; font-size: 14px; font-weight: 700; }
+.nearby-place-badge.taxi, .nearby-map-pin.taxi { background: #087ca6; }
+.nearby-place-badge.bus, .nearby-map-pin.bus { background: #08aa75; }
+.nearby-map-pin { display: grid; place-items: center; min-width: 55px; min-height: 31px; padding: 4px 7px; border: 2px solid #fff; border-radius: 16px; color: #fff; font: 700 13px Arial, sans-serif; white-space: nowrap; box-shadow: 0 2px 8px rgba(0, 0, 0, .38); }
+.nearby-status, .nearby-empty { margin: 0; color: #b2d2e6; font-size: 15px; line-height: 1.5; }
+.nearby-screen .destination-sign { max-width: 52%; overflow-wrap: anywhere; }
+
 .conversation-screen { padding-bottom: calc(94px + env(safe-area-inset-bottom)); }
 .conversation-body, .text-dialogue { max-width: 620px; margin: 8px auto 0; }
 .translating { margin: 0 0 48px; text-align: center; color: #b9cde0; font-size: 21px; }
