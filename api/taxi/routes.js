@@ -13,9 +13,9 @@ module.exports = async function handler(req, res) {
   }
 
   // Automobile routing is a separate TMAP product. Never assume the transit key is entitled.
-  const appKey = process.env.TMAP_CAR_API_KEY;
+  const appKey = process.env.TMAP_CAR_API_KEY || process.env.TMAP_TRANSIT_API_KEY;
   if (!appKey) {
-    return res.status(503).json({ error: '자동차 경로 API가 아직 연결되지 않았어요.' });
+    return res.status(503).json({ error: 'TMAP API 키가 서버에 설정되지 않았어요.' });
   }
 
   const body = req.body && typeof req.body === 'object' ? req.body : {};
