@@ -393,6 +393,11 @@ function render() {
   };
   root.innerHTML = `<div class="app-shell">${screens[currentPage]()}${voiceSearchOpen ? voiceDestinationDialog() : ''}</div>`;
 
+  if (currentPage === 'text') {
+    const dialogue = document.querySelector('.text-dialogue');
+    if (dialogue) dialogue.scrollTop = dialogue.scrollHeight;
+  }
+
   document.querySelectorAll('[data-page]').forEach((button) => {
     button.addEventListener('click', () => {
       if (button.dataset.page === 'route') routeEntryMode = 'dual';
