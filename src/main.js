@@ -1,6 +1,7 @@
 const root = document.querySelector('#root');
 let currentPage = 'home';
 let destination = '';
+let routeOrigin = '';
 let selectedAppLanguage = '한국어';
 let selectedUserLanguage = '한국어';
 let voicePaused = false;
@@ -66,6 +67,26 @@ function escapeHtml(value) {
     '"': '&quot;',
     "'": '&#39;'
   })[character]);
+}
+
+function parseRouteRequest(raw) {
+  const input = String(raw ?? '').trim().replace(/\s+/g, ' ');
+  let phrase = input.replace(/[?!.。！？]+$/g, '').trim();
+  let origin = '';
+  const currentLocation = phrase.match(/^(?:여기서|이곳에서|현재\s*위치에서|내\s*위치에서|지금\s*있는\s*곳에서)\s*(.+)$/);
+  if (currentLocation) phrase = currentLocation[1].trim();
+  else {
+    const explicitOrigin = phrase.match(/^(.+?)(?:에서|부터)\s+(.+)$/);
+    if (explicitOrigin) {
+      origin = explicitOrigin[1].trim();
+      phrase = explicitOrigin[2].trim();
+    }
+  }
+  const withQuestion = phrase.match(/^(.+?)(?:까지|으로|로)\s+(?:어떻게|가려면|가는|가나요|가요|갈|길|찾아|안내|알려|추천).*/);
+  if (withQuestion) phrase = withQuestion[1];
+  else phrase = phrase.replace(/(?:까지|으로)$/, '');
+  phrase = phrase.replace(/\s+(?:가는 길|가는 방법|가려면|어떻게 가나요|길찾기).*$/, '').trim();
+  return { origin, destination: phrase || input };
 }
 
 function bottomNav() {
@@ -156,41 +177,26 @@ function routeScreen() {
 
 function guideScreen() {
   const rawPlace = destination.trim() || '경복궁';
-  const isTransfer = /환승|2호선|4호선|서울역|공항철도|지하철/.test(rawPlace);
   const place = escapeHtml(rawPlace);
-  const route = isTransfer
-    ? {
-        scene: 'station-scene',
-        instruction: '직진 → 4호선 표지판 따라 왼쪽 · 약 8분',
-        question: '4호선으로 갈아타려면 어디로 가요?',
-        answer: 'Go straight through this passage, then follow the Line 4 signs and turn left. It takes about 8 minutes.'
-      }
-    : {
-        scene: 'walk-scene',
-        instruction: `도보 → ${place} 방향 직진 · 약 12분`,
-        question: `${place} 가려면 어디로 가요?`,
-        answer: `Go straight toward ${place}. It is about a 12-minute walk from Anguk Station.`
-      };
+  const question = routeOrigin
+    ? `${escapeHtml(routeOrigin)}에서 ${place}까지 어떻게 가나요?`
+    : `${place}까지 어떻게 가나요?`;
   return `<main class="screen guide-screen">
     <header class="guide-header">
       <button class="guide-control" data-page="more" aria-label="더보기">${icon('menu', 30)}</button>
       <strong>2SPEAKER</strong>
       <button class="guide-control" data-page="language" aria-label="설정">${icon('settings', 30)}</button>
     </header>
-    <section class="route-visual" aria-label="실시간 길찾기 안내">
-      <div class="route-scene ${route.scene}">
-        <div class="naver-map" id="naver-map" aria-label="네이버 지도"></div>
-        ${isTransfer
-          ? `<div class="transfer-banner"><span class="line-badge line-two">2</span><span class="line-name">2호선<small>Line 2</small></span><strong class="transfer-arrow">→</strong><span class="line-badge line-four">4</span><span class="line-name">4호선<small>Line 4</small></span><span class="transfer-label">${icon('train', 28)}<span>갈아타는 곳<small>Transfer</small></span></span></div>
-             <div class="station-sign"><span class="line-badge line-four">4</span><strong>4호선</strong><span>표지판 따라 ↑</span></div>
-             <span class="direction-arrow turn-left">←</span>`
-          : `<div class="destination-sign"><strong>↑</strong><span>${place}<small>Gyeongbokgung</small></span></div><span class="direction-arrow">↑</span>`}
+    <section class="route-visual" aria-label="길찾기 안내">
+      <div class="route-scene" style="background:#12384d">
+        <div class="naver-map" id="naver-map" aria-label="지도"></div>
+        <div class="destination-sign"><span>${place}<small>목적지</small></span></div>
       </div>
-      <div class="route-instruction">${icon('walk', 28)}<span>${route.instruction}</span></div>
+      <div class="route-instruction">${icon('walk', 28)}<span>경로를 확인하고 있어요.</span></div>
     </section>
     <section class="guide-dialogue">
-      <p class="bubble question">${route.question}</p>
-      <p class="bubble answer">${route.answer}</p>
+      <p class="bubble question">${question}</p>
+      <p class="bubble answer">경로를 찾고 있어요.</p>
     </section>
     ${bottomNav()}
   </main>`;
@@ -475,6 +481,7 @@ function render() {
   document.querySelector('#home-search')?.addEventListener('click', () => {
     routeEntryMode = 'simple';
     destination = '';
+    routeOrigin = '';
     navigate('route');
     document.querySelector('#route-destination')?.focus();
   });
@@ -491,7 +498,9 @@ function render() {
   });
   document.querySelector('#route-form')?.addEventListener('submit', (event) => {
     event.preventDefault();
-    destination = routeInput.value.trim();
+    const parsed = parseRouteRequest(routeInput.value);
+    destination = parsed.destination;
+    routeOrigin = parsed.origin;
     if (destination) navigate('guide');
     else routeInput.focus();
   });
@@ -731,6 +740,29 @@ function getCurrentPosition() {
   });
 }
 
+async function resolveRouteStart(naverMaps, originQuery) {
+  if (!originQuery) return getCurrentPosition();
+  const naverResult = naverMaps
+    ? await geocodeDestination(naverMaps, originQuery).catch(() => null)
+    : null;
+  if (naverResult) return naverResult;
+  const googleMaps = await loadGoogleMaps();
+  return searchGoogleDestination(googleMaps, originQuery);
+}
+
+function routeErrorMessage(error) {
+  const message = error instanceof Error ? error.message : '';
+  if (/ZERO_RESULTS|NOT_FOUND/i.test(message)) return '장소를 찾지 못했어요. 역 이름이나 주소를 다시 확인해 주세요.';
+  if (/REQUEST_DENIED|API_KEY|ApiNotActivated|PERMISSION_DENIED/i.test(message)) return '지도 검색 연결을 확인하지 못했어요. 잠시 후 다시 시도해 주세요.';
+  if (/[\uac00-\ud7a3]/.test(message)) return message;
+  return '길찾기 중 오류가 발생했어요. 잠시 후 다시 시도해 주세요.';
+}
+
+function setGuideAnswer(message) {
+  const answer = document.querySelector('.guide-dialogue .answer');
+  if (answer) answer.textContent = message;
+}
+
 function routeLinePoints(maps, lineString) {
   if (typeof lineString !== 'string') return [];
   return lineString.trim().split(/\s+/).flatMap((coordinatePair) => {
@@ -811,7 +843,12 @@ async function searchGoogleDestination(maps, query) {
   }
 
   const { Geocoder } = await maps.importLibrary('geocoding');
-  const response = await new Geocoder().geocode({ address: query });
+  let response;
+  try {
+    response = await new Geocoder().geocode({ address: query });
+  } catch (error) {
+    throw new Error(routeErrorMessage(error));
+  }
   const result = response.results?.[0];
   const location = result?.geometry?.location;
   if (!location) throw new Error('목적지 위치를 찾지 못했어요. 주소나 장소명을 확인해 주세요.');
@@ -847,7 +884,9 @@ async function requestNaverTransitRoute(maps, map, start, end, isCurrent, instru
     .map((mode) => ({ BUS: '버스', SUBWAY: '지하철', TRAIN: '기차', EXPRESSBUS: '시외버스' }[mode] || mode));
   const minutes = Math.max(1, Math.round(Number(itinerary.totalTime || 0) / 60));
   const transferCount = Number(itinerary.transferCount || 0);
-  if (instruction) instruction.textContent = `${modes.join('·') || '도보'} · 약 ${minutes}분 · 환승 ${transferCount}회`;
+  const summary = `${modes.join('·') || '도보'} · 약 ${minutes}분 · 환승 ${transferCount}회`;
+  if (instruction) instruction.textContent = summary;
+  setGuideAnswer(`${routeOrigin || '현재 위치'}에서 ${destination}까지 ${summary} 경로를 지도에 표시했어요.`);
 }
 
 async function requestGoogleTransitRoute(maps, map, start, end, isCurrent, instruction) {
@@ -884,7 +923,9 @@ async function requestGoogleTransitRoute(maps, map, start, end, isCurrent, instr
 
   const durationMillis = Number(route.durationMillis || route.staticDurationMillis || 0);
   const minutes = Math.max(1, Math.round(durationMillis / 60000));
-  if (instruction) instruction.textContent = `대중교통 · 약 ${minutes}분`;
+  const summary = `대중교통 · 약 ${minutes}분`;
+  if (instruction) instruction.textContent = summary;
+  setGuideAnswer(`${routeOrigin || '현재 위치'}에서 ${destination}까지 ${summary} 경로를 지도에 표시했어요.`);
 }
 
 async function requestGuideRoute(naverMaps, container, scene, requestId) {
@@ -907,7 +948,7 @@ async function requestGuideRoute(naverMaps, container, scene, requestId) {
 
     if (end && isKoreaCoordinate(end)) {
       const map = createNaverMap(naverMaps, container, scene, end);
-      const start = await getCurrentPosition();
+      const start = await resolveRouteStart(naverMaps, routeOrigin);
       if (!isCurrent()) return;
       await requestNaverTransitRoute(naverMaps, map, start, end, isCurrent, instruction);
       return;
@@ -921,20 +962,22 @@ async function requestGuideRoute(naverMaps, container, scene, requestId) {
     if (isKorea) {
       if (!naverMaps) throw new Error('국내 지도에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.');
       const map = createNaverMap(naverMaps, container, scene, googleDestination);
-      const start = await getCurrentPosition();
+      const start = await resolveRouteStart(naverMaps, routeOrigin);
       if (!isCurrent()) return;
       await requestNaverTransitRoute(naverMaps, map, start, googleDestination, isCurrent, instruction);
       return;
     }
 
     const map = createGoogleMap(googleMaps, container, scene, googleDestination);
-    const start = await getCurrentPosition();
+    const start = await resolveRouteStart(naverMaps, routeOrigin);
     if (!isCurrent()) return;
     await requestGoogleTransitRoute(googleMaps, map, start, googleDestination, isCurrent, instruction);
   } catch (error) {
     if (!isCurrent()) return;
     clearRouteOverlays();
-    if (instruction) instruction.textContent = error instanceof Error ? error.message : '길찾기를 불러오지 못했어요.';
+    const message = routeErrorMessage(error);
+    if (instruction) instruction.textContent = message;
+    setGuideAnswer(message);
     if (!routeMap) scene.classList.add('map-failed');
   }
 }
@@ -981,7 +1024,9 @@ function startVoiceDestination() {
     if (activeDestinationRecognition !== recognition) return;
     const spokenDestination = event.results[0]?.[0]?.transcript?.trim();
     if (!spokenDestination) return;
-    destination = spokenDestination;
+    const parsed = parseRouteRequest(spokenDestination);
+    destination = parsed.destination;
+    routeOrigin = parsed.origin;
     activeDestinationRecognition = null;
     recognition.stop();
     voiceSearchOpen = false;
