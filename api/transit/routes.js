@@ -56,9 +56,15 @@ module.exports = async function handler(req, res) {
     }
 
     if (!upstream.ok || !payload || payload.error) {
-      return res.status(upstream.ok ? 502 : upstream.status).json({
-        error: 'TMAP 대중교통 API에서 경로를 받지 못했어요.'
-      });
+      const status = upstream.status;
+      const error = status === 429
+        ? 'TMAP 하루 요청 한도에 도달했어요. 내일 다시 시도해 주세요.'
+        : status === 401 || status === 403
+          ? 'TMAP API 사용 권한이나 요청 한도를 확인해 주세요.'
+          : status === 400 || status === 404
+            ? '출발지와 목적지 사이의 대중교통 경로를 찾지 못했어요.'
+            : 'TMAP 대중교통 API에서 경로를 받지 못했어요.';
+      return res.status(upstream.ok ? 502 : status).json({ error });
     }
 
     return res.status(200).json(payload);
