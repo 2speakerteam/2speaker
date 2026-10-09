@@ -21,6 +21,7 @@ let routeMapContainer = null;
 let routeMapProvider = null;
 let routeMapOverlays = [];
 let nearbyInfoWindow = null;
+let nearbyPanorama = null;
 let routeRequestToken = 0;
 let guideTransportRoutes = {};
 let guideTransportContext = null;
@@ -271,6 +272,15 @@ function nearbyScreen() {
         <div class="destination-sign"><span>${place}<small>기준 위치</small></span></div>
       </div>
       <div class="route-instruction">${icon('pinRoute', 28)}<span>근처 승강장을 찾고 있어요.</span></div>
+    </section>
+    <section class="nearby-panorama" id="nearby-panorama" aria-label="선택한 승강장 거리뷰" hidden>
+      <div class="nearby-panorama-header">
+        <div><small>네이버 거리뷰 · 승강장 주변</small><h2 id="nearby-panorama-title"></h2></div>
+        <button type="button" id="nearby-panorama-close" aria-label="거리뷰 닫기">닫기</button>
+      </div>
+      <div class="nearby-panorama-view" id="nearby-panorama-view" aria-label="승강장 주변 거리 사진"></div>
+      <p class="nearby-panorama-status" id="nearby-panorama-status" role="status">거리뷰를 불러오는 중이에요.</p>
+      <p class="nearby-panorama-note">가까운 도로에서 촬영한 모습이에요. 승강장 표지나 현재 모습과 다를 수 있어요.</p>
     </section>
     <section class="nearby-results" aria-live="polite">
       <p class="nearby-status">지도와 승강장 목록을 불러오는 중이에요.</p>
@@ -636,7 +646,7 @@ function loadNaverMaps() {
       resolve(maps);
     };
 
-    script.src = `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${encodeURIComponent(naverMapClientId)}&submodules=geocoder&callback=${encodeURIComponent(callbackName)}`;
+    script.src = `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${encodeURIComponent(naverMapClientId)}&submodules=geocoder,panorama&callback=${encodeURIComponent(callbackName)}`;
     script.async = true;
     script.onerror = () => {
       cleanup();
@@ -810,6 +820,10 @@ function initializeNearbyMap() {
   const scene = container?.closest('.route-scene');
   const results = document.querySelector('.nearby-results');
   const instruction = document.querySelector('.route-instruction span');
+  const panoramaPanel = document.querySelector('#nearby-panorama');
+  const panoramaView = document.querySelector('#nearby-panorama-view');
+  const panoramaTitle = document.querySelector('#nearby-panorama-title');
+  const panoramaStatus = document.querySelector('#nearby-panorama-status');
   const request = nearbyStopRequest;
   if (!container || !scene || !results || !request) return;
   clearRouteOverlays();
@@ -852,18 +866,72 @@ function initializeNearbyMap() {
     const map = createNaverMap(maps, container, scene, data.center);
     const markers = new Map();
     nearbyInfoWindow = new maps.InfoWindow({ disableAutoPan: true, maxWidth: 240 });
-    const focusPlace = (type, index, scrollToMap) => {
+    let selectedPoint = null;
+    const orientPanorama = () => {
+      if (!nearbyPanorama || !selectedPoint || !isCurrent()) return;
+      try {
+        const pov = nearbyPanorama.getProjection()?.fromCoordToPov(selectedPoint);
+        if (pov) nearbyPanorama.setPov({ pan: pov.pan, tilt: 0, fov: 90 });
+      } catch {
+        // The panorama can still be explored manually if its projection is unavailable.
+      }
+    };
+    const focusPlace = (type, index) => {
       const place = (type === 'taxi' ? taxi : bus)[index];
       if (!place || !isCurrent()) return;
       const point = new maps.LatLng(place.latitude, place.longitude);
+      selectedPoint = point;
       map.updateBy(point, 17);
       nearbyInfoWindow.setContent(`<div class="nearby-info"><strong>${escapeHtml(place.name)}</strong><small>${escapeHtml(place.address || '주소 정보 없음')} · 약 ${Math.round(place.distanceMeters)}m</small></div>`);
       nearbyInfoWindow.open(map, point);
       results.querySelectorAll('[data-nearby-type]').forEach((button) => {
         button.setAttribute('aria-pressed', String(button.dataset.nearbyType === type && Number(button.dataset.nearbyIndex) === index));
       });
-      if (scrollToMap) scene.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      panoramaTitle.textContent = place.name;
+      panoramaPanel.hidden = false;
+      panoramaView.style.visibility = 'hidden';
+      panoramaStatus.textContent = '승강장 주변의 실제 거리뷰를 불러오는 중이에요.';
+      panoramaPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      if (!maps.Panorama) {
+        panoramaStatus.textContent = '거리뷰 연결을 확인해 주세요. 위치는 위 지도에서 볼 수 있어요.';
+        return;
+      }
+      try {
+        if (nearbyPanorama) {
+          nearbyPanorama.setVisible(true);
+          nearbyPanorama.setPosition(point);
+        } else {
+          nearbyPanorama = new maps.Panorama(panoramaView, {
+            position: point,
+            zoomControl: true,
+            aroundControl: true
+          });
+          maps.Event.addListener(nearbyPanorama, 'pano_status', (status) => {
+            if (!isCurrent() || panoramaPanel.hidden) return;
+            if (status !== 'OK') {
+              panoramaView.style.visibility = 'hidden';
+              panoramaStatus.textContent = '이 승강장 근처에는 거리뷰가 제공되지 않아요. 위치는 위 지도에서 볼 수 있어요.';
+              return;
+            }
+            orientPanorama();
+            panoramaView.style.visibility = 'visible';
+            const photoDate = nearbyPanorama.getLocation()?.photodate;
+            panoramaStatus.textContent = photoDate
+              ? `승강장 방향의 거리뷰예요 · 촬영: ${photoDate}`
+              : '승강장 방향의 거리뷰예요. 화면을 움직여 주변을 둘러보세요.';
+          });
+          maps.Event.addListener(nearbyPanorama, 'pano_changed', orientPanorama);
+          maps.Event.addListener(nearbyPanorama, 'init', orientPanorama);
+        }
+      } catch {
+        panoramaView.style.visibility = 'hidden';
+        panoramaStatus.textContent = '거리뷰를 열지 못했어요. 위치는 위 지도에서 볼 수 있어요.';
+      }
     };
+    panoramaPanel.querySelector('#nearby-panorama-close').addEventListener('click', () => {
+      panoramaPanel.hidden = true;
+      nearbyPanorama?.setVisible(false);
+    });
     const bounds = new maps.LatLngBounds();
     const centerPoint = new maps.LatLng(data.center.latitude, data.center.longitude);
     bounds.extend(centerPoint);
@@ -881,7 +949,7 @@ function initializeNearbyMap() {
         });
         markers.set(`${type}:${index}`, marker);
         routeMapOverlays.push(marker);
-        maps.Event.addListener(marker, 'click', () => focusPlace(type, index, false));
+        maps.Event.addListener(marker, 'click', () => focusPlace(type, index));
       }
     }
     if (count) map.fitBounds(bounds, 35);
@@ -889,7 +957,7 @@ function initializeNearbyMap() {
       button.addEventListener('click', () => {
         const type = button.dataset.nearbyType;
         const index = Number(button.dataset.nearbyIndex);
-        if (markers.has(`${type}:${index}`)) focusPlace(type, index, true);
+        if (markers.has(`${type}:${index}`)) focusPlace(type, index);
       });
     });
   })().catch((error) => {
@@ -980,6 +1048,8 @@ function routeLinePoints(maps, lineString) {
 }
 
 function clearRouteOverlays() {
+  nearbyPanorama?.setVisible(false);
+  nearbyPanorama = null;
   nearbyInfoWindow?.close();
   nearbyInfoWindow = null;
   routeMapOverlays.forEach((overlay) => overlay.setMap(null));
