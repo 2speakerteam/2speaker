@@ -461,7 +461,7 @@ function legalScreen(title, sections) {
 
 function render() {
   const screens = {
-    home: homeScreen, route: routeScreen, guide: guideScreen, translation: translationScreen,
+    home: homeScreen, route: routeScreen, guide: guideScreen, nearby: nearbyScreen, translation: translationScreen,
     voice: voiceScreen, text: textScreen, more: moreScreen, login: loginScreen,
     language: languageScreen, 'language-list': languageListScreen,
     'user-language-list': userLanguageListScreen, help: helpScreen,
