@@ -993,19 +993,18 @@ async function requestNaverTransitRoute(maps, map, start, end, isCurrent, instru
     if (response.ok) {
       const itineraries = payload?.metaData?.plan?.itineraries ?? [];
       const modesOf = (itinerary) => new Set((itinerary.legs ?? []).map((leg) => leg.mode));
-      const pureBus = itineraries.find((itinerary) => {
-        const modes = modesOf(itinerary);
-        return modes.has('BUS') && !modes.has('SUBWAY') && !modes.has('TRAIN');
-      });
-      const pureSubway = itineraries.find((itinerary) => {
-        const modes = modesOf(itinerary);
-        return (modes.has('SUBWAY') || modes.has('TRAIN')) && !modes.has('BUS');
-      });
-      const bus = pureBus || itineraries.find((itinerary) => modesOf(itinerary).has('BUS'));
-      const subway = pureSubway || itineraries.find((itinerary) => {
-        const modes = modesOf(itinerary);
-        return (modes.has('SUBWAY') || modes.has('TRAIN')) && itinerary !== bus;
-      });
+      // Only place a single-mode itinerary in its matching card.
+      // A mixed bus + subway trip must not be advertised as either pure option.
+      const bus = itineraries.find((itinerary) => Number(itinerary.pathType) === 2)
+        || itineraries.find((itinerary) => {
+          const modes = modesOf(itinerary);
+          return modes.has('BUS') && !modes.has('SUBWAY') && !modes.has('TRAIN');
+        });
+      const subway = itineraries.find((itinerary) => Number(itinerary.pathType) === 1)
+        || itineraries.find((itinerary) => {
+          const modes = modesOf(itinerary);
+          return (modes.has('SUBWAY') || modes.has('TRAIN')) && !modes.has('BUS');
+        });
       if (bus) {
         guideTransportRoutes.BUS = { itinerary: bus };
         updateTransportChoice('BUS', transportText('BUS', bus, english), true);
