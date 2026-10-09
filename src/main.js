@@ -851,13 +851,12 @@ function initializeNearbyMap() {
     }
     const map = createNaverMap(maps, container, scene, data.center);
     const markers = new Map();
-    nearbyInfoWindow = new maps.InfoWindow();
+    nearbyInfoWindow = new maps.InfoWindow({ disableAutoPan: true, maxWidth: 240 });
     const focusPlace = (type, index, scrollToMap) => {
       const place = (type === 'taxi' ? taxi : bus)[index];
       if (!place || !isCurrent()) return;
       const point = new maps.LatLng(place.latitude, place.longitude);
-      map.setZoom(17);
-      map.panTo(point);
+      map.updateBy(point, 17);
       nearbyInfoWindow.setContent(`<div class="nearby-info"><strong>${escapeHtml(place.name)}</strong><small>${escapeHtml(place.address || '주소 정보 없음')} · 약 ${Math.round(place.distanceMeters)}m</small></div>`);
       nearbyInfoWindow.open(map, point);
       results.querySelectorAll('[data-nearby-type]').forEach((button) => {
