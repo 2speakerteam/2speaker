@@ -76,7 +76,8 @@ class Panorama{
   getLocation(){return {coord:this.position,photodate:'2026-02'}}
   getProjection(){return {fromCoordToPov:()=>({pan:15})}}setPov(pov){this.pov=pov}
 }
-const maps={LatLng,Panorama,Event:{addListener:(p,e,f)=>{p.events[e]=f}}};
+class Marker{constructor(options){this.map=options.map;this.options=options}setMap(map){this.map=map}}
+const maps={LatLng,Panorama,Marker,Event:{addListener:(p,e,f)=>{p.events[e]=f}}};
 const context={maps,map:{setCenter(){throw Error('Hidden map must not be moved')}},english:false,requestId:1};
 const choice={paths:[[[127.097,37.587],[127.1,37.587],[127.101,37.586]]]};
 `;
@@ -137,7 +138,14 @@ play.onclick();assert(timers.get(live.timer).delay===4500,'Approach uses longer 
 next.onclick();live.panorama.events.pano_status('ZERO_RESULTS');
 assert(!live.playing&&viewer.style.visibility==='hidden'&&timers.size===0,'Missing junction image pauses rather than skipping');
 assert(message.textContent.includes('거리뷰가 없어요'),'Missing image explained');
+assert(visual.classList.contains('walk-preview-map-fallback')&&live.fallbackMarker.map===context.map,'Missing junction shows map and viewpoint marker');
+const fallbackMarker=live.fallbackMarker;
+next.onclick();
+assert(!visual.classList.contains('walk-preview-map-fallback')&&fallbackMarker.map===null,'Next frame removes fallback marker');
+live.panorama.events.pano_status('ZERO_RESULTS');
+const closeMarker=live.fallbackMarker;
 stopWalkPreview(true);
+assert(closeMarker.map===null&&!visual.classList.contains('walk-preview-map-fallback'),'Close cleans up fallback');
 startWalkPreview(context,bendChoice);live=walkPreviewState;
 live.panorama.events.pano_status('OK');next.onclick();
 live.panorama.getLocation=()=>({coord:new LatLng(37.0015,127.0015)});

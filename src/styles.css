@@ -370,3 +370,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 
 
 
+
+/* Preserve the route as context when there is no trustworthy photograph at a junction. */
+.walk-preview-open.walk-preview-map-fallback .naver-map { visibility: visible; }
+.walk-preview-map-fallback .walk-preview-scene { background: transparent; }

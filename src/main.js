@@ -1349,6 +1349,8 @@ function stopWalkPreview(hidePanel = false) {
   state.viewer.replaceChildren();
   state.scene.hidden = true;
   state.visual.classList.remove('walk-preview-open');
+  state.visual.classList.remove('walk-preview-map-fallback');
+  state.fallbackMarker?.setMap(null);
   state.mapElement.inert = false;
   state.mapElement.removeAttribute('aria-hidden');
   state.walkButton?.setAttribute('aria-expanded', 'false');
@@ -1390,7 +1392,7 @@ function startWalkPreview(context, choice) {
     panel, viewer, scene, visual, mapElement, walkButton,
     close: scene.querySelector('#walk-preview-close'),
     frames, index: 0, playing: true, loading: false,
-    timer: null, panorama: null,
+    timer: null, panorama: null, fallbackMarker: null,
     message: panel.querySelector('#walk-preview-message'),
     progress: panel.querySelector('#walk-preview-progress-text'),
     progressBar: panel.querySelector('#walk-preview-progress-bar'),
@@ -1423,6 +1425,16 @@ function startWalkPreview(context, choice) {
     clearTimeout(state.timer);
     state.loading = false;
     state.viewer.style.visibility = 'hidden';
+    state.visual.classList.add('walk-preview-map-fallback');
+    const point = frames[state.index].position;
+    if (state.maps.Marker) {
+      state.fallbackMarker?.setMap(null);
+      state.fallbackMarker = new state.maps.Marker({
+        map: state.map, position: new state.maps.LatLng(point[1], point[0]),
+        title: state.english ? 'Preview point · street image unavailable' : '현재 미리보기 지점 · 거리뷰 없음',
+        icon: { content: '<span style="display:block;padding:5px 8px;border:2px solid #fff;border-radius:14px;background:#9b5500;color:#fff;font-size:12px;font-weight:700;white-space:nowrap">' + (state.english ? 'Viewpoint' : '확인 지점') + '</span>' }
+      });
+    }
     state.message.textContent = walkPreviewCue(frames[state.index], state.english) + ' · ' + message;
     updateButtons();
     // Do not silently skip a missing entrance/junction photograph.
@@ -1436,6 +1448,8 @@ function startWalkPreview(context, choice) {
     clearTimeout(state.timer);
     state.index = Math.max(0, Math.min(frames.length - 1, index));
     state.loading = true;
+    state.visual.classList.remove('walk-preview-map-fallback');
+    state.fallbackMarker?.setMap(null);
     const frame = frames[state.index];
     updateButtons();
     state.progress.textContent = state.english
