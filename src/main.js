@@ -241,12 +241,12 @@ function guideScreen() {
         <div class="naver-map" id="naver-map" aria-label="지도"></div>
         <div class="destination-sign"><span>${place}<small>${english ? 'Destination' : '목적지'}</small></span></div>
       </div>
-      <div class="route-instruction">${icon('walk', 28)}<span>${loading}</span></div>
+      <button class="route-instruction walk-action" type="button" aria-label="${english ? 'Show walking route' : '도보 경로 보기'}" disabled>${icon('walk', 28)}<span>${loading}</span></button>
     </section>
     <section class="transport-options" aria-label="${english ? 'Compare transport options' : '교통수단 비교'}">
       ${['BUS', 'SUBWAY', 'TAXI'].map((mode) => {
         const label = english ? { BUS: 'Bus', SUBWAY: 'Subway', TAXI: 'Taxi' }[mode] : { BUS: '버스', SUBWAY: '지하철', TAXI: '택시' }[mode];
-        return `<button class="transport-option" type="button" data-transport="${mode}" disabled aria-pressed="false"><strong>${label}</strong><small>${english ? 'Checking...' : '확인 중...'}</small></button>`;
+        return `<button class="transport-option" type="button" data-transport="${mode}" disabled><strong>${label}</strong><small>${english ? 'Checking...' : '확인 중...'}</small></button>`;
       }).join('')}
     </section>
     <section class="guide-dialogue">
@@ -517,8 +517,9 @@ function render() {
     });
   });
   document.querySelectorAll('[data-transport]').forEach((button) => {
-    button.addEventListener('click', () => selectGuideTransport(button.dataset.transport));
+    button.addEventListener('click', () => selectGuideTransport(button.dataset.transport, true));
   });
+  document.querySelector('.walk-action')?.addEventListener('click', () => selectGuideTransport('WALK', true));
   document.querySelectorAll('[data-action="back"]').forEach((button) => {
     button.addEventListener('click', goBack);
   });
@@ -1148,17 +1149,33 @@ function updateTransportChoice(mode, description, available) {
   button.querySelector('small').textContent = description;
 }
 
-function selectGuideTransport(mode) {
+function selectGuideTransport(mode, userInitiated = false) {
   const choice = guideTransportRoutes[mode];
   const context = guideTransportContext;
   if (!choice || !context || context.requestId !== routeRequestToken || currentPage !== 'guide') return;
   const { maps, map, start, end, english } = context;
-  document.querySelectorAll('[data-transport]').forEach((button) => {
-    button.setAttribute('aria-pressed', String(button.dataset.transport === mode));
-  });
+  if (userInitiated) context.userSelectedMode = mode;
 
   let summary;
-  if (mode === 'TAXI') {
+  if (mode === 'WALK') {
+    clearRouteOverlays();
+    const bounds = new maps.LatLngBounds();
+    const startPoint = new maps.LatLng(start.latitude, start.longitude);
+    const endPoint = new maps.LatLng(end.latitude, end.longitude);
+    bounds.extend(startPoint);
+    bounds.extend(endPoint);
+    for (const coordinates of choice.paths) {
+      const path = coordinates.map(([longitude, latitude]) => new maps.LatLng(latitude, longitude));
+      path.forEach((point) => bounds.extend(point));
+      routeMapOverlays.push(new maps.Polyline({
+        map, path, strokeColor: '#20d5ff', strokeOpacity: .96, strokeWeight: 6
+      }));
+    }
+    routeMapOverlays.push(new maps.Marker({ map, position: startPoint, title: '출발지' }));
+    routeMapOverlays.push(new maps.Marker({ map, position: endPoint, title: destination.trim() }));
+    map.fitBounds(bounds, 36);
+    summary = english ? `Walk · about ${choice.minutes} min` : `도보 · 약 ${choice.minutes}분`;
+  } else if (mode === 'TAXI') {
     // A separate car-routing entitlement supplies the taxi estimate. Do not fabricate one.
     clearRouteOverlays();
     const bounds = new maps.LatLngBounds();
@@ -1189,6 +1206,7 @@ async function requestNaverTransitRoute(maps, map, start, end, isCurrent, instru
     endX: end.longitude,
     endY: end.latitude
   };
+  const walkButton = document.querySelector('.walk-action');
   if (instruction) instruction.textContent = english ? 'Checking walking time...' : '도보 시간을 확인하고 있어요.';
   fetch('/api/walking/routes', {
     method: 'POST',
@@ -1198,11 +1216,17 @@ async function requestNaverTransitRoute(maps, map, start, end, isCurrent, instru
     const payload = await response.json().catch(() => ({}));
     if (!isCurrent() || !instruction) return;
     const seconds = Number(payload.totalTime);
-    instruction.textContent = response.ok && Number.isFinite(seconds) && seconds > 0
-      ? (english
-        ? `Walk · about ${Math.max(1, Math.ceil(seconds / 60))} min`
-        : `도보 · 약 ${Math.max(1, Math.ceil(seconds / 60))}분`)
-      : (english ? 'Walking time unavailable' : '도보 시간 확인 불가');
+    const minutes = Math.max(1, Math.ceil(seconds / 60));
+    const paths = Array.isArray(payload.paths)
+      ? payload.paths.filter((path) => Array.isArray(path) && path.length > 1)
+      : [];
+    if (response.ok && Number.isFinite(seconds) && seconds > 0 && paths.length) {
+      guideTransportRoutes.WALK = { minutes, paths };
+      if (walkButton) walkButton.disabled = false;
+      instruction.textContent = english ? `Walk · about ${minutes} min` : `도보 · 약 ${minutes}분`;
+    } else {
+      instruction.textContent = english ? 'Walking route unavailable' : '도보 경로 확인 불가';
+    }
   }).catch(() => {
     if (isCurrent() && instruction) {
       instruction.textContent = english ? 'Walking time unavailable' : '도보 시간 확인 불가';
@@ -1285,6 +1309,7 @@ async function requestNaverTransitRoute(maps, map, start, end, isCurrent, instru
     }
   } else updateTransportChoice('TAXI', english ? 'Taxi route unavailable' : '택시 경로 이용 불가', false);
 
+  if (guideTransportContext.userSelectedMode) return;
   if (guideTransportRoutes.BUS) selectGuideTransport('BUS');
   else if (guideTransportRoutes.SUBWAY) selectGuideTransport('SUBWAY');
   else if (guideTransportRoutes.TAXI) selectGuideTransport('TAXI');
