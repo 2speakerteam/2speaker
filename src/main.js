@@ -401,6 +401,7 @@ function render() {
   if (currentPage === 'text') {
     const dialogue = document.querySelector('.text-dialogue');
     if (dialogue) dialogue.scrollTop = dialogue.scrollHeight;
+    document.querySelector('.message-composer input')?.focus({ preventScroll: true });
   }
 
   document.querySelectorAll('[data-page]').forEach((button) => {
