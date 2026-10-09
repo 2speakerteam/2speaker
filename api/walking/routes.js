@@ -43,7 +43,7 @@ module.exports = async function handler(req, res) {
         endName: encodeURIComponent('목적지'),
         reqCoordType: 'WGS84GEO',
         resCoordType: 'WGS84GEO',
-        searchOption: '0'
+        searchOption: '10'
       })
     });
     const payload = await upstream.json().catch(() => null);
