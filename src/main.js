@@ -25,6 +25,7 @@ let nearbyPanorama = null;
 let routeRequestToken = 0;
 let guideTransportRoutes = {};
 let guideTransportContext = null;
+let walkPreviewState = null;
 const sentTextMessages = [];
 let textSendNotice = '';
 const pageHistory = [];
@@ -242,6 +243,24 @@ function guideScreen() {
         <div class="destination-sign"><span>${place}<small>${english ? 'Destination' : '목적지'}</small></span></div>
       </div>
       <button class="route-instruction walk-action" type="button" aria-label="${english ? 'Show walking route' : '도보 경로 보기'}" disabled>${icon('walk', 28)}<span>${loading}</span></button>
+    </section>
+    <section class="walk-preview" id="walk-preview" aria-label="${english ? 'Walking street-view preview' : '도보 로드뷰 미리보기'}" hidden>
+      <div class="walk-preview-header">
+        <div><small>${english ? 'Street-view route preview' : '도보 로드뷰 미리보기'}</small><h2>${escapeHtml(routeOrigin || (english ? 'Your location' : '현재 위치'))} → ${place}</h2></div>
+        <button type="button" id="walk-preview-close" aria-label="${english ? 'Close street view' : '로드뷰 닫기'}">${english ? 'Close' : '닫기'}</button>
+      </div>
+      <div class="walk-preview-scene">
+        <div class="walk-preview-panorama" id="walk-preview-panorama" aria-label="${english ? 'Street view along the walking route' : '도보 경로의 실제 거리뷰'}"></div>
+        <div class="walk-preview-arrow" id="walk-preview-arrow" aria-hidden="true" hidden><span>↑</span><small>${english ? 'Next direction' : '다음 방향'}</small></div>
+        <p class="walk-preview-message" id="walk-preview-message" role="status"></p>
+      </div>
+      <div class="walk-preview-controls">
+        <button type="button" id="walk-preview-prev">${english ? 'Previous' : '이전'}</button>
+        <button type="button" id="walk-preview-play">${english ? 'Pause' : '일시정지'}</button>
+        <button type="button" id="walk-preview-next">${english ? 'Next' : '다음'} →</button>
+      </div>
+      <div class="walk-preview-progress"><span id="walk-preview-progress-text"></span><div><span id="walk-preview-progress-bar"></span></div></div>
+      <p class="walk-preview-note">${english ? 'Preview only. Street photos may be old or unavailable on trails; follow signs and local conditions.' : '미리보기예요. 숲길에는 거리뷰가 없거나 촬영 시점이 다를 수 있으니 현장 표지를 확인해 주세요.'}</p>
     </section>
     <section class="transport-options" aria-label="${english ? 'Compare transport options' : '교통수단 비교'}">
       ${['BUS', 'SUBWAY', 'TAXI'].map((mode) => {
@@ -471,6 +490,7 @@ function legalScreen(title, sections) {
 }
 
 function render() {
+  stopWalkPreview(true);
   const screens = {
     home: homeScreen, route: routeScreen, guide: guideScreen, nearby: nearbyScreen, translation: translationScreen,
     voice: voiceScreen, text: textScreen, more: moreScreen, login: loginScreen,
@@ -1149,12 +1169,203 @@ function updateTransportChoice(mode, description, available) {
   button.querySelector('small').textContent = description;
 }
 
+function walkPreviewDistance(a, b) {
+  const lat1 = a[1] * Math.PI / 180;
+  const lat2 = b[1] * Math.PI / 180;
+  const dLat = lat2 - lat1;
+  const dLon = (b[0] - a[0]) * Math.PI / 180;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  return 12742000 * Math.asin(Math.min(1, Math.sqrt(h)));
+}
+
+function walkPreviewFrames(paths) {
+  const points = paths.flat().filter(([longitude, latitude]) =>
+    Number.isFinite(longitude) && Number.isFinite(latitude));
+  if (points.length < 2) return [];
+  const distances = [0];
+  for (let i = 1; i < points.length; i += 1) {
+    distances.push(distances[i - 1] + walkPreviewDistance(points[i - 1], points[i]));
+  }
+  const total = distances.at(-1);
+  if (total < 1) return [];
+  const count = Math.min(22, Math.max(2, Math.ceil(total / 85) + 1));
+  const pointAt = (meters) => {
+    const target = Math.max(0, Math.min(total, meters));
+    let index = 1;
+    while (index < distances.length - 1 && distances[index] < target) index += 1;
+    const segment = distances[index] - distances[index - 1];
+    const fraction = segment ? (target - distances[index - 1]) / segment : 0;
+    return [
+      points[index - 1][0] + (points[index][0] - points[index - 1][0]) * fraction,
+      points[index - 1][1] + (points[index][1] - points[index - 1][1]) * fraction
+    ];
+  };
+  return Array.from({ length: count }, (_, index) => {
+    const meters = total * index / (count - 1);
+    const directionMeters = index === count - 1 ? Math.max(0, total - 30) : Math.min(total, meters + 30);
+    return { position: pointAt(meters), ahead: pointAt(directionMeters), meters, total };
+  });
+}
+
+function stopWalkPreview(hidePanel = false) {
+  const state = walkPreviewState;
+  if (!state) return;
+  clearTimeout(state.timer);
+  state.playing = false;
+  try { state.panorama?.setVisible(false); } catch { /* Viewer may already be detached. */ }
+  if (hidePanel && state.panel.isConnected) state.panel.hidden = true;
+  walkPreviewState = null;
+}
+
+function startWalkPreview(context, choice) {
+  stopWalkPreview(true);
+  const panel = document.querySelector('#walk-preview');
+  const viewer = document.querySelector('#walk-preview-panorama');
+  if (!panel || !viewer) return;
+  const frames = walkPreviewFrames(choice.paths);
+  if (!frames.length) return;
+  panel.hidden = false;
+  const state = {
+    ...context,
+    panel, viewer, frames, index: 0, playing: true, loading: false,
+    timer: null, panorama: null,
+    arrow: panel.querySelector('#walk-preview-arrow'),
+    message: panel.querySelector('#walk-preview-message'),
+    progress: panel.querySelector('#walk-preview-progress-text'),
+    progressBar: panel.querySelector('#walk-preview-progress-bar'),
+    prev: panel.querySelector('#walk-preview-prev'),
+    next: panel.querySelector('#walk-preview-next'),
+    play: panel.querySelector('#walk-preview-play')
+  };
+  walkPreviewState = state;
+  const valid = () => walkPreviewState === state
+    && currentPage === 'guide'
+    && state.requestId === routeRequestToken
+    && document.querySelector('#walk-preview') === panel;
+  const scheduleNext = () => {
+    clearTimeout(state.timer);
+    if (!valid() || !state.playing) return;
+    if (state.index === frames.length - 1) {
+      state.playing = false;
+      state.play.textContent = state.english ? 'Replay' : '다시 보기';
+      return;
+    }
+    state.timer = setTimeout(() => showFrame(state.index + 1), 2700);
+  };
+  const showFrame = (index) => {
+    if (!valid()) return;
+    clearTimeout(state.timer);
+    state.index = Math.max(0, Math.min(frames.length - 1, index));
+    state.loading = true;
+    const frame = frames[state.index];
+    state.prev.disabled = state.index === 0;
+    state.next.disabled = state.index === frames.length - 1;
+    state.progress.textContent = state.english
+      ? `${state.index + 1} / ${frames.length} · ${Math.round(frame.meters)} m of ${Math.round(frame.total)} m`
+      : `${state.index + 1} / ${frames.length} · 전체 ${Math.round(frame.total)}m 중 ${Math.round(frame.meters)}m`;
+    state.progressBar.style.width = `${100 * state.index / (frames.length - 1)}%`;
+    state.message.textContent = state.english ? 'Loading street view...' : '거리뷰를 불러오는 중이에요.';
+    state.viewer.style.visibility = 'hidden';
+    state.arrow.hidden = true;
+    const position = new state.maps.LatLng(frame.position[1], frame.position[0]);
+    state.map.setCenter(position);
+    if (!state.maps.Panorama) {
+      state.loading = false;
+      state.message.textContent = state.english ? 'Street view is unavailable here. Follow the map route.' : '이 구간은 거리뷰를 볼 수 없어요. 지도 경로를 확인해 주세요.';
+      scheduleNext();
+      return;
+    }
+    try {
+      if (state.panorama) {
+        state.panorama.setVisible(true);
+        state.panorama.setPosition(position);
+      } else {
+        state.panorama = new state.maps.Panorama(viewer, {
+          position, zoomControl: true, aroundControl: true, flightSpot: false
+        });
+        state.maps.Event.addListener(state.panorama, 'pano_status', (status) => {
+          if (!valid() || !state.loading) return;
+          state.loading = false;
+          if (status !== 'OK') {
+            state.message.textContent = state.english ? 'No street image for this section. See the route on the map.' : '이 구간에는 거리뷰가 없어요. 지도 경로를 확인해 주세요.';
+            scheduleNext();
+            return;
+          }
+          const frameNow = frames[state.index];
+          const capture = state.panorama.getLocation()?.coord;
+          const capturePoint = capture && [capture.lng(), capture.lat()];
+          if (!capturePoint || walkPreviewDistance(capturePoint, frameNow.position) > 80) {
+            state.message.textContent = state.english ? 'The nearest street image is too far from this path.' : '가까운 거리뷰가 실제 도보길에서 너무 멀어요. 지도를 확인해 주세요.';
+            scheduleNext();
+            return;
+          }
+          let pointedAlongRoute = false;
+          try {
+            const ahead = new state.maps.LatLng(frameNow.ahead[1], frameNow.ahead[0]);
+            const pov = state.panorama.getProjection()?.fromCoordToPov(ahead);
+            if (pov) {
+              state.panorama.setPov({ pan: pov.pan, tilt: 0, fov: 90 });
+              pointedAlongRoute = true;
+            }
+          } catch {
+            // If projection is unavailable, keep the panorama navigable by hand.
+          }
+          state.viewer.style.visibility = 'visible';
+          state.arrow.hidden = !pointedAlongRoute || state.index === frames.length - 1;
+          const photoDate = state.panorama.getLocation()?.photodate;
+          state.message.textContent = state.english
+            ? `Route direction · street image${photoDate ? ` from ${photoDate}` : ''}`
+            : `화살표 방향으로 이동 · 거리뷰${photoDate ? ` 촬영 ${photoDate}` : ''}`;
+          scheduleNext();
+        });
+      }
+      clearTimeout(state.timer);
+      state.timer = setTimeout(() => {
+        if (!valid() || !state.loading) return;
+        state.loading = false;
+        state.message.textContent = state.english ? 'Street view took too long. See the map route.' : '거리뷰 응답이 늦어요. 지도 경로를 확인해 주세요.';
+        scheduleNext();
+      }, 9000);
+    } catch {
+      state.loading = false;
+      state.message.textContent = state.english ? 'Street view could not be opened.' : '거리뷰를 열지 못했어요. 지도 경로를 확인해 주세요.';
+      scheduleNext();
+    }
+  };
+  state.prev.addEventListener('click', () => {
+    state.playing = false;
+    clearTimeout(state.timer);
+    state.play.textContent = state.english ? 'Play' : '자동 재생';
+    showFrame(state.index - 1);
+  });
+  state.next.addEventListener('click', () => {
+    state.playing = false;
+    clearTimeout(state.timer);
+    state.play.textContent = state.english ? 'Play' : '자동 재생';
+    showFrame(state.index + 1);
+  });
+  state.play.addEventListener('click', () => {
+    if (!valid()) return;
+    if (state.index === frames.length - 1 && !state.playing) showFrame(0);
+    state.playing = !state.playing;
+    state.play.textContent = state.playing
+      ? (state.english ? 'Pause' : '일시정지')
+      : (state.english ? 'Play' : '자동 재생');
+    if (state.playing && !state.loading) scheduleNext();
+    else if (!state.playing) clearTimeout(state.timer);
+  });
+  panel.querySelector('#walk-preview-close').addEventListener('click', () => stopWalkPreview(true));
+  showFrame(0);
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 function selectGuideTransport(mode, userInitiated = false) {
   const choice = guideTransportRoutes[mode];
   const context = guideTransportContext;
   if (!choice || !context || context.requestId !== routeRequestToken || currentPage !== 'guide') return;
   const { maps, map, start, end, english } = context;
   if (userInitiated) context.userSelectedMode = mode;
+  if (mode !== 'WALK') stopWalkPreview(true);
 
   let summary;
   if (mode === 'WALK') {
@@ -1175,6 +1386,7 @@ function selectGuideTransport(mode, userInitiated = false) {
     routeMapOverlays.push(new maps.Marker({ map, position: endPoint, title: destination.trim() }));
     map.fitBounds(bounds, 36);
     summary = english ? `Walk · about ${choice.minutes} min` : `도보 · 약 ${choice.minutes}분`;
+    if (userInitiated) startWalkPreview(context, choice);
   } else if (mode === 'TAXI') {
     // A separate car-routing entitlement supplies the taxi estimate. Do not fabricate one.
     clearRouteOverlays();
