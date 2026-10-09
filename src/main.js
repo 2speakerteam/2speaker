@@ -1213,6 +1213,7 @@ function stopWalkPreview(hidePanel = false) {
   clearTimeout(state.timer);
   state.playing = false;
   try { state.panorama?.setVisible(false); } catch { /* Viewer may already be detached. */ }
+  state.viewer.replaceChildren();
   if (hidePanel && state.panel.isConnected) state.panel.hidden = true;
   walkPreviewState = null;
 }
@@ -1238,6 +1239,7 @@ function startWalkPreview(context, choice) {
     play: panel.querySelector('#walk-preview-play')
   };
   walkPreviewState = state;
+  state.play.textContent = state.english ? 'Pause' : '일시정지';
   const valid = () => walkPreviewState === state
     && currentPage === 'guide'
     && state.requestId === routeRequestToken
