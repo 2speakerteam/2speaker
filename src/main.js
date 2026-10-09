@@ -89,9 +89,9 @@ function header(title) {
   </header>`;
 }
 
-function conversationHeader(title) {
+function conversationHeader(title, showBrand = true) {
   return `<header class="conversation-header">
-    <div class="conversation-brand-row"><strong>2SPEAKER</strong></div>
+    ${showBrand ? '<div class="conversation-brand-row"><strong>2SPEAKER</strong></div>' : ''}
     <div class="page-header conversation-title">
       <button class="icon-button" data-action="back" aria-label="뒤로 가기">${icon('back', 34)}</button>
       <h1>${title}</h1><span class="header-spacer"></span>
@@ -220,7 +220,7 @@ function textScreen() {
     return `<article class="text-bubble me"><span>나</span><p>${escapeHtml(message)}</p>${pendingNotice}</article>`;
   }).join('');
   return `<main class="screen content-screen conversation-screen text-screen">
-    ${conversationHeader('문자로 대화')}
+    ${conversationHeader('문자로 대화', false)}
     <section class="text-dialogue">
       <article class="text-bubble other"><span>상대방</span><p>Where is the station?</p><strong>역이 어디예요?</strong></article>
       <article class="text-bubble me"><span>나</span><p>이쪽으로 가세요.</p><strong>Go this way.</strong></article>
