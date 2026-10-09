@@ -70,10 +70,24 @@ module.exports = async function handler(req, res) {
           && coordinate(point[1], 33, 40) !== null)
         .map(([longitude, latitude]) => [Number(longitude), Number(latitude)]))
       .filter((path) => path.length > 1);
+    // Keep the instructions already returned by this same routing request.
+    const maneuvers = (payload.features || [])
+      .filter((feature) => feature?.geometry?.type === 'Point'
+        && Array.isArray(feature.geometry.coordinates)
+        && coordinate(feature.geometry.coordinates[0], 124, 133) !== null
+        && coordinate(feature.geometry.coordinates[1], 33, 40) !== null)
+      .map((feature) => ({
+        position: feature.geometry.coordinates.slice(0, 2).map(Number),
+        description: typeof feature.properties?.description === 'string'
+          ? feature.properties.description.slice(0, 300) : '',
+        turnType: Number.isFinite(Number(feature.properties?.turnType))
+          ? Number(feature.properties.turnType) : null
+      }));
     return res.status(200).json({
       totalTime,
       totalDistance: Number.isFinite(totalDistance) && totalDistance >= 0 ? totalDistance : null,
-      paths
+      paths,
+      maneuvers
     });
   } catch {
     return res.status(502).json({ error: '보행 경로 API에 연결하지 못했어요.' });
