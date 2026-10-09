@@ -41,7 +41,7 @@ module.exports = async function handler(req, res) {
         startY,
         endX,
         endY,
-        count: Math.min(3, Math.max(1, Number(body.count) || 3)),
+        count: Math.min(10, Math.max(1, Number(body.count) || 3)),
         lang: body.lang === 1 ? 1 : 0,
         format: 'json'
       })
