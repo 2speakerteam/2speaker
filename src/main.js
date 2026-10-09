@@ -259,7 +259,7 @@ function guideScreen() {
         <button type="button" id="walk-preview-next">${english ? 'Next' : '다음'} →</button>
       </div>
       <div class="walk-preview-progress"><span id="walk-preview-progress-text"></span><div><span id="walk-preview-progress-bar"></span></div></div>
-      <p class="walk-preview-note">${english ? 'Junction-focused preview. Nearby photos are labelled and sections without imagery are skipped automatically. Check the map and local signs.' : '갈림길 전후를 천천히 보여주는 미리보기예요. 가까운 경로 사진은 주변 거리뷰로 표시하고, 사진 없는 구간은 자동으로 건너뛰어요. 지도와 현장 표지도 확인해 주세요.'}</p>
+      <p class="walk-preview-note">${english ? 'Junction-focused preview. Nearby photos are labelled and sections without imagery are skipped automatically. Check the map and local signs.' : '골목 진입·회전 지점 위주로 최대 15장면만 보여드려요. 같은 사진은 건너뛰며, 주변 거리뷰는 정확한 진입 위치와 다를 수 있어요. 지도와 현장 표지도 확인해 주세요.'}</p>
     </section>
     <section class="transport-options" aria-label="${english ? 'Compare transport options' : '교통수단 비교'}">
       ${['BUS', 'SUBWAY', 'TAXI'].map((mode) => {
@@ -1363,6 +1363,42 @@ function walkPreviewCue(frame, english) {
   return [phase, frame.important ? action : '', !english ? frame.description : ''].filter(Boolean).join(' · ');
 }
 
+
+// Compact overview: cover the whole route, prioritising separated junctions.
+// Dense vertices near the start must not consume the entire 15-scene budget.
+function walkPreviewSceneFrames(frames, limit = 15) {
+  if (frames.length <= limit) return frames;
+  const selected = new Set([frames[0], frames.at(-1)]);
+  const turns = frames.filter((frame) => frame.phase === 'turn');
+  const clusters = [];
+  for (const turn of turns) {
+    const group = clusters.at(-1);
+    if (group && turn.meters - group[0].meters < 35) group.push(turn);
+    else clusters.push([turn]);
+  }
+  const count = Math.min(6, clusters.length);
+  for (let i = 0; i < count; i += 1) {
+    const group = clusters[Math.round(i * (clusters.length - 1) / Math.max(1, count - 1))];
+    const turn = group.find((frame) => /골목|입구|출구|진입|교차로|사거리/.test(frame.description)) || group[0];
+    selected.add(turn);
+    const approach = frames.find((frame) => frame.phase === 'approach' && frame.focusMeters === turn.focusMeters);
+    if (approach) selected.add(approach);
+  }
+  // Fill remaining slots in the widest uncovered gaps (not every few metres).
+  while (selected.size < limit) {
+    let best = null, score = -1;
+    for (const frame of frames) {
+      if (selected.has(frame)) continue;
+      const gap = Math.min(...Array.from(selected, (chosen) => Math.abs(chosen.meters - frame.meters)));
+      const value = gap * (frame.important ? 1.2 : 1);
+      if (value > score) { best = frame; score = value; }
+    }
+    if (!best) break;
+    selected.add(best);
+  }
+  return Array.from(selected).sort((a, b) => a.meters - b.meters);
+}
+
 function stopWalkPreview(hidePanel = false) {
   const state = walkPreviewState;
   if (!state) return;
@@ -1371,6 +1407,7 @@ function stopWalkPreview(hidePanel = false) {
   try { state.panorama?.setVisible(false); } catch { /* Viewer may already be detached. */ }
   state.viewer.replaceChildren();
   state.scene.hidden = true;
+  if (state.transportOptions) state.transportOptions.style.display = state.transportDisplay;
   state.visual.classList.remove('walk-preview-open');
   state.visual.classList.remove('walk-preview-map-fallback');
   state.fallbackMarker?.setMap(null);
@@ -1393,7 +1430,7 @@ function startWalkPreview(context, choice) {
   const mapElement = visual?.querySelector('.naver-map');
   const walkButton = visual?.querySelector('.walk-action');
   if (!panel || !viewer || !scene || !visual || !mapElement) return;
-  const frames = walkPreviewFrames(choice.paths, choice.maneuvers);
+  const frames = walkPreviewSceneFrames(walkPreviewFrames(choice.paths, choice.maneuvers));
   if (!frames.length) {
     if (panel) {
       panel.hidden = false;
@@ -1404,6 +1441,11 @@ function startWalkPreview(context, choice) {
     }
     return;
   }
+  const transportOptions = document.querySelector('.transport-options');
+  const transportDisplay = transportOptions?.style.display || '';
+  if (transportOptions) transportOptions.style.display = 'none';
+  panel.querySelector('#walk-preview-progress-text').textContent = context.english ? 'Finding up to 15 key scenes…' : '핵심 장면을 최대 15개까지 찾고 있어요.';
+  panel.querySelector('#walk-preview-progress-bar').style.width = '0%';
   panel.hidden = false;
   scene.hidden = false;
   visual.classList.add('walk-preview-open');
@@ -1412,10 +1454,11 @@ function startWalkPreview(context, choice) {
   walkButton?.setAttribute('aria-expanded', 'true');
   const state = {
     ...context,
-    panel, viewer, scene, visual, mapElement, walkButton,
+    panel, viewer, scene, visual, mapElement, walkButton, transportOptions, transportDisplay,
     close: scene.querySelector('#walk-preview-close'),
     frames, index: 0, playing: true, loading: false,
     timer: null, panorama: null, fallbackMarker: null, skippedScenes: 0, shownScenes: 0,
+    history: [], cursor: -1, finished: false, revisiting: false, duplicateScenes: 0,
     message: panel.querySelector('#walk-preview-message'),
     progress: panel.querySelector('#walk-preview-progress-text'),
     progressBar: panel.querySelector('#walk-preview-progress-bar'),
@@ -1433,16 +1476,50 @@ function startWalkPreview(context, choice) {
   const scheduleNext = () => {
     clearTimeout(state.timer);
     if (!valid() || !state.playing) return;
-    if (state.index === frames.length - 1) {
+    if (state.finished && state.cursor === state.history.length - 1) {
       state.playing = false;
       state.play.textContent = state.english ? 'Replay' : '다시 보기';
       return;
     }
-    state.timer = setTimeout(() => showFrame(state.index + 1), frames[state.index].holdMs);
+    state.timer = setTimeout(advance, frames[state.index].holdMs);
   };
   const updateButtons = () => {
-    state.prev.disabled = state.loading || state.index === 0;
-    state.next.disabled = state.loading || state.index === frames.length - 1;
+    state.prev.disabled = state.loading || (state.cursor <= 0 && state.history[state.cursor]?.index === state.index) || state.cursor < 0;
+    state.next.disabled = state.loading || (state.finished && state.cursor === state.history.length - 1);
+  };
+
+  const updateProgress = () => {
+    const frame = frames[state.index];
+    const sceneNumber = Math.max(0, state.cursor + 1);
+    const count = state.finished ? ' / ' + state.history.length : '';
+    state.progress.textContent = state.english
+      ? 'Scene ' + sceneNumber + count + ' · ' + Math.round(frame.meters) + ' m of ' + Math.round(frame.total) + ' m'
+      : '장면 ' + sceneNumber + count + ' · 전체 ' + Math.round(frame.total) + 'm 중 ' + Math.round(frame.meters) + 'm';
+    state.progressBar.style.width = Math.min(100, 100 * frame.meters / frame.total) + '%';
+  };
+  const finishScan = () => {
+    state.finished = true;
+    state.playing = false;
+    state.loading = false;
+    state.play.textContent = state.english ? 'Replay' : '다시 보기';
+    if (state.history.length) {
+      // Retain the last real photograph; never call a missing tail "arrival".
+      state.cursor = state.history.length - 1;
+      showFrame(state.history[state.cursor].index, true);
+    } else {
+      state.message.textContent = state.english
+        ? 'No usable street images were found along this route. Please use the map.'
+        : '이 경로에서 사용할 수 있는 거리뷰를 찾지 못했어요. 지도를 확인해 주세요.';
+      updateButtons();
+    }
+  };
+  const advance = () => {
+    if (!valid()) return;
+    if (state.cursor + 1 < state.history.length) {
+      state.cursor += 1;
+      showFrame(state.history[state.cursor].index, true);
+    } else if (state.index < frames.length - 1) showFrame(state.index + 1);
+    else finishScan();
   };
   const unavailable = (message) => {
     clearTimeout(state.timer);
@@ -1463,7 +1540,7 @@ function startWalkPreview(context, choice) {
     // Missing imagery must not strand playback on a map at the first campus/alley point.
     // Keep manual inspection paused, but auto-play scans forward to the next available view.
     state.skippedScenes += 1;
-    if (state.playing && state.index < frames.length - 1) {
+    if (state.playing && !state.revisiting && state.index < frames.length - 1) {
       let nextIndex = state.index + 1;
       const focus = frames[state.index].focusMeters;
       if (focus !== null) {
@@ -1472,30 +1549,28 @@ function startWalkPreview(context, choice) {
       state.message.textContent += state.english
         ? ' · Looking for the next available street image…' : ' · 다음 거리뷰가 있는 구간으로 이동 중이에요.';
       state.timer = setTimeout(() => showFrame(nextIndex), 350);
-    } else if (state.playing) {
+    } else if (!state.revisiting && state.index === frames.length - 1) {
+      finishScan();
+    } else if (state.revisiting) {
       state.playing = false;
-      state.play.textContent = state.english ? 'Replay' : '다시 보기';
-      if (!state.shownScenes) state.message.textContent = state.english
-        ? 'No usable street images were found along this route. Please use the map.'
-        : '이 경로에서 사용할 수 있는 거리뷰를 찾지 못했어요. 지도를 확인해 주세요.';
+      state.play.textContent = state.english ? 'Play' : '자동 재생';
     }
   };
-  const showFrame = (index) => {
+  const showFrame = (index, revisiting = false) => {
     if (!valid()) return;
     clearTimeout(state.timer);
     state.index = Math.max(0, Math.min(frames.length - 1, index));
+    state.revisiting = revisiting;
     state.loading = true;
     state.visual.classList.remove('walk-preview-map-fallback');
     state.fallbackMarker?.setMap(null);
     const frame = frames[state.index];
     updateButtons();
-    state.progress.textContent = state.english
-      ? `${state.index + 1} / ${frames.length} · ${Math.round(frame.meters)} m of ${Math.round(frame.total)} m`
-      : `${state.index + 1} / ${frames.length} · 전체 ${Math.round(frame.total)}m 중 ${Math.round(frame.meters)}m`;
-    state.progressBar.style.width = `${100 * state.index / (frames.length - 1)}%`;
     state.message.textContent = walkPreviewCue(frame, state.english) + (state.english ? ' · Loading street view...' : ' · 거리뷰를 불러오는 중이에요.');
     state.viewer.style.visibility = 'hidden';
-    const position = new state.maps.LatLng(frame.position[1], frame.position[0]);
+    const saved = revisiting ? state.history[state.cursor] : null;
+    const target = saved?.capturePoint || frame.position;
+    const position = new state.maps.LatLng(target[1], target[0]);
     if (!state.maps.Panorama) {
       unavailable(state.english ? 'Street view is unavailable here. Follow the map route.' : '이 구간은 거리뷰를 볼 수 없어요. 지도 경로를 확인해 주세요.');
       return;
@@ -1511,7 +1586,9 @@ function startWalkPreview(context, choice) {
     try {
       if (state.panorama) {
         state.panorama.setVisible(true);
-        state.panorama.setPosition(position);
+        if (saved?.panoId && state.panorama.getPanoId?.() === saved.panoId) state.onPanoramaReady();
+        else if (saved?.panoId && state.panorama.setPanoId) state.panorama.setPanoId(saved.panoId);
+        else state.panorama.setPosition(position);
       } else {
         state.panorama = new state.maps.Panorama(viewer, {
           position, pov: { pan: (walkPreviewBearing(frame.position, frame.ahead) + 180) % 360 - 180, tilt: 0, fov: 75 },
@@ -1536,6 +1613,27 @@ function startWalkPreview(context, choice) {
             unavailable(state.english ? 'No close street image for this route point. Check the map.' : '이 지점과 가까운 거리뷰가 없어요. 다른 길 사진 대신 지도를 확인해 주세요.');
             return;
           }
+
+          const location = state.panorama.getLocation();
+          const panoId = state.panorama.getPanoId?.() || location?.panoId || null;
+          // The same provider photograph can be returned for many nearby route points.
+          // Count physical scenes, not queries or changes to the camera angle.
+          const duplicate = state.history.some((entry) =>
+            (panoId && entry.panoId === panoId)
+            || (capturePoint && walkPreviewDistance(entry.capturePoint, capturePoint) < 2));
+          if (!state.revisiting && duplicate) {
+            state.duplicateScenes += 1;
+            // Keep navigation locked during the seek even when manually paused.
+            state.message.textContent = state.english
+              ? 'Skipping the repeated photograph; looking for a different scene…'
+              : '같은 사진은 건너뛰고 다음 장면을 찾고 있어요.';
+            state.timer = setTimeout(() => {
+              if (!valid()) return;
+              if (state.index < frames.length - 1) showFrame(state.index + 1);
+              else finishScan();
+            }, 80);
+            return;
+          }
           try {
             // Route-relative heading avoids looking backwards when the photo snaps past the target.
             state.panorama.setPov({
@@ -1545,10 +1643,16 @@ function startWalkPreview(context, choice) {
             // If camera control is unavailable, keep the panorama navigable by hand.
           }
           state.loading = false;
+          if (!state.revisiting) {
+            state.history.push({ index: state.index, panoId, capturePoint });
+            state.cursor = state.history.length - 1;
+            state.shownScenes = state.history.length;
+          }
+          if (state.index === frames.length - 1) state.finished = true;
+          updateProgress();
           updateButtons();
           state.viewer.style.visibility = 'visible';
           const photoDate = state.panorama.getLocation()?.photodate;
-          state.shownScenes += 1;
           const cue = photoContext.nearby
             ? (state.english ? `Nearby street view · about ${Math.round(photoContext.offset)} m from the preview point; check the map for the turn`
               : `주변 거리뷰 · 안내 지점에서 약 ${Math.round(photoContext.offset)}m 떨어진 촬영 위치예요. 꺾는 위치는 지도를 함께 확인해 주세요.`)
@@ -1558,8 +1662,12 @@ function startWalkPreview(context, choice) {
           state.message.textContent = cue + skipped
             + (state.english ? ` · Street image${photoDate ? ` from ${photoDate}` : ''}`
               : ` · 거리뷰${photoDate ? ` 촬영 ${photoDate}` : ''}`);
+          if (state.finished && state.cursor === state.history.length - 1) {
+            state.message.textContent += state.english ? ' · Last available scene; check the map for any remaining section.' : ' · 마지막 확인 가능한 장면이에요. 남은 구간은 지도를 확인해 주세요.';
+          }
           scheduleNext();
         };
+        state.onPanoramaReady = onPanoramaReady;
         state.maps.Event.addListener(instance, 'pano_changed', onPanoramaReady);
         state.maps.Event.addListener(instance, 'init', onPanoramaReady);
       }
@@ -1568,22 +1676,36 @@ function startWalkPreview(context, choice) {
     }
   };
   state.prev.onclick = () => {
-    if (state.loading || state.index === 0) return;
+    if (state.loading || state.cursor < 0) return;
+    const previous = state.history[state.cursor]?.index === state.index ? state.cursor - 1 : state.cursor;
+    if (previous < 0) return;
     state.playing = false;
     clearTimeout(state.timer);
     state.play.textContent = state.english ? 'Play' : '자동 재생';
-    showFrame(state.index - 1);
+    state.cursor = previous;
+    showFrame(state.history[state.cursor].index, true);
   };
   state.next.onclick = () => {
-    if (state.loading || state.index === frames.length - 1) return;
+    if (state.loading || state.next.disabled) return;
     state.playing = false;
     clearTimeout(state.timer);
     state.play.textContent = state.english ? 'Play' : '자동 재생';
-    showFrame(state.index + 1);
+    advance();
   };
   state.play.onclick = () => {
     if (!valid()) return;
-    if (state.index === frames.length - 1 && !state.playing && !state.loading) showFrame(0);
+    if (state.finished && state.cursor === state.history.length - 1 && !state.playing && !state.loading) {
+      state.playing = true;
+      state.play.textContent = state.english ? 'Pause' : '일시정지';
+      if (state.history.length) {
+        state.cursor = 0;
+        showFrame(state.history[0].index, true);
+      } else {
+        state.finished = false;
+        showFrame(0);
+      }
+      return;
+    }
     state.playing = !state.playing;
     state.play.textContent = state.playing
       ? (state.english ? 'Pause' : '일시정지')

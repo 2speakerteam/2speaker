@@ -45,7 +45,11 @@ assert(walkPreviewCue(supplied.find(f=>f.phase==='turn'),false).includes('골목
 assert(!/[가-힣]/.test(walkPreviewCue(supplied.find(f=>f.phase==='turn'),true)),'English cue remains English');
 const many=[A];for(let i=1;i<=40;i++){const p=many.at(-1);many.push(i%2?[p[0],p[1]+.0003]:[p[0]+.0003,p[1]])}
 assert(walkPreviewFrames([many]).filter(f=>f.phase==='turn').length===39,'Long route keeps late turns');
-return {tests:20,exampleFrames:frames.length,turns:key.length};
+const compact=walkPreviewSceneFrames(walkPreviewFrames([many]));
+assert(compact.length<=15&&compact[0].phase==='start'&&compact.at(-1).phase==='arrival','Compact preview spans the whole route in at most 15 scenes');
+assert(compact.filter(f=>f.important).length>=10,'Compact preview prioritises junctions');
+assert(walkPreviewSceneFrames(straight).length===straight.length,'Short route not padded with extra photos');
+return {tests:23,exampleFrames:frames.length,turns:key.length};
 `;
 const harness = String.raw`
 const assert=(v,msg)=>{if(!v)throw Error(msg);};
@@ -64,7 +68,8 @@ const close=element(),arrow=element(),prev=element(),next=element(),play=element
 visual.children={'.naver-map':mapElement,'.walk-action':walkButton};
 panel.children={'#walk-preview-prev':prev,'#walk-preview-next':next,'#walk-preview-play':play,'#walk-preview-message':message,'#walk-preview-progress-text':progress,'#walk-preview-progress-bar':bar};
 scene.children={'#walk-preview-close':close,'#walk-preview-arrow':arrow};
-const nodes={'#walk-preview':panel,'#walk-preview-panorama':viewer,'#walk-preview-scene':scene};
+const transportOptions=element();transportOptions.hidden=false;transportOptions.style.display='grid';
+const nodes={'.transport-options':transportOptions,'#walk-preview':panel,'#walk-preview-panorama':viewer,'#walk-preview-scene':scene};
 const document={querySelector:q=>nodes[q]};
 const timers=new Map();let timerId=0;
 const setTimeout=(f,delay)=>{f.delay=delay;timers.set(++timerId,f);return timerId},clearTimeout=id=>timers.delete(id);
@@ -73,6 +78,8 @@ class LatLng{constructor(lat,lng){this.latitude=lat;this.longitude=lng}lat(){ret
 class Panorama{
   constructor(v,options){this.options=options;this.position=options.position;this.visible=true;this.events={};}
   setVisible(v){this.visible=v}setPosition(p){this.position=p}
+  getPanoId(){return this.position.lng()+','+this.position.lat()}
+  setPanoId(id){const [lng,lat]=id.split(',').map(Number);this.position=new LatLng(lat,lng)}
   getLocation(){return {coord:this.position,photodate:'2026-02'}}
   getProjection(){return {fromCoordToPov:()=>({pan:15})}}setPov(pov){this.pov=pov}
 }
@@ -86,6 +93,7 @@ startWalkPreview(context,choice);
 assert(!scene.hidden&&!panel.hidden&&visual.classList.contains('walk-preview-open'),'Overlay opens in map slot');
 assert(mapElement.inert&&mapElement.attrs['aria-hidden']==='true','Background map is inaccessible');
 assert(walkButton.attrs['aria-expanded']==='true','Expanded state');
+assert(transportOptions.style.display==='none','Transport cards hidden while walking');
 const first=walkPreviewState;
 first.panorama.events.pano_status('OK');
 assert(first.loading && viewer.style.visibility==='hidden','Successful lookup waits for completed panorama');
@@ -98,6 +106,7 @@ next.onclick();assert(walkPreviewState.index===1,'Next advances exactly once');
 walkPreviewState.panorama.events.pano_changed();prev.onclick();assert(walkPreviewState.index===0,'Previous goes back');
 close.onclick();
 assert(scene.hidden&&panel.hidden&&!mapElement.inert&&!visual.classList.contains('walk-preview-open'),'Map restored');
+assert(transportOptions.style.display==='grid','Transport cards restored on map return');
 assert(!walkPreviewState&&timers.size===0&&!prev.onclick&&!visual.events.keydown&&!panel.events.keydown,'Timers and handlers released');
 const oldMessage=message.textContent;first.panorama.events.pano_changed();assert(message.textContent===oldMessage,'Stale panorama ignored');
 startWalkPreview(context,choice);startWalkPreview(context,choice);
@@ -188,7 +197,58 @@ while(live.playing&&scans++<20){live.panorama.events.pano_status('ZERO_RESULTS')
 assert(!live.playing&&scans<20&&timers.size===0&&message.textContent.includes('찾지 못했어요'),'All-missing route terminates with honest explanation');
 stopWalkPreview(true);
 
-return 'PASS: lifecycle, 75-degree view, loading lock, pause/load timeout, late callback isolation, longer turn dwell, missing/remote decision imagery';
+
+// Several target coordinates resolve to the same physical photograph.
+const repeatChoice={paths:[[[127,37],[127,37.002]]]};
+startWalkPreview(context,repeatChoice);live=walkPreviewState;
+const originalGetLocation=live.panorama.getLocation;
+live.panorama.events.pano_changed();
+assert(live.history.length===1&&progress.textContent.includes('장면 1'),'Count actual displayed scenes');
+next.onclick();
+live.panorama.getPanoId=()=> '127,37';
+live.panorama.getLocation=()=>({coord:new LatLng(37,127),photodate:'2026-02'});
+// Use a nearby frame so the same photograph passes the coverage check.
+live.frames[live.index].position=[127,37.0001];
+live.panorama.events.pano_changed();
+assert(live.loading&&live.history.length===1&&live.duplicateScenes===1,'Manual Next skips duplicates instead of holding the same image');
+flushTimer();
+live.panorama.getPanoId=Panorama.prototype.getPanoId;
+live.panorama.getLocation=originalGetLocation;
+live.panorama.events.pano_changed();
+assert(live.history.length===2&&live.cursor===1,'Next distinct photograph counted once');
+const secondPhoto=live.panorama.getPanoId();
+prev.onclick();live.panorama.events.pano_changed();
+assert(live.cursor===0&&live.panorama.getPanoId()==='127,37','Previous reopens the previous actual photograph');
+next.onclick();live.panorama.events.pano_changed();
+assert(live.cursor===1&&live.panorama.getPanoId()===secondPhoto&&live.history.length===2,'Forward history does not duplicate or query intervening frames');
+stopWalkPreview(true);
+
+// A route with one repeated photograph terminates without loops or a blank final screen.
+startWalkPreview(context,{paths:[[[127,37],[127,37.001]]]});live=walkPreviewState;
+live.panorama.getPanoId=()=> '127,37.0005';
+live.panorama.getLocation=()=>({coord:new LatLng(37.0005,127),photodate:'2026-02'});
+live.panorama.events.pano_changed();
+let duplicateScans=0;
+while(live.playing&&duplicateScans++<20) {
+  flushTimer();
+  if(live.loading) live.panorama.events.pano_changed();
+}
+assert(!live.playing&&live.finished&&duplicateScans<20,'All-duplicate tail terminates');
+assert(live.history.length===1&&viewer.style.visibility==='visible'&&next.disabled,'Last real photograph retained, no extra scenes');
+assert(progress.textContent.includes('장면 1 / 1'),'Final count reflects unique photographs only');
+play.onclick();
+assert(live.history.length===1&&!live.playing,'One-scene replay does not get stuck or duplicate');
+close.onclick();
+assert(transportOptions.style.display==='grid'&&timers.size===0,'Close after duplicate scan restores cards and cancels work');
+
+// Even missing coverage hides cards until explicitly returning to the map.
+startWalkPreview(context,repeatChoice);live=walkPreviewState;
+live.panorama.events.pano_status('ERROR');
+assert(transportOptions.style.display==='none','Map fallback during walking does not expose transport cards');
+stopWalkPreview(true);
+assert(transportOptions.style.display==='grid','Fallback close restores card layout');
+
+return 'PASS: unique scene history, duplicate skipping, compact 15-scene preview, transport hide/restore; lifecycle, 75-degree view, loading lock, pause/load timeout, late callback isolation, longer turn dwell, missing/remote decision imagery';
 `;
 console.log(new Function(pure + geometryTests)());
 console.log(new Function(harness + preview + lifecycleTests)());
