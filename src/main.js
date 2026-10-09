@@ -10,9 +10,12 @@ let voiceSearchMessage = '';
 let activeDestinationRecognition = null;
 let routeEntryMode = 'dual';
 const naverMapClientId = window.__2SPEAKER_CONFIG__?.naverMapClientId?.trim() ?? '';
+const googleMapsApiKey = window.__2SPEAKER_CONFIG__?.googleMapsApiKey?.trim() ?? '';
 let naverMapsLoadPromise = null;
+let googleMapsLoadPromise = null;
 let routeMap = null;
 let routeMapContainer = null;
+let routeMapProvider = null;
 let routeMapOverlays = [];
 let routeRequestToken = 0;
 const sentTextMessages = [];
@@ -555,28 +558,75 @@ function loadNaverMaps() {
   return naverMapsLoadPromise;
 }
 
-function initializeNaverMap() {
-  const container = document.querySelector('#naver-map');
-  const scene = container?.closest('.route-scene');
-  if (!container || !scene) return;
+function loadGoogleMaps() {
+  if (window.google?.maps?.importLibrary) return Promise.resolve(window.google.maps);
+  if (!googleMapsApiKey) return Promise.reject(new Error('GOOGLE_MAPS_API_KEY is not configured.'));
+  if (googleMapsLoadPromise) return googleMapsLoadPromise;
 
-  const failMap = () => {
-    if (document.querySelector('#naver-map') !== container) return;
-    scene.classList.add('map-failed');
-  };
+  const loadPromise = new Promise((resolve, reject) => {
+    const callbackName = `__2speakerGoogleMapsLoaded_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const script = document.createElement('script');
+    let timeoutId;
+    const cleanup = (removeScript = false) => {
+      clearTimeout(timeoutId);
+      delete window[callbackName];
+      if (removeScript) script.remove();
+    };
 
-  if (!naverMapClientId) {
-    failMap();
-    return;
-  }
+    window[callbackName] = () => {
+      const maps = window.google?.maps;
+      if (!maps?.importLibrary) {
+        cleanup(true);
+        reject(new Error('Google Maps loaded without its JavaScript API.'));
+        return;
+      }
+      cleanup();
+      resolve(maps);
+    };
 
-  loadNaverMaps().then((maps) => {
-    if (currentPage !== 'guide' || document.querySelector('#naver-map') !== container) return;
-    const center = new maps.LatLng(37.5665, 126.978);
+    const params = new URLSearchParams({
+      key: googleMapsApiKey,
+      v: 'weekly',
+      loading: 'async',
+      language: 'ko',
+      region: 'KR',
+      callback: callbackName
+    });
+    script.src = `https://maps.googleapis.com/maps/api/js?${params}`;
+    script.async = true;
+    script.onerror = () => {
+      cleanup(true);
+      reject(new Error('Google Maps could not be loaded.'));
+    };
+    timeoutId = setTimeout(() => {
+      cleanup(true);
+      reject(new Error('Google Maps took too long to load.'));
+    }, 20000);
+    document.head.append(script);
+  });
+
+  googleMapsLoadPromise = loadPromise.catch((error) => {
+    googleMapsLoadPromise = null;
+    throw error;
+  });
+  return googleMapsLoadPromise;
+}
+
+function isKoreaCoordinate(point) {
+  return Number(point?.latitude) >= 33
+    && Number(point?.latitude) <= 39.5
+    && Number(point?.longitude) >= 124
+    && Number(point?.longitude) <= 132.5;
+}
+
+function createNaverMap(maps, container, scene, center) {
+  if (routeMapProvider !== 'naver' || routeMapContainer !== container || !routeMap) {
+    clearRouteOverlays();
+    container.replaceChildren();
     routeMap = new maps.Map(container, {
-      center,
+      center: new maps.LatLng(center.latitude, center.longitude),
       zoom: 15,
-      minZoom: 7,
+      minZoom: 3,
       maxZoom: 20,
       mapTypeControl: false,
       zoomControl: true,
@@ -585,12 +635,67 @@ function initializeNaverMap() {
       logoControl: true,
       mapDataControl: false
     });
-    routeMapContainer = container;
-    scene.classList.add('map-ready');
-    requestTransitRoute(maps, routeMap, container);
-  }).catch(() => {
-    failMap();
+  } else {
+    routeMap.setCenter(new maps.LatLng(center.latitude, center.longitude));
+  }
+  routeMapContainer = container;
+  routeMapProvider = 'naver';
+  container.setAttribute('aria-label', '네이버 지도');
+  scene.classList.remove('map-failed');
+  scene.classList.add('map-ready');
+  return routeMap;
+}
+
+function createGoogleMap(maps, container, scene, center) {
+  clearRouteOverlays();
+  container.replaceChildren();
+  routeMap = new maps.Map(container, {
+    center: { lat: center.latitude, lng: center.longitude },
+    zoom: 14,
+    minZoom: 2,
+    maxZoom: 21,
+    mapTypeControl: false,
+    fullscreenControl: false,
+    streetViewControl: false,
+    zoomControl: true
   });
+  routeMapContainer = container;
+  routeMapProvider = 'google';
+  container.setAttribute('aria-label', 'Google 지도');
+  scene.classList.remove('map-failed');
+  scene.classList.add('map-ready');
+  return routeMap;
+}
+
+function initializeNaverMap() {
+  const container = document.querySelector('#naver-map');
+  const scene = container?.closest('.route-scene');
+  if (!container || !scene) return;
+  if (routeMapContainer === container && routeMap) return;
+
+  clearRouteOverlays();
+  routeMap = null;
+  routeMapProvider = null;
+  routeMapContainer = container;
+  const requestId = ++routeRequestToken;
+
+  const failMap = () => {
+    if (!isCurrent()) return;
+    scene.classList.add('map-failed');
+  };
+
+  const isCurrent = () => requestId === routeRequestToken
+    && currentPage === 'guide'
+    && routeMapContainer === container
+    && document.querySelector('#naver-map') === container;
+
+  (async () => {
+    let naverMaps = null;
+    if (naverMapClientId) naverMaps = await loadNaverMaps().catch(() => null);
+    if (!isCurrent()) return;
+    if (naverMaps) createNaverMap(naverMaps, container, scene, { latitude: 37.5665, longitude: 126.978 });
+    requestGuideRoute(naverMaps, container, scene, requestId).catch(failMap);
+  })().catch(failMap);
 }
 
 function geocodeDestination(maps, query) {
@@ -682,8 +787,107 @@ function drawTransitItinerary(maps, map, itinerary, start, end) {
   map.fitBounds(bounds, 36);
 }
 
-async function requestTransitRoute(maps, map, container) {
-  const requestId = ++routeRequestToken;
+async function searchGoogleDestination(maps, query) {
+  let places = [];
+  try {
+    const { Place } = await maps.importLibrary('places');
+    ({ places = [] } = await Place.searchByText({
+      textQuery: query,
+      fields: ['location'],
+      maxResultCount: 1
+    }));
+  } catch {
+    // Address geocoding below remains available if the Places search fails.
+  }
+  const place = places[0];
+  const placeLocation = place?.location;
+  if (placeLocation) {
+    const result = {
+      latitude: Number(placeLocation.lat()),
+      longitude: Number(placeLocation.lng()),
+      country: ''
+    };
+    if (Number.isFinite(result.latitude) && Number.isFinite(result.longitude)) return result;
+  }
+
+  const { Geocoder } = await maps.importLibrary('geocoding');
+  const response = await new Geocoder().geocode({ address: query });
+  const result = response.results?.[0];
+  const location = result?.geometry?.location;
+  if (!location) throw new Error('목적지 위치를 찾지 못했어요. 주소나 장소명을 확인해 주세요.');
+  return {
+    latitude: Number(location.lat()),
+    longitude: Number(location.lng()),
+    country: result.address_components?.find((component) => component.types?.includes('country'))?.short_name || ''
+  };
+}
+
+async function requestNaverTransitRoute(maps, map, start, end, isCurrent, instruction) {
+  const response = await fetch('/api/transit/routes', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      startX: start.longitude,
+      startY: start.latitude,
+      endX: end.longitude,
+      endY: end.latitude,
+      count: 3,
+      lang: 0,
+      format: 'json'
+    })
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || '대중교통 경로를 불러오지 못했어요.');
+  const itinerary = payload?.metaData?.plan?.itineraries?.[0];
+  if (!itinerary) throw new Error('이 출발지와 목적지 사이의 경로를 찾지 못했어요.');
+  if (!isCurrent()) return;
+
+  drawTransitItinerary(maps, map, itinerary, start, end);
+  const modes = [...new Set((itinerary.legs ?? []).map((leg) => leg.mode).filter((mode) => mode !== 'WALK'))]
+    .map((mode) => ({ BUS: '버스', SUBWAY: '지하철', TRAIN: '기차', EXPRESSBUS: '시외버스' }[mode] || mode));
+  const minutes = Math.max(1, Math.round(Number(itinerary.totalTime || 0) / 60));
+  const transferCount = Number(itinerary.transferCount || 0);
+  if (instruction) instruction.textContent = `${modes.join('·') || '도보'} · 약 ${minutes}분 · 환승 ${transferCount}회`;
+}
+
+async function requestGoogleTransitRoute(maps, map, start, end, isCurrent, instruction) {
+  const { Route } = await maps.importLibrary('routes');
+  const { routes = [] } = await Route.computeRoutes({
+    origin: { lat: start.latitude, lng: start.longitude },
+    destination: { lat: end.latitude, lng: end.longitude },
+    travelMode: 'TRANSIT',
+    departureTime: new Date(),
+    fields: ['path', 'legs', 'durationMillis']
+  });
+  const route = routes[0];
+  if (!route) throw new Error('이 출발지와 목적지 사이의 대중교통 경로를 찾지 못했어요.');
+  if (!isCurrent()) return;
+
+  clearRouteOverlays();
+  const polylines = route.createPolylines({
+    polylineOptions: { strokeColor: '#20d5ff', strokeOpacity: .92, strokeWeight: 5, zIndex: 10 }
+  });
+  polylines.forEach((polyline) => {
+    polyline.setMap(map);
+    routeMapOverlays.push(polyline);
+  });
+  const startPosition = { lat: start.latitude, lng: start.longitude };
+  const endPosition = { lat: end.latitude, lng: end.longitude };
+  routeMapOverlays.push(new maps.Marker({ map, position: startPosition, title: '출발지' }));
+  routeMapOverlays.push(new maps.Marker({ map, position: endPosition, title: destination.trim() }));
+  const bounds = route.viewport || new maps.LatLngBounds();
+  if (!route.viewport) {
+    bounds.extend(startPosition);
+    bounds.extend(endPosition);
+  }
+  map.fitBounds(bounds, 36);
+
+  const durationMillis = Number(route.durationMillis || route.staticDurationMillis || 0);
+  const minutes = Math.max(1, Math.round(durationMillis / 60000));
+  if (instruction) instruction.textContent = `대중교통 · 약 ${minutes}분`;
+}
+
+async function requestGuideRoute(naverMaps, container, scene, requestId) {
   const instruction = document.querySelector('.route-instruction span');
   const isCurrent = () => requestId === routeRequestToken
     && currentPage === 'guide'
@@ -693,44 +897,45 @@ async function requestTransitRoute(maps, map, container) {
   if (instruction) instruction.textContent = '현재 위치와 목적지를 확인하고 있어요.';
 
   try {
-    const [start, end] = await Promise.all([
-      getCurrentPosition(),
-      geocodeDestination(maps, destination.trim() || '경복궁')
-    ]);
-    if (!isCurrent()) return;
+    const query = destination.trim() || '경복궁';
+    let end = null;
 
-    const response = await fetch('/api/transit/routes', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        startX: start.longitude,
-        startY: start.latitude,
-        endX: end.longitude,
-        endY: end.latitude,
-        count: 3,
-        lang: 0,
-        format: 'json'
-      })
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      throw new Error(payload.error || '대중교통 경로를 불러오지 못했어요.');
+    if (naverMaps) {
+      end = await geocodeDestination(naverMaps, query).catch(() => null);
+      if (!isCurrent()) return;
     }
-    const itineraries = payload?.metaData?.plan?.itineraries ?? [];
-    const itinerary = itineraries[0];
-    if (!itinerary) throw new Error('이 출발지와 목적지 사이의 경로를 찾지 못했어요.');
+
+    if (end && isKoreaCoordinate(end)) {
+      const map = createNaverMap(naverMaps, container, scene, end);
+      const start = await getCurrentPosition();
+      if (!isCurrent()) return;
+      await requestNaverTransitRoute(naverMaps, map, start, end, isCurrent, instruction);
+      return;
+    }
+
+    const googleMaps = await loadGoogleMaps();
+    const googleDestination = await searchGoogleDestination(googleMaps, query);
     if (!isCurrent()) return;
 
-    drawTransitItinerary(maps, map, itinerary, start, end);
-    const modes = [...new Set((itinerary.legs ?? []).map((leg) => leg.mode).filter((mode) => mode !== 'WALK'))]
-      .map((mode) => ({ BUS: '버스', SUBWAY: '지하철', TRAIN: '기차', EXPRESSBUS: '시외버스' }[mode] || mode));
-    const minutes = Math.max(1, Math.round(Number(itinerary.totalTime || 0) / 60));
-    const transferCount = Number(itinerary.transferCount || 0);
-    if (instruction) instruction.textContent = `${modes.join('·') || '도보'} · 약 ${minutes}분 · 환승 ${transferCount}회`;
+    const isKorea = googleDestination.country === 'KR' || isKoreaCoordinate(googleDestination);
+    if (isKorea) {
+      if (!naverMaps) throw new Error('국내 지도에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.');
+      const map = createNaverMap(naverMaps, container, scene, googleDestination);
+      const start = await getCurrentPosition();
+      if (!isCurrent()) return;
+      await requestNaverTransitRoute(naverMaps, map, start, googleDestination, isCurrent, instruction);
+      return;
+    }
+
+    const map = createGoogleMap(googleMaps, container, scene, googleDestination);
+    const start = await getCurrentPosition();
+    if (!isCurrent()) return;
+    await requestGoogleTransitRoute(googleMaps, map, start, googleDestination, isCurrent, instruction);
   } catch (error) {
     if (!isCurrent()) return;
     clearRouteOverlays();
     if (instruction) instruction.textContent = error instanceof Error ? error.message : '길찾기를 불러오지 못했어요.';
+    if (!routeMap) scene.classList.add('map-failed');
   }
 }
 
