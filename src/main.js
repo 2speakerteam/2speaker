@@ -1312,7 +1312,7 @@ function startWalkPreview(context, choice) {
         state.panorama.setPosition(position);
       } else {
         state.panorama = new state.maps.Panorama(viewer, {
-          position, zoomControl: true, aroundControl: true, flightSpot: false
+          position, zoomControl: true, aroundControl: false, flightSpot: false
         });
         state.maps.Event.addListener(state.panorama, 'pano_status', (status) => {
           if (!valid() || !state.loading) return;
