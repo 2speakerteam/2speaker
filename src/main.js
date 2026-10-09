@@ -244,7 +244,6 @@ function guideScreen() {
         <div class="walk-preview-scene" id="walk-preview-scene" role="region" aria-label="${english ? 'Walking street view' : '도보 로드뷰'}" hidden>
           <div class="walk-preview-panorama" id="walk-preview-panorama" aria-label="${english ? 'Street view along the walking route' : '도보 경로의 실제 거리뷰'}"></div>
           <button class="walk-preview-map-button" type="button" id="walk-preview-close">${english ? 'Show map' : '지도보기'}</button>
-          <div class="walk-preview-arrow" id="walk-preview-arrow" aria-hidden="true" hidden><span>↑</span><small>${english ? 'Next direction' : '다음 방향'}</small></div>
         </div>
       </div>
       <button class="route-instruction walk-action" type="button" aria-label="${english ? 'Show walking street view' : '도보 로드뷰 보기'}" aria-expanded="false" aria-controls="walk-preview-scene walk-preview" disabled>${icon('walk', 28)}<span>${loading}</span></button>
@@ -1263,7 +1262,6 @@ function startWalkPreview(context, choice) {
     close: scene.querySelector('#walk-preview-close'),
     frames, index: 0, playing: true, loading: false,
     timer: null, panorama: null,
-    arrow: scene.querySelector('#walk-preview-arrow'),
     message: panel.querySelector('#walk-preview-message'),
     progress: panel.querySelector('#walk-preview-progress-text'),
     progressBar: panel.querySelector('#walk-preview-progress-bar'),
@@ -1301,7 +1299,6 @@ function startWalkPreview(context, choice) {
     state.progressBar.style.width = `${100 * state.index / (frames.length - 1)}%`;
     state.message.textContent = state.english ? 'Loading street view...' : '거리뷰를 불러오는 중이에요.';
     state.viewer.style.visibility = 'hidden';
-    state.arrow.hidden = true;
     const position = new state.maps.LatLng(frame.position[1], frame.position[0]);
     if (!state.maps.Panorama) {
       state.loading = false;
@@ -1333,23 +1330,20 @@ function startWalkPreview(context, choice) {
             scheduleNext();
             return;
           }
-          let pointedAlongRoute = false;
           try {
             const ahead = new state.maps.LatLng(frameNow.ahead[1], frameNow.ahead[0]);
             const pov = state.panorama.getProjection()?.fromCoordToPov(ahead);
             if (pov) {
               state.panorama.setPov({ pan: pov.pan, tilt: 0, fov: 90 });
-              pointedAlongRoute = true;
             }
           } catch {
             // If projection is unavailable, keep the panorama navigable by hand.
           }
           state.viewer.style.visibility = 'visible';
-          state.arrow.hidden = !pointedAlongRoute || state.index === frames.length - 1;
           const photoDate = state.panorama.getLocation()?.photodate;
           state.message.textContent = state.english
-            ? `Route direction · street image${photoDate ? ` from ${photoDate}` : ''}`
-            : `화살표 방향으로 이동 · 거리뷰${photoDate ? ` 촬영 ${photoDate}` : ''}`;
+            ? `Walking route preview · street image${photoDate ? ` from ${photoDate}` : ''}`
+            : `도보 경로 미리보기 · 거리뷰${photoDate ? ` 촬영 ${photoDate}` : ''}`;
           scheduleNext();
         });
       }
