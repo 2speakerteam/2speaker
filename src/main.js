@@ -286,7 +286,6 @@ function guideScreen() {
         <input class="walk-preview-seek" id="walk-preview-seek" type="range" min="0" max="0" step="1" value="0" disabled aria-label="${english ? 'Seek anywhere along the route' : '전체 경로 앞뒤 이동'}" aria-describedby="walk-preview-seek-help">
         <small id="walk-preview-seek-help">${english ? 'Drag forward or backward anywhere · far left returns to the start' : '앞뒤 원하는 구간으로 이동 · 맨 왼쪽은 처음으로'}</small>
       </div>
-      <p class="walk-preview-note">${english ? 'Closely sampled street views play quickly, slowing at turns. These are real photographs, not continuous video; missing imagery can leave gaps.' : '촘촘히 찾은 거리뷰를 빠르게 잇고, 꺾는 곳은 잠시 천천히 보여드려요. 실제 연속 영상은 아니며 촬영되지 않은 구간은 끊길 수 있어요.'}</p>
     </section>
     <section class="transport-options" aria-label="${english ? 'Compare transport options' : '교통수단 비교'}">
       ${['BUS', 'SUBWAY', 'TAXI'].map((mode) => {
@@ -1718,8 +1717,12 @@ function startWalkPreview(context, choice) {
     state.timer = setTimeout(advance, frames[state.index].holdMs);
   };
   const updateButtons = () => {
-    state.prev.disabled = state.scrubbing || state.loading || (state.freeSeek ? state.index === 0 : (state.cursor <= 0 && state.history[state.cursor]?.index === state.index) || state.cursor < 0);
-    state.next.disabled = state.scrubbing || state.loading || (state.finished && (state.freeSeek ? state.index === frames.length - 1 : state.cursor === state.history.length - 1));
+    // Loading is transient, not a navigation boundary. Base controls on the
+    // visible scene so every background panorama request cannot flash them.
+    const cursor = state.activeLayer?.sceneCursor ?? state.cursor;
+    const index = state.history[cursor]?.index ?? state.index;
+    state.prev.disabled = state.scrubbing || !state.history.length || (state.freeSeek ? index === 0 : cursor <= 0);
+    state.next.disabled = state.scrubbing || !state.history.length || (state.finished && (state.freeSeek ? index === frames.length - 1 : cursor === state.history.length - 1));
     state.play.disabled = state.scrubbing;
     // The seek control stays usable even while the next photograph is loading.
     state.seek.disabled = !state.history.length || frames.length < 2;
@@ -1969,12 +1972,12 @@ function startWalkPreview(context, choice) {
             }
             if (state.index === frames.length - 1) state.finished = true;
             updateProgress();
-            updateButtons();
             state.viewer.style.visibility = 'visible';
             const previousLayer = state.activeLayer;
             state.activeLayer = layer;
             layer.sceneCursor = state.cursor;
             state.pendingLayer = null;
+            updateButtons();
             // Both real panoramas overlap briefly; no invented intermediate street geometry.
             element.style.pointerEvents = 'auto';
             requestAnimationFrame(() => {
@@ -2088,7 +2091,9 @@ function startWalkPreview(context, choice) {
   };
   state.seek.onchange = state.seek.onpointerup = state.seek.onpointercancel = commitScrub;
   state.prev.onclick = () => {
-    if (state.loading || state.cursor < 0) return;
+    if (!valid() || state.prev.disabled) return;
+    beginScrub();
+    state.scrubbing = false;
     if (state.freeSeek) {
       state.playing = false;
       clearTimeout(state.timer);
@@ -2105,7 +2110,9 @@ function startWalkPreview(context, choice) {
     showFrame(state.history[state.cursor].index, true);
   };
   state.next.onclick = () => {
-    if (state.loading || state.next.disabled) return;
+    if (!valid() || state.next.disabled) return;
+    beginScrub();
+    state.scrubbing = false;
     state.playing = false;
     clearTimeout(state.timer);
     state.play.textContent = state.english ? 'Play' : '자동 재생';
@@ -2115,6 +2122,9 @@ function startWalkPreview(context, choice) {
     if (!valid()) return;
     if (state.finished && (state.freeSeek ? state.index === frames.length - 1 : state.cursor === state.history.length - 1) && !state.playing && !state.loading) {
       state.playing = true;
+      state.finished = false;
+      state.index = state.history[0]?.index ?? 0;
+      updateProgress();
       state.play.textContent = state.english ? 'Pause' : '일시정지';
       if (state.history.length) {
         state.cursor = 0;
@@ -2144,6 +2154,8 @@ function startWalkPreview(context, choice) {
   };
   visual.addEventListener('keydown', state.onKeyDown);
   panel.addEventListener('keydown', state.onKeyDown);
+  state.index = 0;
+  updateProgress();
   showFrame(0);
   state.close.focus({ preventScroll: true });
   // Avoid moving the controls through a smooth page scroll while the first image appears.
