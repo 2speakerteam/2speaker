@@ -1455,6 +1455,7 @@ function walkPreviewFrames(paths, maneuvers = []) {
       ahead = position.map((value, axis) => value + (value - behind[axis]));
     }
     frames.push({ position, ahead, meters, total, phase,
+      cueAhead: phase === 'straight' ? pointAt(Math.min(total, unique.find(item => item.meters > meters)?.meters ?? total, meters + 35)) : null,
       turnPosition: event ? pointAt(event.meters) : null,
       turnAhead: event ? pointAt(Math.min(total, event.nextMeters ?? total, event.meters + 14)) : null,
       direction: event?.direction || 'straight', description: event?.description || '',
@@ -1654,11 +1655,13 @@ function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
   const junction = frame?.important && /교차로|사거리|삼거리|갈림길|횡단보도/.test(frame.description || '');
   if ((!approach && !connecting && frame?.phase !== 'turn') || (!connecting && frame.turnAngle < 35 && !junction) || frame.landmark || !capture
       || !photo || photo.nearby || photo.offset > 18 || photo.lateral > 12
-      || photo.meters > frame.meters + 5 || !(width > 0 && height > 0)
+      || (!connecting && photo.meters > frame.meters + 5) || !(width > 0 && height > 0)
       || ![pov?.pan, pov?.tilt, pov?.fov].every(Number.isFinite)) return null;
   const radians = Math.PI / 180;
-  const anchor = approach ? frame.turnPosition : frame.position;
-  const target = approach ? frame.turnAhead : frame.ahead;
+  // Straight scene photographs can be snapped ahead of the requested sample.
+  // Start from their actual route projection, never draw backwards to the sample.
+  const anchor = approach ? frame.turnPosition : connecting && photo.point ? photo.point : frame.position;
+  const target = approach ? frame.turnAhead : connecting && frame.cueAhead ? frame.cueAhead : frame.ahead;
   const heading = walkPreviewBearing(anchor, target) * radians;
   const east = (anchor[0] - capture[0]) * Math.cos(capture[1] * radians) * 111320;
   const north = (anchor[1] - capture[1]) * 111320;
