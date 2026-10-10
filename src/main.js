@@ -1446,7 +1446,7 @@ function walkPreviewEndpointFrames(frames, context, paths) {
     if (!landmark) continue;
     const base = side === 'start' ? frames[0] : frames.at(-1);
     // Stand a little away from the landmark and look back at it, rather than looking past it.
-    const position = along(side === 'start' ? Math.min(12, total / 3) : Math.max(0, total - Math.min(16, total / 3)));
+    const position = side === 'start' ? along(Math.min(12, total / 3)) : landmark.position;
     const frame = { ...base, position, ahead: landmark.position, landmark, phase: 'landmark-' + side,
       important: true, description: '', holdMs: 3500 };
     if (side === 'start') result.unshift(frame);
