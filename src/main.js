@@ -1465,13 +1465,9 @@ function walkPreviewFrames(paths, maneuvers = []) {
       const behind = pointAt(Math.max(0, total - 12));
       ahead = position.map((value, axis) => value + (value - behind[axis]));
     }
-    const junction = phase === 'straight' && verifiedJunctions.find(junction => meters >= junction.meters - 8 && meters <= junction.meters + 2);
-    const junctionCue = Boolean(junction);
-    const arrowDecision = event || (junction && (unique.find(item => Math.abs(item.meters - junction.meters) < 12) || junction));
+    const junctionCue = phase === 'straight' && verifiedJunctions.some(junction => meters >= junction.meters - 8 && meters <= junction.meters + 2);
     frames.push({ position, ahead, meters, total, phase,
       junctionCue,
-      arrowCueKey: arrowDecision ? `decision:${arrowDecision.meters.toFixed(2)}` : null,
-      arrowCueMeters: arrowDecision?.meters ?? null,
       nextDecision: navigationDecisions.find(decision => decision.meters > meters + 2) || null,
       cueAhead: phase === 'straight' ? pointAt(Math.min(total, unique.find(item => item.meters > meters)?.meters ?? total, meters + 35)) : null,
       turnPosition: event ? pointAt(event.meters) : null,
@@ -1499,8 +1495,7 @@ function walkPreviewFrames(paths, maneuvers = []) {
     if (!frames.some((frame) => Math.abs(frame.meters - meters) < 3)) add(meters, 'straight');
   }
   add(total, 'arrival');
-  frames.sort((a, b) => a.meters - b.meters);
-  return frames;
+  return frames.sort((a, b) => a.meters - b.meters);
 }
 
 function walkPreviewEndpointFrames(frames, context, paths) {
@@ -1707,7 +1702,7 @@ function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
   const junction = frame?.important && /교차로|사거리|삼거리|갈림길|갈래길|분기|횡단보도/.test(frame.description || '');
   if ((!approach && !connecting && frame?.phase !== 'turn') || (!connecting && frame.turnAngle < 35 && !junction) || frame.landmark || !capture
       || !photo || photo.nearby || photo.offset > (connecting ? 20 : 18) || photo.lateral > 12
-      || (!connecting && photo.meters > (approach ? frame.focusMeters ?? frame.meters : frame.meters) + 5) || !(width > 0 && height > 0)
+      || (!connecting && photo.meters > frame.meters + 5) || !(width > 0 && height > 0)
       || ![pov?.pan, pov?.tilt, pov?.fov].every(Number.isFinite)) return null;
   const radians = Math.PI / 180;
   // Straight scene photographs can be snapped ahead of the requested sample.
@@ -1721,17 +1716,14 @@ function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
   // Actual corner cues retain their geographic anchor.
   const east = connecting ? 0 : (anchor[0] - capture[0]) * Math.cos(capture[1] * radians) * 111320;
   const north = connecting ? 0 : (anchor[1] - capture[1]) * 111320;
-  const available = walkPreviewDistance(anchor, target);
-  if (Math.hypot(east, north) > 25 || available < (connecting ? 13 : 4)) return null;
+  if (Math.hypot(east, north) > 25 || walkPreviewDistance(anchor, target) < (approach ? 4 : 13)) return null;
   const pan = pov.pan * radians, tilt = pov.tilt * radians;
   const focal = width / (2 * Math.tan(Math.max(20, Math.min(100, pov.fov)) * radians / 2));
   // Approximate flat pavement at camera height 2.4 m. This is a directional cue,
   // not a surveyed ground anchor; uncertain/off-screen placements are suppressed.
   const at = (side, forward) => [east + Math.sin(heading) * forward + Math.cos(heading) * side,
     north + Math.cos(heading) * forward - Math.sin(heading) * side];
-  const shaftScale = Math.min(1, available / 13);
-  let polygon = [[-.32,8],[.32,8],[.32,11],[.95,11],[0,13],[-.95,11],[-.32,11]]
-    .map(([side,forward])=>at(side*shaftScale,forward*shaftScale));
+  let polygon = [[-.32,8],[.32,8],[.32,11],[.95,11],[0,13],[-.95,11],[-.32,11]].map(p=>at(...p));
   if (approach) {
     const incoming = walkPreviewBearing(frame.position, anchor) * radians;
     const vi = [Math.sin(incoming),Math.cos(incoming)], vo = [Math.sin(heading),Math.cos(heading)];
@@ -1763,17 +1755,15 @@ function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
     if (depth < 3) return null;
     return [width / 2 + focal * right / depth, height / 2 - focal * up / depth];
   });
-  if (projected.some(p => !p || !p.every(Number.isFinite))) return null;
-  {
-    // Apply the same compact footprint to every cue, not just approaches.
-    // Preserve the projected road position, proportions and direction.
+  if (projected.some(p => !p || !p.every(Number.isFinite) || p[0] < 14 || p[0] > width-14 || p[1] < 18 || p[1] > height-18)) return null;
+  if (approach) {
+    // Preserve aspect ratio while limiting a close-up turn's visual footprint.
     const xs=projected.map(p=>p[0]),ys=projected.map(p=>p[1]);
     const minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);
-    const scale=Math.min(1,Math.min(90,width*.12)/(maxX-minX),Math.min(28,height*.10)/(maxY-minY));
+    const scale=Math.min(1,width*.16/(maxX-minX),height*.2/(maxY-minY));
     const cx=(minX+maxX)/2,cy=(minY+maxY)/2;
     for (const p of projected) { p[0]=cx+(p[0]-cx)*scale; p[1]=cy+(p[1]-cy)*scale; }
   }
-  if (projected.some(p => p[0] < 14 || p[0] > width-14 || p[1] < 18 || p[1] > height-18)) return null;
   return projected.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ');
 }
 
@@ -1902,32 +1892,26 @@ function startWalkPreview(context, choice) {
     && state.requestId === routeRequestToken
     && document.querySelector('#walk-preview') === panel;
   const hideTurnArrows = () => {
-    if (state.turnArrow) state.turnArrow.hidden = true;
+    for (const layer of state.layers) if (layer.turnArrow) layer.turnArrow.hidden = true;
   };
   const attachTurnArrow = (layer, frame, capture, photo, panoId) => {
     if (!['approach','turn'].includes(frame.phase) && !(frame.phase === 'straight' && frame.junctionCue)) {
       layer.arrowContext = null;
-      hideTurnArrows();
+      if (layer.turnArrow) layer.turnArrow.hidden = true;
       return;
     }
     layer.arrowContext = { frame, capture, photo, panoId };
     if (!layer.turnArrow) {
-      const cue = state.turnArrow || document.createElement('div');
-      if (!state.turnArrow) {
-        cue.className = 'walk-turn-ground-arrow';
-        cue.setAttribute('aria-hidden', 'true');
-        cue.style.cssText = 'position:absolute;inset:0;z-index:3;pointer-events:none';
-        cue.innerHTML = '<svg width="100%" height="100%" style="display:block;overflow:hidden" aria-hidden="true"><polygon fill="#16c6f4" fill-opacity=".88" stroke="#e3faff" stroke-width="1.5" stroke-linejoin="round" style="filter:drop-shadow(0 2px 2px #00314d)"/></svg>';
-        cue.hidden = true;
-        viewer.append(cue);
-        state.turnArrow = cue;
-      }
+      const cue = document.createElement('div');
+      cue.className = 'walk-turn-ground-arrow';
+      cue.setAttribute('aria-hidden', 'true');
+      cue.style.cssText = 'position:absolute;inset:0;z-index:3;pointer-events:none';
+      cue.innerHTML = '<svg width="100%" height="100%" style="display:block;overflow:hidden" aria-hidden="true"><polygon fill="#16c6f4" fill-opacity=".88" stroke="#e3faff" stroke-width="1.5" stroke-linejoin="round" style="filter:drop-shadow(0 2px 2px #00314d)"/></svg>';
+      cue.hidden = true;
+      layer.element.append(cue);
       layer.turnArrow = cue;
       layer.updateTurnArrow = () => {
         const context = layer.arrowContext;
-        // Cached/retired viewers may still emit events. Only the visible
-        // photograph owns the shared overlay and can change its visibility.
-        if (state.activeLayer !== layer) return;
         cue.hidden = true;
         if (!context || !valid() || state.activeLayer !== layer || state.visual.classList.contains('walk-preview-map-fallback')
             || layer.panorama.getPanoId?.() !== context.panoId) return;
@@ -1935,15 +1919,11 @@ function startWalkPreview(context, choice) {
         const points = walkPreviewTurnArrow(context.frame, context.capture, context.photo,
           layer.panorama.getPov?.(), size.width, size.height);
         if (!points) return;
-        // Every valid view of this decision remains guided. A cue displayed
-        // earlier must not consume the turn for later views or manual seeking.
         cue.querySelector('polygon')?.setAttribute('points', points);
         cue.hidden = false;
       };
       state.maps.Event.addListener(layer.panorama, 'pov_changed', layer.updateTurnArrow);
-      // Providers can emit pano_changed after init/reveal. Re-evaluate the
-      // current image instead of permanently hiding a valid junction cue.
-      state.maps.Event.addListener(layer.panorama, 'pano_changed', layer.updateTurnArrow);
+      state.maps.Event.addListener(layer.panorama, 'pano_changed', () => { cue.hidden = true; });
       if (typeof ResizeObserver !== 'undefined') {
         layer.arrowResize = new ResizeObserver(layer.updateTurnArrow);
         layer.arrowResize.observe(layer.element);
@@ -2104,13 +2084,7 @@ function startWalkPreview(context, choice) {
   };
   const showFrame = (index, revisiting = false, directSeek = false) => {
     if (!valid()) return;
-    const currentCue = state.activeLayer?.arrowContext?.frame;
-    const nextCue = frames[Math.max(0, Math.min(frames.length - 1, index))];
-    if (!(currentCue?.arrowCueKey && currentCue.arrowCueKey === nextCue?.arrowCueKey
-        && (nextCue.junctionCue || ['approach','turn'].includes(nextCue.phase)))) {
-      hideTurnArrows();
-      if (state.activeLayer) state.activeLayer.arrowContext = null;
-    }
+    hideTurnArrows();
     clearTimeout(state.timer);
     state.disposeLayer(state.pendingLayer);
     state.pendingLayer = null;
@@ -2162,6 +2136,7 @@ function startWalkPreview(context, choice) {
         const from = outgoing.panorama.getPov?.() || outgoing.pov;
         const targetPov = retained.pov;
         const delta = ((targetPov.pan - from.pan + 540) % 360) - 180;
+        attachTurnArrow(outgoing, frame, saved.capturePoint, saved.photoContext, saved.panoId);
         let step = 0;
         const rotateRetained = () => {
           if (!valid() || state.activeLayer !== outgoing || state.index !== index || state.scrubbing) return;
@@ -2350,6 +2325,7 @@ function startWalkPreview(context, choice) {
             if (reduceMotion || !state.playing || state.directSeek || !outgoing || outgoing.panoId !== panoId
                 || !outgoing.pov || !(departure || frameNow.important)) { reveal(); return; }
             const from = outgoing.panorama.getPov?.() || outgoing.pov;
+            attachTurnArrow(outgoing, frameNow, capturePoint, photoContext, panoId);
             const delta = ((cameraPov.pan - from.pan + 540) % 360) - 180;
             let step = 0;
             const rotate = () => {
