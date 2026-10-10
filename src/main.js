@@ -1438,10 +1438,40 @@ function walkPreviewEndpointFrames(frames, context, paths) {
     const position = landmark.position;
     const frame = { ...base, position, ahead: landmark.position, landmark, phase: 'landmark-' + side,
       important: true, description: '', holdMs: 3500 };
-    if (side === 'start') result.unshift(frame);
-    else result[result.length - 1] = frame;
+    const verified = walkPreviewEntranceScenes(landmark, side);
+    if (side === 'start') result.unshift({ ...frame, ...(verified[0] || {}) });
+    else {
+      // Keep the connecting road view before turning to the entrance. A distant
+      // road photograph alone must not stand in for the final close-up.
+      result[result.length - 1] = frame;
+      for (const scene of verified) result.push({ ...frame, ...scene });
+    }
   }
   return result;
+}
+
+// Visually verified Naver panoramas, 2026-10-10. IDs pin a real photograph;
+// the name AND geographic anchor prevent applying them to a namesake elsewhere.
+// Unverified entrances continue to use the normal proximity-checked lookup.
+function walkPreviewEntranceScenes(landmark, side) {
+  const name = landmark.label.replace(/\s/g, '').replace(/^서울/, '');
+  const at = (point) => walkPreviewDistance(landmark.position, point) < 80;
+  if (side === 'start' && name === '어린이대공원역1번출구'
+      && at([127.07548491, 37.54901353])) {
+    return [{ verifiedView: { panoId: 'LqZVpRDZplIJ30MsJTVr6w', pan: 85, tilt: 5, fov: 55,
+      maxOffset: 60 }, holdMs: 3500 }];
+  }
+  if (side !== 'end' || name !== '어린이대공원정문'
+      || !at([127.07579042, 37.5495968])) return [];
+  return [
+    ['ct3NsegdSUxHKYfXZXN9sw', 75.35, '입구 광장 · 정문으로 이어지는 길', 'Entrance plaza · path towards the gate'],
+    ['fRDkvVNvvbYMDpwPiHrCfA', 75.35, '광장 안쪽 · 정문 방향으로 이동', 'Across the plaza · towards the gate'],
+    ['VhfLR75oXVd1NR_rVQCOrg', 100, '정문 앞 · 들어갈 문 확인', 'In front of the gate · entrance ahead'],
+    ['6Vu26tJDnRclihsCDB7N1g', 108.09, '정문 바로 앞 · 도착 입구 확인', 'At the gate · destination entrance']
+  ].map(([panoId, pan, captionKo, captionEn]) => ({
+    verifiedView: { panoId, pan, tilt: 5, fov: 80, maxOffset: 180, captionKo, captionEn },
+    holdMs: 2500
+  }));
 }
 
 // A nearby photograph is context, not proof of the exact turn location.
@@ -1449,6 +1479,11 @@ function walkPreviewPhotoContext(capture, frame, paths) {
   if (!capture || !capture.every(Number.isFinite)) return null;
   if (frame.landmark) {
     const offset = walkPreviewDistance(capture, frame.landmark.position);
+    if (frame.verifiedView) {
+      if (offset > frame.verifiedView.maxOffset) return null;
+      return { offset, meters: frame.meters, lateral: 0, nearby: false,
+        heading: frame.verifiedView.pan, landmark: true };
+    }
     // Do not label a distant/ambiguous image as the requested entrance.
     if (offset < 2 || offset > 45) return null;
     return { offset, meters: frame.meters, lateral: 0, nearby: false,
@@ -1502,6 +1537,8 @@ function walkPreviewPhotoContext(capture, frame, paths) {
 }
 
 function walkPreviewCue(frame, english) {
+  if (frame.verifiedView?.captionKo) return (english ? frame.verifiedView.captionEn : frame.verifiedView.captionKo)
+    + (english ? ' · Entrance-area preview beyond the route endpoint' : ' · 경로 끝에서 이어지는 입구 광장 미리보기');
   if (frame.landmark) return (frame.phase === 'landmark-start'
     ? (english ? 'Start landmark' : '출발 지점 확인') : (english ? 'Destination entrance' : '도착 입구 확인'))
     + ' · ' + frame.landmark.label + (english ? ' · Facing the entrance; check the sign in the photograph' : ' · 출입구 방향 보기 · 사진 속 표지판을 확인해 주세요');
@@ -1517,6 +1554,10 @@ function walkPreviewCue(frame, english) {
 }
 
 function walkPreviewCameraPov(frame, photoContext, photoDate) {
+  if (frame.verifiedView) {
+    const { pan, tilt, fov } = frame.verifiedView;
+    return { pan, tilt, fov };
+  }
   const stationExit = frame.landmark?.kind === 'station-exit';
   let heading = photoContext.heading;
   let fov = stationExit ? 48 : 75;
@@ -1777,7 +1818,7 @@ function startWalkPreview(context, choice) {
     const saved = revisiting ? state.history[state.cursor] : null;
     const departure = !revisiting && frame.phase === 'start'
       && frames[state.history.at(-1)?.index]?.phase === 'landmark-start' ? state.history.at(-1) : null;
-    const selectedPanoId = saved?.panoId || departure?.panoId;
+    const selectedPanoId = saved?.panoId || frame.verifiedView?.panoId || departure?.panoId;
     const target = saved?.capturePoint || frame.position;
     const position = new state.maps.LatLng(target[1], target[0]);
     if (!state.maps.Panorama) {
