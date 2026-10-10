@@ -383,9 +383,9 @@ assert.equal(now-exitShownAt,1050,'rotation follows one-second exit hold plus pa
 until(()=>ep.history.length===2);
 assert.equal(instances[1].options.panoId,ep.history[0].panoId,'departure retains the original camera and capture date');
 assert.ok(instances[0].povUpdates>=30,'departure rotates through intermediate views in the real panorama');
-const exitRotationTimes=instances[0].povTimes.slice(-48);
-assert.equal(exitRotationTimes.length,48,'station departure uses more easing frames for a gentler turn');
-assert.equal(exitRotationTimes.at(-1)-exitRotationTimes[0],940,'rotation is slightly slower without changing the one-second hold');
+const exitRotationTimes=instances[0].povTimes.slice(-60);
+assert.equal(exitRotationTimes.length,60,'station departure uses 25 percent longer rotation without longer holds');
+assert.equal(exitRotationTimes.at(-1)-exitRotationTimes[0],1180,'rotation is slightly slower without changing the one-second hold');
 assert.ok(exitRotationTimes.slice(1).every((time,i)=>time-exitRotationTimes[i]===20),'station rotation uses steady 20 ms steps');
 assert.equal(ep.history[0].panoId,ep.history[1].panoId,'keep purposeful exit-facing then route-facing views');
 assert.ok(Math.abs(ep.history[0].heading-ep.history[1].heading)>150);
@@ -397,14 +397,14 @@ assert.equal(ep.index,0);
 let cachedRotationStart=cachedExit.povUpdates;
 ep.play.onclick();
 until(()=>ep.index===1 && !ep.loading);
-assert.equal(cachedExit.povUpdates-cachedRotationStart,48,'Previous then Play animates the cached exit again');
+assert.equal(cachedExit.povUpdates-cachedRotationStart,60,'Previous then Play animates the cached exit again');
 assert.equal(instances.length,cachedViewerCount,'cached replay needs no new panorama');
 assert.equal(ep.history.length,2,'cached replay does not duplicate history');
 ep.seek.value='0'; ep.seek.oninput(); ep.seek.onchange(); until(()=>!ep.loading);
 cachedRotationStart=cachedExit.povUpdates;
 ep.play.onclick();
 until(()=>ep.index===1 && !ep.loading);
-assert.equal(cachedExit.povUpdates-cachedRotationStart,48,'scrub to start then Play also rotates again');
+assert.equal(cachedExit.povUpdates-cachedRotationStart,60,'scrub to start then Play also rotates again');
 ep.seek.value='0'; ep.seek.oninput(); ep.seek.onchange(); until(()=>!ep.loading);
 cachedRotationStart=cachedExit.povUpdates;
 ep.play.onclick(); until(()=>cachedExit.povUpdates>cachedRotationStart+5);
@@ -421,7 +421,7 @@ cachedRotationStart=cachedExit.povUpdates;
 const finishedHistoryCount=ep.history.length;
 ep.play.onclick();
 until(()=>ep.index===1 && !ep.loading);
-assert.ok(cachedExit.povUpdates-cachedRotationStart>=48,'Replay animates even when the next viewer was evicted');
+assert.ok(cachedExit.povUpdates-cachedRotationStart>=60,'Replay animates even when the next viewer was evicted');
 assert.equal(ep.history.length,finishedHistoryCount,'reloaded history is not appended twice');
 sandbox.stopWalkPreview(true); while(tick()) {}
 jobs.clear(); instances=[]; currentFixture=[{id:'cancel-exit',point:point(12)}]; now=0;
@@ -465,8 +465,8 @@ assert.ok(instances.some(instance=>instance.fixture.id==='corner-camera' && inst
   'junction orientation changes rotate inside the actual panorama');
 const cornerRotation=instances.find(instance=>instance.fixture.id==='corner-camera' && instance.povUpdates>=36);
 assert.ok(cornerRotation.povTimes.some((_,start)=> {
-  const rotation=cornerRotation.povTimes.slice(start,start+48);
-  return rotation.length===48 && rotation.slice(1).every((time,i)=>time-rotation[i]===20);
+  const rotation=cornerRotation.povTimes.slice(start,start+60);
+  return rotation.length===60 && rotation.slice(1).every((time,i)=>time-rotation[i]===20);
 }),
   'junction rotation retains its original 20 ms pacing');
 assert.ok(instances.some(instance=>instance.el.style.cssText.includes('450ms')),'gentle crossfade');
@@ -484,32 +484,45 @@ assert.equal(missedTurn.frames[missedTurn.index].phase,'turn');
 sandbox.stopWalkPreview(true); while(tick()) {}
 console.log('PASS: junction phases survive deduplication, gradual same-camera turn, slower pace, backward-turn map cue');
 
-// Forward cues at the same fork appear in one photograph only, without
-// removing connecting photographs or changing their playback timing.
+// One persistent forward overlay spans adjacent photographs of the same fork.
+// It must survive provider late events, not blink or be consumed by a cache.
 jobs.clear(); instances=[]; now=0;
 currentFixture=junctionFrames.map((frame,i)=>({id:'once-'+i,point:frame.position}));
 sandbox.startWalkPreview({maps,map:{},english:false,requestId:1},{paths:junctionRoute,maneuvers:[]});
-const once=sandbox.walkPreviewState, visibleCueFrames=new Set();
+const once=sandbox.walkPreviewState, visibleCueFrames=new Set(), cueElements=new Set();
+let cueAppearances=0, wasCueVisible=false;
 until(()=> {
-  if (once.activeLayer?.turnArrow && !once.activeLayer.turnArrow.hidden)
+  const visible=once.turnArrow && !once.turnArrow.hidden;
+  if (visible && !wasCueVisible) cueAppearances++;
+  wasCueVisible=Boolean(visible);
+  if (once.activeLayer?.arrowContext && visible) {
     visibleCueFrames.add(once.activeLayer.arrowContext.frame);
+    cueElements.add(once.turnArrow);
+  }
   return once.finished && !once.playing && !once.loading;
 });
-assert.equal(visibleCueFrames.size,1,'one arrow-bearing scene for the entire fork');
+assert.equal(cueAppearances,1,'one uninterrupted arrow appearance across the entire fork');
+assert.equal(cueElements.size,1,'same overlay DOM element across photographs');
+assert.equal(visibleCueFrames.size,junctionFrames.filter(f=>f.junctionCue).length,'both junction photographs stay guided');
 const chosenCue=[...visibleCueFrames][0], chosenIndex=once.frames.indexOf(chosenCue);
 const cueCandidates=once.frames.filter(f=>f.arrowCueKey===chosenCue.arrowCueKey && f.junctionCue);
-assert.equal(chosenCue.arrowCuePrimary,true,'the verified junction photograph owns the cue');
-assert.equal(Math.abs(chosenCue.meters-chosenCue.arrowCueMeters),
-  Math.min(...cueCandidates.map(f=>Math.abs(f.meters-f.arrowCueMeters))),
-  'choose the scene nearest the actual junction, not the earlier approach');
-assert.equal(cueCandidates.filter(f=>f.arrowCuePrimary).length,1,'one stable primary scene');
+assert.ok(cueCandidates.every(f=>f.junctionCue),'the short junction window shares its continuous cue');
 const otherIndex=once.frames.findIndex(f=>f!==chosenCue && f.arrowCueKey===chosenCue.arrowCueKey);
 assert.ok(otherIndex>=0,'test covers multiple adjacent junction candidates');
 assert.ok(once.history.some(entry=>entry.index===otherIndex),'second photograph is retained, only its repeated arrow is suppressed');
 once.seek.value=String(chosenIndex); once.seek.oninput(); once.seek.onchange(); until(()=>!once.loading);
 assert.equal(once.activeLayer.turnArrow.hidden,false,'backward seek restores the selected cue photograph');
 once.seek.value=String(otherIndex); once.seek.oninput(); once.seek.onchange(); until(()=>!once.loading);
-assert.equal(once.activeLayer.turnArrow.hidden,true,'adjacent photograph stays cue-free after seeking');
+assert.equal(once.activeLayer.turnArrow.hidden,false,'adjacent junction photograph also has guidance after seeking');
+const sharedCue=once.turnArrow;
+once.activeLayer.panorama.emit('pano_changed');
+assert.equal(sharedCue.hidden,false,'late pano_changed does not hide the active junction cue');
+const inactiveCueLayer=[...once.layers].find(layer=>layer!==once.activeLayer && layer.updateTurnArrow);
+if (inactiveCueLayer) {
+  inactiveCueLayer.panorama.emit('pano_changed');
+  inactiveCueLayer.panorama.emit('pov_changed');
+  assert.equal(sharedCue.hidden,false,'cached viewer events cannot hide the visible overlay');
+}
 once.arrowScenes.set(chosenCue.arrowCueKey,once.frames[otherIndex]);
 once.seek.value=String(chosenIndex); once.seek.oninput(); once.seek.onchange(); until(()=>!once.loading);
 assert.equal(once.activeLayer.turnArrow.hidden,false,'manual revisit clears stale cue claims');
@@ -520,7 +533,31 @@ once.play.onclick();
 until(()=>once.activeLayer?.arrowContext?.frame===chosenCue && !once.loading);
 assert.equal(once.activeLayer.turnArrow.hidden,false,'full replay shows the primary junction cue again');
 sandbox.stopWalkPreview(true); while(tick()) {}
-console.log('PASS: one arrow scene per junction, contiguous photographs preserved, stable backward/forward seek cues');
+console.log('PASS: continuous single junction overlay, late provider events, backward/forward seeking and replay');
+
+// The initial exit turn must not reappear in each adjacent photograph after
+// manual Next/Previous. Failed projections do not consume the single cue.
+jobs.clear(); instances=[]; now=0;
+currentFixture=exitApproachFrames.map((frame,i)=>({id:'exit-cue-'+i,point:frame.position}));
+sandbox.startWalkPreview({maps,map:{},english:false,requestId:1},{paths:exitApproachPath,maneuvers:[{
+  position:exitApproachPath[0][1],description:'좌회전 후 천호대로를 따라 10m 이동',turnType:12
+}]});
+const exitCueState=sandbox.walkPreviewState, exitCueVisible=new Set();
+until(()=> {
+  if (exitCueState.turnArrow && !exitCueState.turnArrow.hidden && exitCueState.activeLayer?.arrowContext)
+    exitCueVisible.add(exitCueState.activeLayer.arrowContext.frame);
+  return exitCueState.finished && !exitCueState.playing && !exitCueState.loading;
+});
+assert.equal(exitCueVisible.size,1,'initial exit turn uses just one visible photograph');
+const exitChosen=[...exitCueVisible][0], exitChosenIndex=exitCueState.frames.indexOf(exitChosen);
+exitCueState.seek.value=String(exitChosenIndex); exitCueState.seek.oninput(); exitCueState.seek.onchange(); until(()=>!exitCueState.loading);
+assert.equal(exitCueState.turnArrow.hidden,false,'chosen turn scene restores on seek');
+exitCueState.next.onclick(); until(()=>!exitCueState.loading);
+assert.equal(exitCueState.turnArrow.hidden,true,'manual next does not repeat the turn cue');
+exitCueState.prev.onclick(); until(()=>!exitCueState.loading);
+assert.equal(exitCueState.turnArrow.hidden,false,'manual previous restores the original cue');
+sandbox.stopWalkPreview(true); while(tick()) {}
+console.log('PASS: initial turn has one cue across autoplay, manual Next and Previous');
 
 // The green answer bubble holds the route overview; scene instructions stay separate.
 const overviewContext={maps:{LatLng,LatLngBounds:class {extend(){}},Polyline:class {},Marker:class {}},

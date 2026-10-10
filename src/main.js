@@ -1500,16 +1500,6 @@ function walkPreviewFrames(paths, maneuvers = []) {
   }
   add(total, 'arrival');
   frames.sort((a, b) => a.meters - b.meters);
-  // Use the actual straight-through junction scene, not whichever approach
-  // happens to load first. This stays stable across replay and manual seeking.
-  const junctionArrowFrames = new Map();
-  for (const frame of frames.filter(item => item.junctionCue)) {
-    const prior = junctionArrowFrames.get(frame.arrowCueKey);
-    if (!prior || Math.abs(frame.meters - frame.arrowCueMeters) < Math.abs(prior.meters - prior.arrowCueMeters))
-      junctionArrowFrames.set(frame.arrowCueKey, frame);
-  }
-  for (const frame of frames.filter(item => item.junctionCue))
-    frame.arrowCuePrimary = junctionArrowFrames.get(frame.arrowCueKey) === frame;
   return frames;
 }
 
@@ -1710,7 +1700,6 @@ function walkPreviewHoldBeforeNext(frame, nextFrame) {
 // camera position and POV, so dragging/zooming cannot leave it pointing elsewhere.
 // POV contract: navermaps.github.io/maps.js.ncp/docs/naver.maps.Panorama.html
 function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
-  if (frame?.arrowCuePrimary === false) return null;
   const approach = frame?.phase === 'approach' && frame.turnPosition && frame.turnAhead;
   // Normal straight roads and post-turn departure scenes stay uncluttered.
   // Only confirmed junction windows may opt into a straight-through cue.
@@ -1908,26 +1897,32 @@ function startWalkPreview(context, choice) {
     && state.requestId === routeRequestToken
     && document.querySelector('#walk-preview') === panel;
   const hideTurnArrows = () => {
-    for (const layer of state.layers) if (layer.turnArrow) layer.turnArrow.hidden = true;
+    if (state.turnArrow) state.turnArrow.hidden = true;
   };
   const attachTurnArrow = (layer, frame, capture, photo, panoId) => {
     if (!['approach','turn'].includes(frame.phase) && !(frame.phase === 'straight' && frame.junctionCue)) {
       layer.arrowContext = null;
-      if (layer.turnArrow) layer.turnArrow.hidden = true;
+      hideTurnArrows();
       return;
     }
     layer.arrowContext = { frame, capture, photo, panoId };
     if (!layer.turnArrow) {
-      const cue = document.createElement('div');
-      cue.className = 'walk-turn-ground-arrow';
-      cue.setAttribute('aria-hidden', 'true');
-      cue.style.cssText = 'position:absolute;inset:0;z-index:3;pointer-events:none';
-      cue.innerHTML = '<svg width="100%" height="100%" style="display:block;overflow:hidden" aria-hidden="true"><polygon fill="#16c6f4" fill-opacity=".88" stroke="#e3faff" stroke-width="1.5" stroke-linejoin="round" style="filter:drop-shadow(0 2px 2px #00314d)"/></svg>';
-      cue.hidden = true;
-      layer.element.append(cue);
+      const cue = state.turnArrow || document.createElement('div');
+      if (!state.turnArrow) {
+        cue.className = 'walk-turn-ground-arrow';
+        cue.setAttribute('aria-hidden', 'true');
+        cue.style.cssText = 'position:absolute;inset:0;z-index:3;pointer-events:none';
+        cue.innerHTML = '<svg width="100%" height="100%" style="display:block;overflow:hidden" aria-hidden="true"><polygon fill="#16c6f4" fill-opacity=".88" stroke="#e3faff" stroke-width="1.5" stroke-linejoin="round" style="filter:drop-shadow(0 2px 2px #00314d)"/></svg>';
+        cue.hidden = true;
+        viewer.append(cue);
+        state.turnArrow = cue;
+      }
       layer.turnArrow = cue;
       layer.updateTurnArrow = () => {
         const context = layer.arrowContext;
+        // Cached/retired viewers may still emit events. Only the visible
+        // photograph owns the shared overlay and can change its visibility.
+        if (state.activeLayer !== layer) return;
         cue.hidden = true;
         if (!context || !valid() || state.activeLayer !== layer || state.visual.classList.contains('walk-preview-map-fallback')
             || layer.panorama.getPanoId?.() !== context.panoId) return;
@@ -1939,7 +1934,7 @@ function startWalkPreview(context, choice) {
         // 5 m sample. Claim only after successful projection so missing or
         // offscreen candidates cannot consume the junction's only cue.
         const key = context.frame.arrowCueKey;
-        if (key) {
+        if (key && !context.frame.junctionCue) {
           const chosen = state.arrowScenes.get(key);
           if (chosen && chosen !== context.frame) return;
           state.arrowScenes.set(key, context.frame);
@@ -1948,7 +1943,9 @@ function startWalkPreview(context, choice) {
         cue.hidden = false;
       };
       state.maps.Event.addListener(layer.panorama, 'pov_changed', layer.updateTurnArrow);
-      state.maps.Event.addListener(layer.panorama, 'pano_changed', () => { cue.hidden = true; });
+      // Providers can emit pano_changed after init/reveal. Re-evaluate the
+      // current image instead of permanently hiding a valid junction cue.
+      state.maps.Event.addListener(layer.panorama, 'pano_changed', layer.updateTurnArrow);
       if (typeof ResizeObserver !== 'undefined') {
         layer.arrowResize = new ResizeObserver(layer.updateTurnArrow);
         layer.arrowResize.observe(layer.element);
@@ -2109,7 +2106,12 @@ function startWalkPreview(context, choice) {
   };
   const showFrame = (index, revisiting = false, directSeek = false) => {
     if (!valid()) return;
-    hideTurnArrows();
+    const currentCue = state.activeLayer?.arrowContext?.frame;
+    const nextCue = frames[Math.max(0, Math.min(frames.length - 1, index))];
+    if (!(currentCue?.junctionCue && nextCue?.junctionCue && currentCue.arrowCueKey === nextCue.arrowCueKey)) {
+      hideTurnArrows();
+      if (state.activeLayer) state.activeLayer.arrowContext = null;
+    }
     clearTimeout(state.timer);
     state.disposeLayer(state.pendingLayer);
     state.pendingLayer = null;
@@ -2161,11 +2163,10 @@ function startWalkPreview(context, choice) {
         const from = outgoing.panorama.getPov?.() || outgoing.pov;
         const targetPov = retained.pov;
         const delta = ((targetPov.pan - from.pan + 540) % 360) - 180;
-        attachTurnArrow(outgoing, frame, saved.capturePoint, saved.photoContext, saved.panoId);
         let step = 0;
         const rotateRetained = () => {
           if (!valid() || state.activeLayer !== outgoing || state.index !== index || state.scrubbing) return;
-          const t = Math.min(1, ++step / 48), eased = t * t * (3 - 2 * t);
+          const t = Math.min(1, ++step / 60), eased = t * t * (3 - 2 * t);
           try {
             outgoing.panorama.setPov({ pan: ((from.pan + delta * eased + 540) % 360) - 180,
               tilt: from.tilt + (targetPov.tilt - from.tilt) * eased,
@@ -2350,12 +2351,11 @@ function startWalkPreview(context, choice) {
             if (reduceMotion || !state.playing || state.directSeek || !outgoing || outgoing.panoId !== panoId
                 || !outgoing.pov || !(departure || frameNow.important)) { reveal(); return; }
             const from = outgoing.panorama.getPov?.() || outgoing.pov;
-            attachTurnArrow(outgoing, frameNow, capturePoint, photoContext, panoId);
             const delta = ((cameraPov.pan - from.pan + 540) % 360) - 180;
             let step = 0;
             const rotate = () => {
               if (!valid() || state.pendingLayer !== layer || state.activeLayer !== outgoing) return;
-              const t = Math.min(1, ++step / 48), eased = t * t * (3 - 2 * t);
+              const t = Math.min(1, ++step / 60), eased = t * t * (3 - 2 * t);
               try {
                 outgoing.panorama.setPov({ pan: ((from.pan + delta * eased + 540) % 360) - 180,
                   tilt: from.tilt + (cameraPov.tilt - from.tilt) * eased,
@@ -2380,9 +2380,8 @@ function startWalkPreview(context, choice) {
     if (!valid() || !state.history.length) return;
     clearTimeout(state.timer);
     clearTimeout(state.seekTimer);
-    // Manual navigation starts a fresh viewing pass; an earlier playback must
-    // not consume the next visible turn cue forever.
-    state.arrowScenes.clear();
+    // Keep each turn's chosen photograph when navigating manually. Clearing
+    // it here made every Previous/Next click re-enable a duplicate turn cue.
     state.playing = false;
     state.scrubbing = true;
     state.play.textContent = state.english ? 'Play' : '자동 재생';
