@@ -283,10 +283,10 @@ function guideScreen() {
       </div>
       <div class="walk-preview-progress">
         <span id="walk-preview-progress-text"></span>
-        <input class="walk-preview-seek" id="walk-preview-seek" type="range" min="0" max="0" step="1" value="0" disabled aria-label="${english ? 'Seek through viewed scenes' : '지나온 장면 이동'}" aria-describedby="walk-preview-seek-help">
-        <small id="walk-preview-seek-help">${english ? 'Drag through viewed scenes · far left returns to the first scene' : '지나온 장면을 끌어서 이동 · 맨 왼쪽은 처음으로'}</small>
+        <input class="walk-preview-seek" id="walk-preview-seek" type="range" min="0" max="0" step="1" value="0" disabled aria-label="${english ? 'Seek anywhere along the route' : '전체 경로 앞뒤 이동'}" aria-describedby="walk-preview-seek-help">
+        <small id="walk-preview-seek-help">${english ? 'Drag forward or backward anywhere · far left returns to the start' : '앞뒤 원하는 구간으로 이동 · 맨 왼쪽은 처음으로'}</small>
       </div>
-      <p class="walk-preview-note">${english ? 'Move forward about thirty steps between street views. Junctions and alley entrances play more slowly. Image spacing depends on available street photography.' : '약 서른 걸음씩 앞으로 이동하듯 이어 보여드려요. 사거리·골목은 꺾기 전후를 천천히 보여드려요. 실제 장면 간격은 촬영된 거리뷰 위치에 따라 달라요.'}</p>
+      <p class="walk-preview-note">${english ? 'Closely sampled street views play quickly, slowing at turns. These are real photographs, not continuous video; missing imagery can leave gaps.' : '촘촘히 찾은 거리뷰를 빠르게 잇고, 꺾는 곳은 잠시 천천히 보여드려요. 실제 연속 영상은 아니며 촬영되지 않은 구간은 끊길 수 있어요.'}</p>
     </section>
     <section class="transport-options" aria-label="${english ? 'Compare transport options' : '교통수단 비교'}">
       ${['BUS', 'SUBWAY', 'TAXI'].map((mode) => {
@@ -1432,7 +1432,7 @@ function walkPreviewFrames(paths, maneuvers = []) {
     frames.push({ position, ahead, meters, total, phase,
       direction: event?.direction || 'straight', description: event?.description || '',
       important: Boolean(event), focusMeters: event?.meters ?? null, turnAngle: Math.abs(event?.delta || 0),
-      holdMs: event ? (phase === 'turn' ? 3000 : 1800) : (phase === 'start' || phase === 'arrival' ? 1800 : 1000) });
+      holdMs: event ? (phase === 'turn' ? 1400 : 700) : (phase === 'start' || phase === 'arrival' ? 1800 : 250) });
   };
   add(0, 'start');
   unique.forEach((event, i) => {
@@ -1446,7 +1446,7 @@ function walkPreviewFrames(paths, maneuvers = []) {
     if (after >= 2) add(event.meters + after, 'depart', event);
   });
   // Provide connecting street scenes and alternatives when several points share one photograph.
-  const spacing = 21;
+  const spacing = 5;
   for (let meters = spacing; meters < total - 3; meters += spacing) {
     if (!frames.some((frame) => Math.abs(frame.meters - meters) < 3)) add(meters, 'straight');
   }
@@ -1606,7 +1606,7 @@ function walkPreviewCameraPov(frame, photoContext, photoDate) {
 }
 
 
-// About thirty walking steps per candidate, with slower approach/turn/departure frames.
+// Dense route candidates, with slower approach/turn/departure frames.
 // Physical duplicate photographs are removed during playback, not by dropping connecting roads.
 function walkPreviewSceneFrames(frames) {
   return frames.map((frame, sceneSlot) => ({ ...frame, sceneSlot }));
@@ -1710,7 +1710,7 @@ function startWalkPreview(context, choice) {
   const scheduleNext = () => {
     clearTimeout(state.timer);
     if (!valid() || !state.playing || state.scrubbing) return;
-    if (state.finished && state.cursor === state.history.length - 1) {
+    if (state.finished && (state.freeSeek ? state.index === frames.length - 1 : state.cursor === state.history.length - 1)) {
       state.playing = false;
       state.play.textContent = state.english ? 'Replay' : '다시 보기';
       return;
@@ -1718,32 +1718,28 @@ function startWalkPreview(context, choice) {
     state.timer = setTimeout(advance, frames[state.index].holdMs);
   };
   const updateButtons = () => {
-    state.prev.disabled = state.scrubbing || state.loading || (state.cursor <= 0 && state.history[state.cursor]?.index === state.index) || state.cursor < 0;
-    state.next.disabled = state.scrubbing || state.loading || (state.finished && state.cursor === state.history.length - 1);
+    state.prev.disabled = state.scrubbing || state.loading || (state.freeSeek ? state.index === 0 : (state.cursor <= 0 && state.history[state.cursor]?.index === state.index) || state.cursor < 0);
+    state.next.disabled = state.scrubbing || state.loading || (state.finished && (state.freeSeek ? state.index === frames.length - 1 : state.cursor === state.history.length - 1));
     state.play.disabled = state.scrubbing;
     // The seek control stays usable even while the next photograph is loading.
-    state.seek.disabled = state.history.length < 2;
+    state.seek.disabled = !state.history.length || frames.length < 2;
   };
 
-  const updateSeek = (cursor = state.cursor) => {
-    // Unseen candidates must occupy space too: history alone makes each newly
-    // loaded scene look like the end. Missing/duplicate candidates shrink the
-    // remaining estimate as scanning proceeds; completed playback uses real scenes.
-    const lastScanned = state.history.at(-1)?.index ?? 0;
-    const remaining = state.finished ? 0 : Math.max(0, frames.length - 1 - lastScanned);
-    const max = Math.max(0, state.history.length - 1) + remaining;
+  const updateSeek = (index = state.index) => {
+    // A stable full-route timeline allows seeking into uncached sections too.
+    const max = Math.max(0, frames.length - 1);
     state.seek.max = String(max);
-    state.seek.value = String(Math.max(0, Math.min(state.history.length - 1, cursor)));
+    state.seek.value = String(Math.max(0, Math.min(max, index)));
     state.seek.style.setProperty('--seek-fill', (max ? 100 * Number(state.seek.value) / max : 0) + '%');
     state.seek.setAttribute('aria-valuetext', state.english
-      ? `Scene ${Math.max(1, cursor + 1)} of ${state.history.length} viewed scenes`
-      : `지나온 ${state.history.length}개 장면 중 ${Math.max(1, cursor + 1)}번 장면`);
+      ? `Route point ${index + 1} of ${frames.length}`
+      : `전체 ${frames.length}개 경로 지점 중 ${index + 1}번`);
   };
 
   const updateProgress = () => {
     const frame = frames[state.index];
-    const sceneNumber = Math.max(0, state.cursor + 1);
-    const count = state.finished ? ' / ' + state.history.length : '';
+    const sceneNumber = state.index + 1;
+    const count = ' / ' + frames.length;
     state.progress.textContent = state.english
       ? 'Scene ' + sceneNumber + count + ' · ' + Math.round(frame.meters) + ' m of ' + Math.round(frame.total) + ' m'
       : '장면 ' + sceneNumber + count + ' · 전체 ' + Math.round(frame.total) + 'm 중 ' + Math.round(frame.meters) + 'm';
@@ -1775,6 +1771,11 @@ function startWalkPreview(context, choice) {
   };
   const advance = () => {
     if (!valid()) return;
+    if (state.freeSeek) {
+      if (state.index < frames.length - 1) seekFrame(state.index + 1, !state.playing);
+      else finishScan();
+      return;
+    }
     if (state.cursor + 1 < state.history.length) {
       state.cursor += 1;
       showFrame(state.history[state.cursor].index, true);
@@ -1797,8 +1798,8 @@ function startWalkPreview(context, choice) {
       else state.missingEndLandmark = true;
     }
     // Keep the last confirmed scene while seeking, rather than flashing the map.
-    const seeking = !state.revisiting && state.index < frames.length - 1;
-    if (seeking && state.activeLayer && !missingLandmark) {
+    const seeking = !state.revisiting && state.index < frames.length - 1 && !(state.freeSeek && !state.playing);
+    if (seeking && state.activeLayer && !missingLandmark && !frames[state.index].important) {
       state.loading = true;
       state.skippedScenes += 1;
       updateButtons();
@@ -1824,11 +1825,11 @@ function startWalkPreview(context, choice) {
     // Missing imagery must not strand playback on a map at the first campus/alley point.
     // Keep manual inspection paused, but auto-play scans forward to the next available view.
     state.skippedScenes += 1;
-    if (!state.revisiting && state.index < frames.length - 1) {
+    if (!state.revisiting && state.index < frames.length - 1 && !(state.freeSeek && !state.playing)) {
       const nextIndex = state.index + 1;
       state.message.textContent += state.english
         ? ' · Looking for the next available street image…' : ' · 다음 거리뷰가 있는 구간으로 이동 중이에요.';
-      state.timer = setTimeout(() => showFrame(nextIndex), missingLandmark ? 3000 : 350);
+      state.timer = setTimeout(() => showFrame(nextIndex), missingLandmark ? 3000 : frames[state.index].important ? 1400 : 350);
     } else if (!state.revisiting && state.index === frames.length - 1) {
       if (missingLandmark) {
         state.finished = true;
@@ -1841,11 +1842,12 @@ function startWalkPreview(context, choice) {
       state.play.textContent = state.english ? 'Play' : '자동 재생';
     }
   };
-  const showFrame = (index, revisiting = false) => {
+  const showFrame = (index, revisiting = false, directSeek = false) => {
     if (!valid()) return;
     clearTimeout(state.timer);
     state.index = Math.max(0, Math.min(frames.length - 1, index));
     state.revisiting = revisiting;
+    state.directSeek = directSeek;
     state.loading = true;
     state.visual.classList.remove('walk-preview-map-fallback');
     state.fallbackMarker?.setMap(null);
@@ -1922,17 +1924,17 @@ function startWalkPreview(context, choice) {
           // The same provider photograph can be returned for many nearby route points.
           // Count physical scenes, not queries or changes to the camera angle.
           const duplicate = state.history.some((entry) => {
-            const samePlace = (panoId && entry.panoId === panoId)
-              || (capturePoint && walkPreviewDistance(entry.capturePoint, capturePoint) < 6);
+            const samePlace = panoId && entry.panoId ? entry.panoId === panoId
+              : (capturePoint && walkPreviewDistance(entry.capturePoint, capturePoint) < 2);
             // Endpoint views are intentional: an exit-facing view followed by the walking direction.
             // Arrival must not be discarded just because the last road image used the same panorama.
             const endpointTransition = frameNow.landmark || frames[entry.index].landmark;
             const angle = Math.abs(((photoContext.heading - entry.heading + 540) % 360) - 180);
-            return samePlace && !frameNow.landmark && !(endpointTransition && angle >= 25);
+            return samePlace && !frameNow.landmark && !((endpointTransition || frameNow.important) && angle >= 15);
           });
-          const previousScene = state.history.at(-1);
+          const previousScene = state.history[state.activeLayer?.sceneCursor] || state.history.at(-1);
           const backwards = !frameNow.landmark && previousScene && photoContext.meters < previousScene.routeMeters - 6;
-          if (!state.revisiting && (duplicate || backwards)) {
+          if (!state.revisiting && !state.directSeek && (duplicate || backwards)) {
             state.duplicateScenes += 1;
             state.disposeLayer(layer);
             state.pendingLayer = null;
@@ -2037,7 +2039,7 @@ function startWalkPreview(context, choice) {
   // Freeze autoplay and cancel only the in-flight layer, preserving the visible photograph.
   // This prevents late init/settle callbacks from overriding the user's selected scene.
   const beginScrub = () => {
-    if (!valid() || state.history.length < 2) return;
+    if (!valid() || !state.history.length) return;
     clearTimeout(state.timer);
     clearTimeout(state.seekTimer);
     state.playing = false;
@@ -2056,19 +2058,25 @@ function startWalkPreview(context, choice) {
   const commitScrub = () => {
     clearTimeout(state.seekTimer);
     if (!valid() || !state.scrubbing || !state.history.length) return;
-    const selected = Math.max(0, Math.min(state.history.length - 1, Math.round(Number(state.seek.value) || 0)));
+    const selected = Math.max(0, Math.min(frames.length - 1, Math.round(Number(state.seek.value) || 0)));
     state.scrubbing = false;
-    if (state.cursor === selected && state.index === state.history[selected].index) {
+    if (state.index === selected) {
       updateProgress();
       updateButtons();
       return;
     }
-    state.cursor = selected;
-    showFrame(state.history[selected].index, true);
+    state.freeSeek = true;
+    seekFrame(selected);
+  };
+  const seekFrame = (index, directSeek = true) => {
+    const cached = state.history.findIndex(entry => entry.index === index);
+    state.finished = index === frames.length - 1;
+    if (cached >= 0) state.cursor = cached;
+    showFrame(index, cached >= 0, directSeek);
   };
   state.seek.onpointerdown = beginScrub;
   state.seek.oninput = () => {
-    const selected = Math.max(0, Math.min(state.history.length - 1, Number(state.seek.value)));
+    const selected = Math.max(0, Math.min(frames.length - 1, Number(state.seek.value)));
     beginScrub();
     if (!state.scrubbing) return;
     updateSeek(selected);
@@ -2081,6 +2089,13 @@ function startWalkPreview(context, choice) {
   state.seek.onchange = state.seek.onpointerup = state.seek.onpointercancel = commitScrub;
   state.prev.onclick = () => {
     if (state.loading || state.cursor < 0) return;
+    if (state.freeSeek) {
+      state.playing = false;
+      clearTimeout(state.timer);
+      state.play.textContent = state.english ? 'Play' : '자동 재생';
+      seekFrame(Math.max(0, state.index - 1));
+      return;
+    }
     const previous = state.history[state.cursor]?.index === state.index ? state.cursor - 1 : state.cursor;
     if (previous < 0) return;
     state.playing = false;
@@ -2098,7 +2113,7 @@ function startWalkPreview(context, choice) {
   };
   state.play.onclick = () => {
     if (!valid()) return;
-    if (state.finished && state.cursor === state.history.length - 1 && !state.playing && !state.loading) {
+    if (state.finished && (state.freeSeek ? state.index === frames.length - 1 : state.cursor === state.history.length - 1) && !state.playing && !state.loading) {
       state.playing = true;
       state.play.textContent = state.english ? 'Pause' : '일시정지';
       if (state.history.length) {
