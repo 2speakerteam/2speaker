@@ -1471,6 +1471,7 @@ function walkPreviewFrames(paths, maneuvers = []) {
     frames.push({ position, ahead, meters, total, phase,
       junctionCue,
       arrowCueKey: arrowDecision ? `decision:${arrowDecision.meters.toFixed(2)}` : null,
+      arrowCueMeters: arrowDecision?.meters ?? null,
       nextDecision: navigationDecisions.find(decision => decision.meters > meters + 2) || null,
       cueAhead: phase === 'straight' ? pointAt(Math.min(total, unique.find(item => item.meters > meters)?.meters ?? total, meters + 35)) : null,
       turnPosition: event ? pointAt(event.meters) : null,
@@ -1498,7 +1499,18 @@ function walkPreviewFrames(paths, maneuvers = []) {
     if (!frames.some((frame) => Math.abs(frame.meters - meters) < 3)) add(meters, 'straight');
   }
   add(total, 'arrival');
-  return frames.sort((a, b) => a.meters - b.meters);
+  frames.sort((a, b) => a.meters - b.meters);
+  // Use the actual straight-through junction scene, not whichever approach
+  // happens to load first. This stays stable across replay and manual seeking.
+  const junctionArrowFrames = new Map();
+  for (const frame of frames.filter(item => item.junctionCue)) {
+    const prior = junctionArrowFrames.get(frame.arrowCueKey);
+    if (!prior || Math.abs(frame.meters - frame.arrowCueMeters) < Math.abs(prior.meters - prior.arrowCueMeters))
+      junctionArrowFrames.set(frame.arrowCueKey, frame);
+  }
+  for (const frame of frames.filter(item => item.junctionCue))
+    frame.arrowCuePrimary = junctionArrowFrames.get(frame.arrowCueKey) === frame;
+  return frames;
 }
 
 function walkPreviewEndpointFrames(frames, context, paths) {
@@ -1698,6 +1710,7 @@ function walkPreviewHoldBeforeNext(frame, nextFrame) {
 // camera position and POV, so dragging/zooming cannot leave it pointing elsewhere.
 // POV contract: navermaps.github.io/maps.js.ncp/docs/naver.maps.Panorama.html
 function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
+  if (frame?.arrowCuePrimary === false) return null;
   const approach = frame?.phase === 'approach' && frame.turnPosition && frame.turnAhead;
   // Normal straight roads and post-turn departure scenes stay uncluttered.
   // Only confirmed junction windows may opt into a straight-through cue.
@@ -2367,6 +2380,9 @@ function startWalkPreview(context, choice) {
     if (!valid() || !state.history.length) return;
     clearTimeout(state.timer);
     clearTimeout(state.seekTimer);
+    // Manual navigation starts a fresh viewing pass; an earlier playback must
+    // not consume the next visible turn cue forever.
+    state.arrowScenes.clear();
     state.playing = false;
     state.scrubbing = true;
     state.play.textContent = state.english ? 'Play' : '자동 재생';
@@ -2451,6 +2467,7 @@ function startWalkPreview(context, choice) {
   state.play.onclick = () => {
     if (!valid()) return;
     if (state.finished && (state.freeSeek ? state.index === frames.length - 1 : state.cursor === state.history.length - 1) && !state.playing && !state.loading) {
+      state.arrowScenes.clear();
       state.playing = true;
       state.finished = false;
       state.index = state.history[0]?.index ?? 0;

@@ -497,6 +497,12 @@ until(()=> {
 });
 assert.equal(visibleCueFrames.size,1,'one arrow-bearing scene for the entire fork');
 const chosenCue=[...visibleCueFrames][0], chosenIndex=once.frames.indexOf(chosenCue);
+const cueCandidates=once.frames.filter(f=>f.arrowCueKey===chosenCue.arrowCueKey && f.junctionCue);
+assert.equal(chosenCue.arrowCuePrimary,true,'the verified junction photograph owns the cue');
+assert.equal(Math.abs(chosenCue.meters-chosenCue.arrowCueMeters),
+  Math.min(...cueCandidates.map(f=>Math.abs(f.meters-f.arrowCueMeters))),
+  'choose the scene nearest the actual junction, not the earlier approach');
+assert.equal(cueCandidates.filter(f=>f.arrowCuePrimary).length,1,'one stable primary scene');
 const otherIndex=once.frames.findIndex(f=>f!==chosenCue && f.arrowCueKey===chosenCue.arrowCueKey);
 assert.ok(otherIndex>=0,'test covers multiple adjacent junction candidates');
 assert.ok(once.history.some(entry=>entry.index===otherIndex),'second photograph is retained, only its repeated arrow is suppressed');
@@ -504,6 +510,15 @@ once.seek.value=String(chosenIndex); once.seek.oninput(); once.seek.onchange(); 
 assert.equal(once.activeLayer.turnArrow.hidden,false,'backward seek restores the selected cue photograph');
 once.seek.value=String(otherIndex); once.seek.oninput(); once.seek.onchange(); until(()=>!once.loading);
 assert.equal(once.activeLayer.turnArrow.hidden,true,'adjacent photograph stays cue-free after seeking');
+once.arrowScenes.set(chosenCue.arrowCueKey,once.frames[otherIndex]);
+once.seek.value=String(chosenIndex); once.seek.oninput(); once.seek.onchange(); until(()=>!once.loading);
+assert.equal(once.activeLayer.turnArrow.hidden,false,'manual revisit clears stale cue claims');
+once.play.onclick();
+until(()=>once.finished && !once.playing && !once.loading);
+once.arrowScenes.set(chosenCue.arrowCueKey,once.frames[otherIndex]);
+once.play.onclick();
+until(()=>once.activeLayer?.arrowContext?.frame===chosenCue && !once.loading);
+assert.equal(once.activeLayer.turnArrow.hidden,false,'full replay shows the primary junction cue again');
 sandbox.stopWalkPreview(true); while(tick()) {}
 console.log('PASS: one arrow scene per junction, contiguous photographs preserved, stable backward/forward seek cues');
 
