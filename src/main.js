@@ -1357,7 +1357,10 @@ function walkPreviewPhotoContext(capture, frame, paths) {
     }
   }
   const offset = walkPreviewDistance(capture, frame.position);
-  if (!closest || closest.lateral > 25 || offset > 80) return null;
+  // A straight walking sequence should not jump sideways into a driveway or parking lot.
+  // Allow a little more room at a junction/start where the camera often sits across the road.
+  const maxLateral = frame.important || frame.phase === 'start' || frame.phase === 'arrival' ? 18 : 10;
+  if (!closest || closest.lateral > maxLateral || offset > 80) return null;
   // Aim from the actual photo's route position, not from a turn that may still be ahead.
   // A snapped approach photo should face the intersection rather than an adjacent wall.
   let lookMeters = Math.min(traveled, closest.meters + 12);
