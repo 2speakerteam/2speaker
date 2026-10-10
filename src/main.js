@@ -259,7 +259,7 @@ function guideScreen() {
         <button type="button" id="walk-preview-next">${english ? 'Next' : '다음'} →</button>
       </div>
       <div class="walk-preview-progress"><span id="walk-preview-progress-text"></span><div><span id="walk-preview-progress-bar"></span></div></div>
-      <p class="walk-preview-note">${english ? 'About 15 scenes connect the route, including the approach to junctions and the path after each turn. Nearby imagery is labelled; check the map for the exact entrance.' : '출발부터 도착 부근까지 약 15장면으로 이어 보여드려요. 사거리·골목은 진입 전과 꺾은 뒤 모습을 더 천천히 보여드려요. 사진이 없는 구간은 건너뛰며, 주변 거리뷰는 지도와 함께 확인해 주세요.'}</p>
+      <p class="walk-preview-note">${english ? 'Move forward about ten steps between street views. Junctions and alley entrances play more slowly. Image spacing depends on available street photography.' : '약 열 걸음씩 앞으로 이동하듯 이어 보여드려요. 사거리·골목은 꺾기 전후를 천천히 보여드려요. 실제 장면 간격은 촬영된 거리뷰 위치에 따라 달라요.'}</p>
     </section>
     <section class="transport-options" aria-label="${english ? 'Compare transport options' : '교통수단 비교'}">
       ${['BUS', 'SUBWAY', 'TAXI'].map((mode) => {
@@ -1306,23 +1306,23 @@ function walkPreviewFrames(paths, maneuvers = []) {
     frames.push({ position, ahead, meters, total, phase,
       direction: event?.direction || 'straight', description: event?.description || '',
       important: Boolean(event), focusMeters: event?.meters ?? null, turnAngle: Math.abs(event?.delta || 0),
-      holdMs: event ? (phase === 'turn' ? 6000 : 5000) : 4000 });
+      holdMs: event ? (phase === 'turn' ? 4500 : 2800) : (phase === 'start' || phase === 'arrival' ? 3000 : 1500) });
   };
   add(0, 'start');
   unique.forEach((event, i) => {
     const previous = unique[i - 1]?.meters ?? 0;
     const next = unique[i + 1]?.meters ?? total;
     event = { ...event, nextMeters: next };
-    const before = Math.min(24, (event.meters - previous) / 3);
-    const after = Math.min(24, (next - event.meters) / 3);
+    const before = Math.min(10, (event.meters - previous) / 3);
+    const after = Math.min(10, (next - event.meters) / 3);
     if (before >= 2) add(event.meters - before, 'approach', event);
     add(event.meters, 'turn', event);
     if (after >= 2) add(event.meters + after, 'depart', event);
   });
   // Provide connecting street scenes and alternatives when several points share one photograph.
-  const spacing = Math.max(12, total / 70);
-  for (let meters = spacing; meters < total - 20; meters += spacing) {
-    if (!frames.some((frame) => Math.abs(frame.meters - meters) < 6)) add(meters, 'straight');
+  const spacing = 7;
+  for (let meters = spacing; meters < total - 3; meters += spacing) {
+    if (!frames.some((frame) => Math.abs(frame.meters - meters) < 3)) add(meters, 'straight');
   }
   add(total, 'arrival');
   return frames.sort((a, b) => a.meters - b.meters);
@@ -1387,66 +1387,10 @@ function walkPreviewCue(frame, english) {
 }
 
 
-// Compact overview: cover the whole route, prioritising separated junctions.
-// Dense vertices near the start must not consume the entire 15-scene budget.
-function walkPreviewSceneFrames(frames, limit = 15) {
-  if (!frames.length) return [];
-  limit = Math.max(2, Math.floor(limit));
-  const selected = new Set([frames[0], frames.at(-1)]);
-  const clusters = [];
-  for (const frame of frames.filter((item) => item.phase === 'turn')) {
-    const group = clusters.at(-1);
-    if (group && frame.meters - group[0].meters < 35) group.push(frame);
-    else clusters.push([frame]);
-  }
-  const decisions = clusters.map((group) => group.reduce((best, frame) =>
-    frame.turnAngle > best.turnAngle ? frame : best));
-  const chosen = [];
-  // Spread junctions over the whole walk; a cluster of campus turns must not use every slot.
-  while (decisions.length && chosen.length < Math.floor((limit - 2) / 3)) {
-    let best = decisions[0], score = -1;
-    for (const frame of decisions) {
-      const gap = Math.min(...Array.from(selected, (item) => Math.abs(item.meters - frame.meters)));
-      const value = gap * (frame.direction === 'straight' ? 1 : 1.4);
-      if (value > score) { best = frame; score = value; }
-    }
-    chosen.push(best);
-    selected.add(best);
-    decisions.splice(decisions.indexOf(best), 1);
-  }
-  // Keep both the approach and the onward alley where there is room for distinct images.
-  for (const turn of chosen) {
-    for (const phase of ['approach', 'depart']) {
-      const frame = frames.find((item) => item.phase === phase && item.focusMeters === turn.focusMeters);
-      if (frame && !Array.from(selected).some((item) => Math.abs(item.meters - frame.meters) < 10)) selected.add(frame);
-    }
-  }
-  // Bridge the largest uncovered sections rather than jumping directly between turns.
-  while (selected.size < limit) {
-    let best = null, score = -1;
-    for (const frame of frames) {
-      if (selected.has(frame)) continue;
-      const gap = Math.min(...Array.from(selected, (item) => Math.abs(item.meters - frame.meters)));
-      if (gap < 10) continue;
-      const value = gap * (frame.phase === 'turn' ? 1.25 : 1);
-      if (value > score) { best = frame; score = value; }
-    }
-    if (!best) break;
-    selected.add(best);
-  }
-  const primary = Array.from(selected).sort((a, b) => a.meters - b.meters);
-  // Alternatives are only queried if a slot has no image or repeats an earlier photograph.
-  // They do not add extra playback scenes or consume the slots reserved for later junctions.
-  return primary.flatMap((frame, slot) => {
-    const next = primary[slot + 1];
-    const alternatives = next ? frames.filter((item) =>
-      item.meters > frame.meters + 8 && item.meters < next.meters - 8
-      && !selected.has(item)) : [];
-    const picks = alternatives.length > 2
-      ? [alternatives[Math.floor(alternatives.length / 3)], alternatives[Math.floor(2 * alternatives.length / 3)]]
-      : alternatives;
-    return [frame, ...picks].map((item) => ({ ...item, sceneSlot: slot }));
-  });
+// About ten walking steps per candidate, with slower approach/turn/departure frames.
+// Physical duplicate photographs are removed during playback, not by dropping connecting roads.
+function walkPreviewSceneFrames(frames) {
+  return frames.map((frame, sceneSlot) => ({ ...frame, sceneSlot }));
 }
 
 function stopWalkPreview(hidePanel = false) {
@@ -1454,7 +1398,7 @@ function stopWalkPreview(hidePanel = false) {
   if (!state) return;
   clearTimeout(state.timer);
   state.playing = false;
-  try { state.panorama?.setVisible(false); } catch { /* Viewer may already be detached. */ }
+  for (const layer of state.layers) state.disposeLayer(layer);
   state.viewer.replaceChildren();
   state.scene.hidden = true;
   if (state.transportOptions) state.transportOptions.style.display = state.transportDisplay;
@@ -1494,7 +1438,7 @@ function startWalkPreview(context, choice) {
   const transportOptions = document.querySelector('.transport-options');
   const transportDisplay = transportOptions?.style.display || '';
   if (transportOptions) transportOptions.style.display = 'none';
-  panel.querySelector('#walk-preview-progress-text').textContent = context.english ? 'Finding up to 15 key scenes…' : '핵심 장면을 최대 15개까지 찾고 있어요.';
+  panel.querySelector('#walk-preview-progress-text').textContent = context.english ? 'Loading the walking sequence…' : '걸어갈 길의 거리뷰를 순서대로 준비하고 있어요.';
   panel.querySelector('#walk-preview-progress-bar').style.width = '0%';
   panel.hidden = false;
   scene.hidden = false;
@@ -1508,6 +1452,7 @@ function startWalkPreview(context, choice) {
     close: scene.querySelector('#walk-preview-close'),
     frames, index: 0, playing: true, loading: false,
     timer: null, panorama: null, fallbackMarker: null, skippedScenes: 0, shownScenes: 0,
+    layers: new Set(), activeLayer: null, pendingLayer: null,
     history: [], cursor: -1, finished: false, revisiting: false, duplicateScenes: 0,
     message: panel.querySelector('#walk-preview-message'),
     progress: panel.querySelector('#walk-preview-progress-text'),
@@ -1515,6 +1460,18 @@ function startWalkPreview(context, choice) {
     prev: panel.querySelector('#walk-preview-prev'),
     next: panel.querySelector('#walk-preview-next'),
     play: panel.querySelector('#walk-preview-play')
+  };
+  state.disposeLayer = (layer) => {
+    if (!layer) return;
+    clearTimeout(layer.retireTimer);
+    try {
+      if (layer.panorama) {
+        state.maps.Event.clearInstanceListeners(layer.panorama);
+        layer.panorama.setVisible(false);
+      }
+    } catch { /* Detached viewer. */ }
+    layer.element.remove();
+    state.layers.delete(layer);
   };
   walkPreviewState = state;
   state.play.disabled = false;
@@ -1578,6 +1535,9 @@ function startWalkPreview(context, choice) {
   const unavailable = (message) => {
     clearTimeout(state.timer);
     state.loading = false;
+    state.disposeLayer(state.pendingLayer);
+    state.pendingLayer = null;
+    state.panorama = null;
     state.viewer.style.visibility = 'hidden';
     state.visual.classList.add('walk-preview-map-fallback');
     const point = frames[state.index].position;
@@ -1629,23 +1589,25 @@ function startWalkPreview(context, choice) {
     }
     state.timer = setTimeout(() => {
       if (!valid() || !state.loading) return;
-      const expired = state.panorama;
-      state.panorama = null;
-      try { expired?.setVisible(false); } catch { /* Detached viewer. */ }
-      state.viewer.replaceChildren();
       unavailable(state.english ? 'Street view took too long. Check the map.' : '거리뷰 응답이 늦어요. 지도를 확인해 주세요.');
     }, 9000);
     try {
-      if (state.panorama) {
-        state.panorama.setVisible(true);
-        if (saved?.panoId && state.panorama.getPanoId?.() === saved.panoId) state.onPanoramaReady();
-        else if (saved?.panoId && state.panorama.setPanoId) state.panorama.setPanoId(saved.panoId);
-        else state.panorama.setPosition(position);
-      } else {
-        state.panorama = new state.maps.Panorama(viewer, {
-          position, pov: { pan: (walkPreviewBearing(frame.position, frame.ahead) + 180) % 360 - 180, tilt: 0, fov: 75 },
+      {
+        state.disposeLayer(state.pendingLayer);
+        const element = document.createElement('div');
+        const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+        element.style.cssText = 'position:absolute;inset:0;opacity:0;pointer-events:none;transition:opacity '
+          + (reduceMotion ? '0ms' : '450ms') + ' ease-in-out';
+        viewer.append(element);
+        const layer = { element, panorama: null, retireTimer: null };
+        state.pendingLayer = layer;
+        state.layers.add(layer);
+        state.panorama = new state.maps.Panorama(element, {
+          ...(saved?.panoId ? { panoId: saved.panoId } : { position }),
+          pov: { pan: (walkPreviewBearing(frame.position, frame.ahead) + 180) % 360 - 180, tilt: 0, fov: 75 },
           zoomControl: true, aroundControl: false, flightSpot: false
         });
+        layer.panorama = state.panorama;
         const instance = state.panorama;
         state.maps.Event.addListener(instance, 'pano_status', (status) => {
           if (!valid() || state.panorama !== instance || !state.loading) return;
@@ -1673,8 +1635,15 @@ function startWalkPreview(context, choice) {
           const duplicate = state.history.some((entry) =>
             (panoId && entry.panoId === panoId)
             || (capturePoint && walkPreviewDistance(entry.capturePoint, capturePoint) < 2));
-          if (!state.revisiting && duplicate) {
+          const previousScene = state.history.at(-1);
+          const turnView = frameNow.important && !photoContext.nearby && previousScene?.panoId === panoId
+            && Math.abs(((photoContext.heading - previousScene.heading + 540) % 360) - 180) >= 35
+            && !state.history.some((entry) => entry.panoId === panoId && entry.focusMeters === frameNow.focusMeters && entry.turnView);
+          if (!state.revisiting && duplicate && !turnView) {
             state.duplicateScenes += 1;
+            state.disposeLayer(layer);
+            state.pendingLayer = null;
+            state.panorama = null;
             // Keep navigation locked during the seek even when manually paused.
             state.message.textContent = state.english
               ? 'Skipping the repeated photograph; looking for a different scene…'
@@ -1696,7 +1665,8 @@ function startWalkPreview(context, choice) {
           }
           state.loading = false;
           if (!state.revisiting) {
-            state.history.push({ index: state.index, panoId, capturePoint });
+            state.history.push({ index: state.index, panoId, capturePoint, heading: photoContext.heading,
+              focusMeters: frameNow.focusMeters, turnView });
             state.cursor = state.history.length - 1;
             state.shownScenes = state.history.length;
           }
@@ -1704,6 +1674,20 @@ function startWalkPreview(context, choice) {
           updateProgress();
           updateButtons();
           state.viewer.style.visibility = 'visible';
+          const previousLayer = state.activeLayer;
+          state.activeLayer = layer;
+          state.pendingLayer = null;
+          // Both real panoramas overlap briefly; no invented intermediate street geometry.
+          element.style.pointerEvents = 'auto';
+          requestAnimationFrame(() => {
+            if (!valid() || state.activeLayer !== layer) return;
+            element.style.opacity = '1';
+            if (previousLayer && previousLayer !== layer) {
+              previousLayer.element.style.pointerEvents = 'none';
+              // Keep the outgoing photograph opaque underneath the incoming fade.
+              previousLayer.retireTimer = setTimeout(() => state.disposeLayer(previousLayer), 500);
+            }
+          });
           const photoDate = state.panorama.getLocation()?.photodate;
           const cue = photoContext.nearby
             ? (state.english ? `Nearby street view · about ${Math.round(photoContext.offset)} m from the preview point; check the map for the turn`
