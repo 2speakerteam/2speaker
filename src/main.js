@@ -1430,23 +1430,12 @@ function walkPreviewFrames(paths, maneuvers = []) {
 function walkPreviewEndpointFrames(frames, context, paths) {
   if (!frames.length) return frames;
   const result = frames.slice();
-  const along = (target) => {
-    let traveled = 0;
-    for (const path of paths) for (let i = 1; i < path.length; i += 1) {
-      const a = path[i - 1], b = path[i], length = walkPreviewDistance(a, b);
-      if (!length) continue;
-      if (traveled + length >= target) return a.map((n, axis) => n + (b[axis] - n) * Math.max(0, target - traveled) / length);
-      traveled += length;
-    }
-    return paths.at(-1).at(-1);
-  };
-  const total = frames.at(-1).total;
   for (const [side, endpoint] of [['start', context.start], ['end', context.end]]) {
     const landmark = endpoint?.landmark;
     if (!landmark) continue;
     const base = side === 'start' ? frames[0] : frames.at(-1);
-    // Stand a little away from the landmark and look back at it, rather than looking past it.
-    const position = side === 'start' ? along(Math.min(12, total / 3)) : landmark.position;
+    // Query the entrance itself so the introduction and onward view share a camera.
+    const position = landmark.position;
     const frame = { ...base, position, ahead: landmark.position, landmark, phase: 'landmark-' + side,
       important: true, description: '', holdMs: 3500 };
     if (side === 'start') result.unshift(frame);
@@ -1771,6 +1760,9 @@ function startWalkPreview(context, choice) {
     // Hiding it here made every position change flash the underlying map.
     if (!state.history.length && !revisiting) state.viewer.style.visibility = 'hidden';
     const saved = revisiting ? state.history[state.cursor] : null;
+    const departure = !revisiting && frame.phase === 'start'
+      && frames[state.history.at(-1)?.index]?.phase === 'landmark-start' ? state.history.at(-1) : null;
+    const selectedPanoId = saved?.panoId || departure?.panoId;
     const target = saved?.capturePoint || frame.position;
     const position = new state.maps.LatLng(target[1], target[0]);
     if (!state.maps.Panorama) {
@@ -1793,9 +1785,9 @@ function startWalkPreview(context, choice) {
         state.pendingLayer = layer;
         state.layers.add(layer);
         state.panorama = new state.maps.Panorama(element, {
-          ...(saved?.panoId ? { panoId: saved.panoId } : { position }),
+          ...(selectedPanoId ? { panoId: selectedPanoId } : { position }),
           pov: { pan: (walkPreviewBearing(frame.position, frame.ahead) + 180) % 360 - 180, tilt: 0, fov: 75 },
-          zoomControl: true, aroundControl: false, flightSpot: false
+          zoomControl: true, aroundControl: false, flightSpot: false, logoControl: false
         });
         layer.panorama = state.panorama;
         const instance = state.panorama;
@@ -1817,6 +1809,11 @@ function startWalkPreview(context, choice) {
           if (!photoContext) {
             unavailable(state.english ? 'No close street image for this route point. Check the map.' : '이 지점과 가까운 거리뷰가 없어요. 다른 길 사진 대신 지도를 확인해 주세요.');
             return;
+          }
+          if (departure && photoContext.lateral > 3) {
+            // The camera may stand on the road: look towards the actual footpath,
+            // not parallel to it along the centre of the traffic lanes.
+            photoContext.heading = walkPreviewBearing(capturePoint, frameNow.ahead);
           }
 
           const location = state.panorama.getLocation();
@@ -1847,17 +1844,22 @@ function startWalkPreview(context, choice) {
             }, 80);
             return;
           }
+          const cameraPov = {
+            pan: (photoContext.heading + 180) % 360 - 180,
+            tilt: frameNow.landmark?.kind === 'station-exit' ? 4 : 0,
+            fov: frameNow.landmark?.kind === 'station-exit' ? 48 : 75
+          };
+          layer.pov = cameraPov;
+          layer.panoId = panoId;
           try {
             // Route-relative heading avoids looking backwards when the photo snaps past the target.
-            state.panorama.setPov({
-              pan: (photoContext.heading + 180) % 360 - 180, tilt: 0, fov: 75
-            });
+            state.panorama.setPov(cameraPov);
           } catch {
             // If camera control is unavailable, keep the panorama navigable by hand.
           }
           // pano_changed can fire before initialization/rendering is complete. Start from init,
           // settle the corrected camera offscreen, then reveal it without a visible pan/zoom.
-          layer.settleTimer = setTimeout(() => requestAnimationFrame(() => requestAnimationFrame(() => {
+          const reveal = () => requestAnimationFrame(() => requestAnimationFrame(() => {
             if (!valid() || state.panorama !== instance || state.pendingLayer !== layer) return;
             state.loading = false;
             if (!state.revisiting) {
@@ -1902,7 +1904,30 @@ function startWalkPreview(context, choice) {
               state.message.textContent += state.english ? ' · Last available scene; check the map for any remaining section.' : ' · 마지막 확인 가능한 장면이에요. 남은 구간은 지도를 확인해 주세요.';
             }
             scheduleNext();
-          })), 300);
+          }));
+          layer.settleTimer = setTimeout(() => {
+            const outgoing = state.activeLayer;
+            if (!valid() || state.pendingLayer !== layer) return;
+            // Show a real turn of the head within the same photograph, not a jump
+            // between different years/cameras. Reduced motion and seeking stay instant.
+            if (reduceMotion || state.revisiting || !outgoing || outgoing.panoId !== panoId
+                || !outgoing.pov || !departure) { reveal(); return; }
+            const from = outgoing.panorama.getPov?.() || outgoing.pov;
+            const delta = ((cameraPov.pan - from.pan + 540) % 360) - 180;
+            let step = 0;
+            const rotate = () => {
+              if (!valid() || state.pendingLayer !== layer || state.activeLayer !== outgoing) return;
+              const t = Math.min(1, ++step / 30), eased = t * t * (3 - 2 * t);
+              try {
+                outgoing.panorama.setPov({ pan: ((from.pan + delta * eased + 540) % 360) - 180,
+                  tilt: from.tilt + (cameraPov.tilt - from.tilt) * eased,
+                  fov: from.fov + (cameraPov.fov - from.fov) * eased });
+              } catch { reveal(); return; }
+              if (t < 1) layer.settleTimer = setTimeout(rotate, 20);
+              else reveal();
+            };
+            rotate();
+          }, 300);
         };
         state.onPanoramaReady = onPanoramaReady;
         state.maps.Event.addListener(instance, 'init', onPanoramaReady);
