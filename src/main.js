@@ -2445,6 +2445,20 @@ function startWalkPreview(context, choice) {
   visual.scrollIntoView({ behavior: 'auto', block: 'nearest' });
 }
 
+function walkPreviewRouteSummary(context, choice) {
+  const { start, end, english } = context;
+  const from = start.landmark?.label || routeOrigin || (english ? 'Your location' : '현재 위치');
+  const to = end.landmark?.label || destination;
+  let text = english
+    ? `${from} → ${to} · ${Math.round(choice.distance)} m · about ${choice.minutes} min`
+    : `${from}${start.landmark?.kind === 'station-exit' ? '로 나와서' : ''} → ${to} · 약 ${Math.round(choice.distance)}m · 약 ${choice.minutes}분`;
+  const comparison = start.walkingComparison;
+  if (comparison) text += english
+    ? ` · shortest of ${comparison.checked} available routes (${comparison.candidates} requested)`
+    : ` · 확인된 ${comparison.checked}개 경로 중 최단 (${comparison.candidates}개 비교 요청)`;
+  return text;
+}
+
 function selectGuideTransport(mode, userInitiated = false) {
   const choice = guideTransportRoutes[mode];
   const context = guideTransportContext;
@@ -2490,7 +2504,7 @@ function selectGuideTransport(mode, userInitiated = false) {
     drawTransitItinerary(maps, map, choice.itinerary, start, end);
     summary = `${english ? { BUS: 'Bus', SUBWAY: 'Subway' }[mode] : { BUS: '버스', SUBWAY: '지하철' }[mode]} · ${transportText(mode, choice.itinerary, english)}`;
   }
-  setGuideAnswer(english
+  setGuideAnswer(mode === 'WALK' ? walkPreviewRouteSummary(context, choice) : english
     ? `Route from ${mode === 'WALK' ? (start.landmark?.label || routeOrigin || 'your location') : (routeOrigin || 'your location')} to ${mode === 'WALK' ? (end.landmark?.label || destination) : destination}: ${summary}.`
     : `${mode === 'WALK' ? (start.landmark?.label || routeOrigin || '현재 위치') : (routeOrigin || '현재 위치')}에서 ${mode === 'WALK' ? (end.landmark?.label || destination) : destination}까지 ${summary} 경로를 확인했어요.`);
 }
@@ -2534,16 +2548,8 @@ async function requestNaverTransitRoute(maps, map, start, end, isCurrent, instru
       if (walkButton) walkButton.disabled = false;
       instruction.textContent = english ? `Walk · about ${minutes} min` : `도보 · 약 ${minutes}분`;
       if (endpointLabel) {
-        const comparison = start.walkingComparison;
-        const from = start.landmark?.label || routeOrigin || (english ? 'Your location' : '현재 위치');
-        const to = end.landmark?.label || destination;
         endpointLabel.hidden = false;
-        endpointLabel.textContent = english
-          ? `${from} → ${to} · ${Math.round(distance)} m · about ${minutes} min`
-          : `${from}${start.landmark?.kind === 'station-exit' ? '로 나와서' : ''} → ${to} · 약 ${Math.round(distance)}m · 약 ${minutes}분`;
-        if (comparison) endpointLabel.textContent += english
-          ? ` · shortest of ${comparison.checked} available routes (${comparison.candidates} requested)`
-          : ` · 확인된 ${comparison.checked}개 경로 중 최단 (${comparison.candidates}개 비교 요청)`;
+        endpointLabel.textContent = walkPreviewRouteSummary(guideTransportContext, guideTransportRoutes.WALK);
         if (!end.landmark) endpointLabel.textContent += english
           ? ' · Destination representative point; entrance not confirmed'
           : ' · 목적지 대표 위치 기준, 입구 미확인';

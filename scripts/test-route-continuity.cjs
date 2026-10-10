@@ -441,6 +441,34 @@ assert.equal(missedTurn.frames[missedTurn.index].phase,'turn');
 sandbox.stopWalkPreview(true); while(tick()) {}
 console.log('PASS: junction phases survive deduplication, gradual same-camera turn, slower pace, backward-turn map cue');
 
+// The green answer bubble holds the route overview; scene instructions stay separate.
+const overviewContext={maps:{LatLng,LatLngBounds:class {extend(){}},Polyline:class {},Marker:class {}},
+  map:{fitBounds(){}},requestId:1,english:false,
+  start:{latitude:37,longitude:127,landmark:{kind:'station-exit',label:'아차산역 2번 출구'},walkingComparison:{checked:10,candidates:10}},
+  end:{latitude:37,longitude:127.01,landmark:{kind:'gate',label:'아차산어울림광장'}}};
+let answerText='', previewStarts=0;
+const overviewSandbox={guideTransportContext:overviewContext,
+  guideTransportRoutes:{WALK:{minutes:15,distance:1100,paths:route},TAXI:{summary:'택시 테스트'}},
+  currentPage:'guide',routeRequestToken:1,routeOrigin:'아차산역',destination:'아차산',routeMapOverlays:[],
+  clearRouteOverlays(){},stopWalkPreview(){},startWalkPreview(){previewStarts++;},setGuideAnswer(text){answerText=text;}};
+vm.createContext(overviewSandbox);
+vm.runInContext(source.slice(source.indexOf('function walkPreviewRouteSummary'),source.indexOf('async function requestNaverTransitRoute')),overviewSandbox);
+overviewSandbox.selectGuideTransport('WALK',true);
+const expectedOverview='아차산역 2번 출구로 나와서 → 아차산어울림광장 · 약 1100m · 약 15분 · 확인된 10개 경로 중 최단 (10개 비교 요청)';
+assert.equal(answerText,expectedOverview,'walking answer bubble shows requested full route overview');
+assert.equal(previewStarts,1,'walking preview still starts normally');
+overviewSandbox.selectGuideTransport('TAXI');
+assert.match(answerText,/택시 테스트 경로를 확인했어요/,'non-walking answer remains unchanged');
+overviewContext.english=true;
+overviewSandbox.selectGuideTransport('WALK');
+assert.match(answerText,/1100 m · about 15 min · shortest of 10 available routes \(10 requested\)/);
+overviewContext.english=false;
+delete overviewContext.start.walkingComparison;
+delete overviewContext.start.landmark;
+overviewSandbox.selectGuideTransport('WALK');
+assert.equal(answerText,'아차산역 → 아차산어울림광장 · 약 1100m · 약 15분','no invented exit or shortest-route claim without comparison');
+console.log('PASS: green walking answer overview, dynamic exit/comparison, English and non-walking modes');
+
 (async()=>{
   vm.runInContext(source.slice(source.indexOf('function automaticEntranceQuery'),source.indexOf('function routeErrorMessage')),sandbox);
   assert.equal(sandbox.automaticEntranceQuery('아차산'),true);
