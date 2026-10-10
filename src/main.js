@@ -259,7 +259,7 @@ function guideScreen() {
         <button type="button" id="walk-preview-next">${english ? 'Next' : '다음'} →</button>
       </div>
       <div class="walk-preview-progress"><span id="walk-preview-progress-text"></span><div><span id="walk-preview-progress-bar"></span></div></div>
-      <p class="walk-preview-note">${english ? 'Junction-focused preview. Nearby photos are labelled and sections without imagery are skipped automatically. Check the map and local signs.' : '골목 진입·회전 지점 위주로 최대 15장면만 보여드려요. 같은 사진은 건너뛰며, 주변 거리뷰는 정확한 진입 위치와 다를 수 있어요. 지도와 현장 표지도 확인해 주세요.'}</p>
+      <p class="walk-preview-note">${english ? 'Junction-focused preview. Nearby photos are labelled and sections without imagery are skipped automatically. Check the map and local signs.' : '출발 첫 장면과 방향이 꺾이는 지점만 차례로 보여드려요. 같은 사진은 건너뛰고, 각 꺾임 장면은 잠시 더 머물러요. 주변 거리뷰는 실제 진입 위치와 다를 수 있으니 지도도 함께 확인해 주세요.'}</p>
     </section>
     <section class="transport-options" aria-label="${english ? 'Compare transport options' : '교통수단 비교'}">
       ${['BUS', 'SUBWAY', 'TAXI'].map((mode) => {
@@ -1306,7 +1306,7 @@ function walkPreviewFrames(paths, maneuvers = []) {
     frames.push({ position, ahead, meters, total, phase,
       direction: event?.direction || 'straight', description: event?.description || '',
       important: Boolean(event), focusMeters: event?.meters ?? null,
-      holdMs: event ? (phase === 'turn' ? 6000 : 4500) : 3000 });
+      holdMs: event ? (phase === 'turn' ? 7500 : 4500) : (phase === 'start' ? 5000 : 3000) });
   };
   add(0, 'start');
   unique.forEach((event, i) => {
@@ -1367,36 +1367,14 @@ function walkPreviewCue(frame, english) {
 // Compact overview: cover the whole route, prioritising separated junctions.
 // Dense vertices near the start must not consume the entire 15-scene budget.
 function walkPreviewSceneFrames(frames, limit = 15) {
-  if (frames.length <= limit) return frames;
-  const selected = new Set([frames[0], frames.at(-1)]);
-  const turns = frames.filter((frame) => frame.phase === 'turn');
-  const clusters = [];
-  for (const turn of turns) {
-    const group = clusters.at(-1);
-    if (group && turn.meters - group[0].meters < 35) group.push(turn);
-    else clusters.push([turn]);
-  }
-  const count = Math.min(6, clusters.length);
-  for (let i = 0; i < count; i += 1) {
-    const group = clusters[Math.round(i * (clusters.length - 1) / Math.max(1, count - 1))];
-    const turn = group.find((frame) => /골목|입구|출구|진입|교차로|사거리/.test(frame.description)) || group[0];
-    selected.add(turn);
-    const approach = frames.find((frame) => frame.phase === 'approach' && frame.focusMeters === turn.focusMeters);
-    if (approach) selected.add(approach);
-  }
-  // Fill remaining slots in the widest uncovered gaps (not every few metres).
-  while (selected.size < limit) {
-    let best = null, score = -1;
-    for (const frame of frames) {
-      if (selected.has(frame)) continue;
-      const gap = Math.min(...Array.from(selected, (chosen) => Math.abs(chosen.meters - frame.meters)));
-      const value = gap * (frame.important ? 1.2 : 1);
-      if (value > score) { best = frame; score = value; }
-    }
-    if (!best) break;
-    selected.add(best);
-  }
-  return Array.from(selected).sort((a, b) => a.meters - b.meters);
+  const first = frames.find((frame) => frame.phase === 'start');
+  const turns = frames.filter((frame) => frame.phase === 'turn' && frame.direction !== 'straight');
+  if (!first) return turns.slice(0, limit);
+  if (turns.length <= limit - 1) return [first, ...turns];
+  // On very turn-heavy routes, sample turns along the whole route instead of clustering at the start.
+  const selectedTurns = Array.from({ length: limit - 1 }, (_, i) =>
+    turns[Math.round(i * (turns.length - 1) / (limit - 2))]);
+  return [first, ...selectedTurns];
 }
 
 function stopWalkPreview(hidePanel = false) {
@@ -1567,7 +1545,9 @@ function startWalkPreview(context, choice) {
     const frame = frames[state.index];
     updateButtons();
     state.message.textContent = walkPreviewCue(frame, state.english) + (state.english ? ' · Loading street view...' : ' · 거리뷰를 불러오는 중이에요.');
-    state.viewer.style.visibility = 'hidden';
+    // Keep the previous real panorama on screen until the next view has loaded.
+    // Hiding it here made every position change flash the underlying map.
+    if (!state.history.length && !revisiting) state.viewer.style.visibility = 'hidden';
     const saved = revisiting ? state.history[state.cursor] : null;
     const target = saved?.capturePoint || frame.position;
     const position = new state.maps.LatLng(target[1], target[0]);
