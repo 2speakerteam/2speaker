@@ -1516,6 +1516,21 @@ function walkPreviewCue(frame, english) {
   return [phase, frame.important ? action : '', !english ? frame.description : ''].filter(Boolean).join(' · ');
 }
 
+function walkPreviewCameraPov(frame, photoContext, photoDate) {
+  const stationExit = frame.landmark?.kind === 'station-exit';
+  let heading = photoContext.heading;
+  let fov = stationExit ? 48 : 75;
+  // Visually checked sign framing for this capture only. The entrance POI points
+  // inside the stairwell, while the visible number sign is on the roadside canopy.
+  // Do not carry a photograph-specific adjustment to another station or newer image.
+  if (stationExit && frame.landmark.label.replace(/\s/g, '') === '어린이대공원역1번출구'
+      && photoDate === '2023-10-30 10:52:14') {
+    heading += 28;
+    fov = 38;
+  }
+  return { pan: (heading + 180) % 360 - 180, tilt: stationExit ? 4 : 0, fov };
+}
+
 
 // About thirty walking steps per candidate, with slower approach/turn/departure frames.
 // Physical duplicate photographs are removed during playback, not by dropping connecting roads.
@@ -1805,7 +1820,12 @@ function startWalkPreview(context, choice) {
           const frameNow = frames[state.index];
           const capture = state.panorama.getLocation()?.coord;
           const capturePoint = capture && [capture.lng(), capture.lat()];
-          const photoContext = walkPreviewPhotoContext(capturePoint, frameNow, choice.paths);
+          // The entrance photograph has already passed the landmark proximity check.
+          // Reuse it for the first head turn even if its camera is off the route line.
+          const photoContext = departure && capturePoint
+            ? { offset: walkPreviewDistance(capturePoint, frameNow.position), meters: frameNow.meters,
+                lateral: 0, nearby: false, heading: walkPreviewBearing(capturePoint, frameNow.ahead) }
+            : walkPreviewPhotoContext(capturePoint, frameNow, choice.paths);
           if (!photoContext) {
             unavailable(state.english ? 'No close street image for this route point. Check the map.' : '이 지점과 가까운 거리뷰가 없어요. 다른 길 사진 대신 지도를 확인해 주세요.');
             return;
@@ -1844,11 +1864,7 @@ function startWalkPreview(context, choice) {
             }, 80);
             return;
           }
-          const cameraPov = {
-            pan: (photoContext.heading + 180) % 360 - 180,
-            tilt: frameNow.landmark?.kind === 'station-exit' ? 4 : 0,
-            fov: frameNow.landmark?.kind === 'station-exit' ? 48 : 75
-          };
+          const cameraPov = walkPreviewCameraPov(frameNow, photoContext, location?.photodate);
           layer.pov = cameraPov;
           layer.panoId = panoId;
           try {
