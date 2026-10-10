@@ -1410,7 +1410,7 @@ function walkPreviewFrames(paths, maneuvers = []) {
     if (!match || match.distance > 20) continue;
     minimum = match.meters;
     if (match.meters < 4 || total - match.meters < 4) continue;
-    const explicit = /좌회전|우회전|왼쪽|오른쪽|유턴|교차로|사거리|삼거리|횡단보도|골목|입구|출구|진입|진출|갈림길|계단|육교|지하보도/.test(description);
+    const explicit = /좌회전|우회전|왼쪽|오른쪽|유턴|교차로|사거리|삼거리|횡단보도|골목|입구|출구|진입|진출|갈림길|갈래길|분기|계단|육교|지하보도/.test(description);
     if (!explicit) continue;
     let delta = deltaAt(match.meters);
     // Some provider instructions sit just before the physical corner (e.g. at
@@ -1433,6 +1433,13 @@ function walkPreviewFrames(paths, maneuvers = []) {
   }
   decisions.sort((a, b) => a.meters - b.meters);
   const unique = decisions.filter((event, i) => !i || event.meters - decisions[i - 1].meters > 2);
+  // Straight-through junctions visually confirmed in the user's Achasan route
+  // screenshots (2026-10-10). Geographic anchors, never scene indices or a
+  // blanket straight-road fallback. Provider instructions cover other junctions.
+  const verifiedJunctions = [
+    [127.09069731773641, 37.5515729760091],
+    [127.09204455377541, 37.5516751937452]
+  ].map(point => project(point, 0)).filter(match => match && match.distance <= 6);
   const frames = [];
   const add = (meters, phase, event = null) => {
     // Dense samples between the approach and the corner still belong to that
@@ -1455,6 +1462,7 @@ function walkPreviewFrames(paths, maneuvers = []) {
       ahead = position.map((value, axis) => value + (value - behind[axis]));
     }
     frames.push({ position, ahead, meters, total, phase,
+      junctionCue: phase === 'straight' && verifiedJunctions.some(junction => meters >= junction.meters - 8 && meters <= junction.meters + 2),
       cueAhead: phase === 'straight' ? pointAt(Math.min(total, unique.find(item => item.meters > meters)?.meters ?? total, meters + 35)) : null,
       turnPosition: event ? pointAt(event.meters) : null,
       turnAhead: event ? pointAt(Math.min(total, event.nextMeters ?? total, event.meters + 14)) : null,
@@ -1648,11 +1656,10 @@ function walkPreviewSceneFrames(frames) {
 // POV contract: navermaps.github.io/maps.js.ncp/docs/naver.maps.Panorama.html
 function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
   const approach = frame?.phase === 'approach' && frame.turnPosition && frame.turnAhead;
-  // Routing providers omit some straight-through forks. A brief route-bearing
-  // cue on connecting scenes covers those without pretending to detect roads
-  // from the photograph. Endpoint and uncertain photographs remain excluded.
-  const connecting = frame?.phase === 'straight';
-  const junction = frame?.important && /교차로|사거리|삼거리|갈림길|횡단보도/.test(frame.description || '');
+  // Normal straight roads and post-turn departure scenes stay uncluttered.
+  // Only confirmed junction windows may opt into a straight-through cue.
+  const connecting = frame?.phase === 'straight' && frame.junctionCue === true;
+  const junction = frame?.important && /교차로|사거리|삼거리|갈림길|갈래길|분기|횡단보도/.test(frame.description || '');
   if ((!approach && !connecting && frame?.phase !== 'turn') || (!connecting && frame.turnAngle < 35 && !junction) || frame.landmark || !capture
       || !photo || photo.nearby || photo.offset > (connecting ? 20 : 18) || photo.lateral > 12
       || (!connecting && photo.meters > frame.meters + 5) || !(width > 0 && height > 0)
@@ -1832,7 +1839,7 @@ function startWalkPreview(context, choice) {
     for (const layer of state.layers) if (layer.turnArrow) layer.turnArrow.hidden = true;
   };
   const attachTurnArrow = (layer, frame, capture, photo, panoId) => {
-    if (!['approach','turn','straight'].includes(frame.phase)) {
+    if (!['approach','turn'].includes(frame.phase) && !(frame.phase === 'straight' && frame.junctionCue)) {
       layer.arrowContext = null;
       if (layer.turnArrow) layer.turnArrow.hidden = true;
       return;

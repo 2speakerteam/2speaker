@@ -60,14 +60,26 @@ assert.ok(Math.max(...arrowPoints.map(p=>p[0]))-Math.min(...arrowPoints.map(p=>p
 assert.notEqual(sandbox.walkPreviewTurnArrow(arrowFrame,origin,arrowPhoto,{...arrowPov,pan:10},600,300),arrow,'cue follows view rotation');
 assert.equal(sandbox.walkPreviewTurnArrow(arrowFrame,origin,arrowPhoto,{...arrowPov,pan:180},600,300),null,'hide when target is behind camera');
 for(const phase of ['start','approach','depart','arrival']) assert.equal(sandbox.walkPreviewTurnArrow({...arrowFrame,phase},origin,arrowPhoto,arrowPov,600,300),null);
-assert.equal(sandbox.walkPreviewTurnArrow({...arrowFrame,phase:'straight',turnAngle:0},origin,arrowPhoto,arrowPov,600,300),arrow,'unlabelled straight-through forks get the unchanged forward cue');
+assert.equal(sandbox.walkPreviewTurnArrow({...arrowFrame,phase:'straight',turnAngle:0},origin,arrowPhoto,arrowPov,600,300),null,'ordinary straight roads never show an arrow');
+assert.equal(sandbox.walkPreviewTurnArrow({...arrowFrame,phase:'straight',junctionCue:true,turnAngle:0},origin,arrowPhoto,arrowPov,600,300),arrow,'confirmed straight-through junction gets the unchanged forward cue');
 const snappedPoint=[127,37+10/111320];
-const snappedStraight={...arrowFrame,phase:'straight',cueAhead:[127,37+30/111320]};
+const snappedStraight={...arrowFrame,phase:'straight',junctionCue:true,cueAhead:[127,37+30/111320]};
 const snappedPhoto={...arrowPhoto,point:snappedPoint,meters:40,offset:10};
 assert.ok(sandbox.walkPreviewTurnArrow(snappedStraight,snappedPoint,snappedPhoto,arrowPov,600,300),'straight cue follows the photograph route position, not a sample behind it');
 assert.ok(sandbox.walkPreviewTurnArrow(snappedStraight,[snappedPoint[0]+10/88804,snappedPoint[1]],{...snappedPhoto,lateral:10,offset:15},arrowPov,600,300),'sidewalk offset does not push connecting direction cue off-screen');
 assert.equal(sandbox.walkPreviewTurnArrow({...snappedStraight,cueAhead:[127,37+15/111320]},snappedPoint,snappedPhoto,arrowPov,600,300),null,'snapped cue cannot extend across an upcoming corner');
 assert.equal(sandbox.walkPreviewTurnArrow({...arrowFrame,phase:'straight'},origin,{...arrowPhoto,nearby:true},arrowPov,600,300),null,'uncertain connecting scene never gets a guessed cue');
+assert.equal(sandbox.walkPreviewTurnArrow({...snappedStraight,phase:'depart'},snappedPoint,snappedPhoto,arrowPov,600,300),null,'cue disappears after leaving the junction even if its metadata remains');
+const verifiedCenter=[127.09204455377541,37.5516751937452];
+const junctionRoute=[[verifiedCenter.map((v,i)=>v+(i?-50/111320:0)),verifiedCenter.map((v,i)=>v+(i?50/111320:0))]];
+const junctionFrames=sandbox.walkPreviewFrames(junctionRoute,[]);
+assert.ok(junctionFrames.some(f=>f.junctionCue),'verified intersection detected by geographic proximity');
+assert.ok(junctionFrames.filter(f=>f.junctionCue).length<=3,'brief junction window only');
+assert.ok(junctionFrames.filter(f=>f.meters>55).every(f=>!f.junctionCue),'hide on straight road after junction');
+assert.ok(sandbox.walkPreviewFrames(junctionRoute.map(path=>path.map(p=>[p[0]+.001,p[1]])),[]).every(f=>!f.junctionCue),'unrelated parallel road cannot inherit a junction cue');
+for(const description of ['두 갈래길에서 직진','삼거리에서 직진','사거리에서 직진']) {
+  assert.ok(sandbox.walkPreviewFrames(junctionRoute,[{position:verifiedCenter,description}]).some(f=>f.important),'provider fork descriptions retained');
+}
 assert.equal(sandbox.walkPreviewTurnArrow(arrowFrame,origin,{...arrowPhoto,nearby:true},arrowPov,600,300),null);
 assert.equal(sandbox.walkPreviewTurnArrow(arrowFrame,origin,{...arrowPhoto,meters:40},arrowPov,600,300),null,'no backward cue from overshot camera');
 assert.equal(sandbox.walkPreviewTurnArrow({...arrowFrame,ahead:[127,37.00005]},origin,arrowPhoto,arrowPov,600,300),null,'do not project beyond next close junction');
