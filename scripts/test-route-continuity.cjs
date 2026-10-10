@@ -97,6 +97,26 @@ const cornerBridge=turnFrames.find(x=>Math.abs(x.meters-55)<.1);
 assert.equal(cornerBridge.phase,'approach','sample immediately before corner keeps junction context');
 const bridgePhoto=sandbox.walkPreviewPhotoContext(point(55),cornerBridge,corner);
 assert.ok(Math.abs(bridgePhoto.heading-90)<1,'do not look around corner while still approaching it');
+// Achasan exit: instruction at 18 m precedes the physical left corner at 28 m.
+const exitApproachPath = [[[127.09008350144443,37.551658418163264],
+  [127.09015572151327,37.551502881985],[127.0901946090726,37.55142511394591],
+  [127.09076121941453,37.55159177145594]]];
+const exitApproachFrames = sandbox.walkPreviewFrames(exitApproachPath,[{
+  position:exitApproachPath[0][1],description:'좌회전 후 천호대로를 따라 10m 이동',turnType:12
+}]);
+const exitCorner = exitApproachFrames.find(f=>f.phase==='turn');
+const exitApproach = exitApproachFrames.find(f=>f.phase==='approach' && Math.abs(f.meters-12.286)<.1);
+assert.ok(exitCorner.turnAngle>80 && Math.abs(exitCorner.meters-27.732)<.1,'early instruction must not erase real corner');
+assert.ok(exitApproach && exitApproach.direction==='left','preserve 12 m approach and show upcoming left turn');
+const exitPhoto = sandbox.walkPreviewPhotoContext(exitApproach.position,exitApproach,exitApproachPath);
+assert.ok(sandbox.walkPreviewTurnArrow(exitApproach,exitApproach.position,exitPhoto,
+  {pan:exitPhoto.heading,tilt:0,fov:75},600,300),'exit approach arrow is visible on the road');
+assert.equal(exitApproachFrames.filter(f=>f.phase==='turn').length,1,'no duplicate early turn');
+const oppositeInstruction = sandbox.walkPreviewFrames(exitApproachPath,[{
+  position:exitApproachPath[0][1],description:'우회전 후 10m 이동',turnType:13
+}]);
+assert.ok(oppositeInstruction.find(f=>f.phase==='turn').meters<20,'do not match an opposite-direction instruction to this corner');
+console.log('PASS: early station-exit instruction retains approach cue and actual geometric corner');
 const css = fs.readFileSync(__dirname + '/../src/styles.css','utf8');
 assert.match(css,/\.walk-preview-panorama \{[^}]*z-index: 0;[^}]*isolation: isolate;/);
 assert.match(css,/\.walk-preview-map-button \{[^}]*z-index: 3;/);
@@ -431,3 +451,6 @@ console.log('PASS: junction phases survive deduplication, gradual same-camera tu
   assert.equal((await sandbox.pedestrianCandidates('아차산',{})).length,1,'reject distant namesake plaza');
   console.log('PASS: Achasan entrance routing, explicit summit preserved, current-location origin');
 })().catch(error=>{console.error(error);process.exitCode=1;});
+
+
+

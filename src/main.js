@@ -1412,9 +1412,19 @@ function walkPreviewFrames(paths, maneuvers = []) {
     if (match.meters < 4 || total - match.meters < 4) continue;
     const explicit = /좌회전|우회전|왼쪽|오른쪽|유턴|교차로|사거리|삼거리|횡단보도|골목|입구|출구|진입|진출|갈림길|계단|육교|지하보도/.test(description);
     if (!explicit) continue;
-    const delta = deltaAt(match.meters);
+    let delta = deltaAt(match.meters);
+    // Some provider instructions sit just before the physical corner (e.g. at
+    // the start of a crossing). Keep the early approach, but anchor the turn
+    // to the nearby route bend instead of suppressing that bend as a duplicate.
+    const intended = /좌회전/.test(description) ? -1 : /우회전/.test(description) ? 1 : 0;
+    const corner = Math.abs(delta) < 35 && intended
+      ? geometric.find(item => item.meters >= match.meters && item.meters - match.meters <= 15
+        && Math.sign(item.delta) === intended) : null;
+    const turnMeters = corner?.meters ?? match.meters;
+    if (corner) delta = corner.delta;
     // Direction comes from the route shape; a future-turn mention in prose is not a turn at this point.
-    supplied.push({ meters: match.meters, delta, direction: direction(delta),
+    supplied.push({ meters: turnMeters, delta, direction: direction(delta),
+      approachMeters: corner ? Math.max(0, match.meters - Math.min(10, match.meters / 3)) : null,
       kind: Math.abs(delta) >= 35 ? 'turn' : 'junction', description });
   }
   const decisions = supplied.slice();
@@ -1428,7 +1438,8 @@ function walkPreviewFrames(paths, maneuvers = []) {
     // Dense samples between the approach and the corner still belong to that
     // approach. Otherwise their generic 12 m look-ahead turns the camera early.
     if (phase === 'straight') {
-      const next = unique.find(item => item.meters > meters && item.meters - meters <= 12);
+      const next = unique.find(item => item.meters > meters && (item.meters - meters <= 12
+        || (Number.isFinite(item.approachMeters) && meters >= item.approachMeters)));
       if (next) {
         phase = 'approach';
         event = { ...next, nextMeters: unique.find(item => item.meters > next.meters)?.meters ?? total };
@@ -1457,7 +1468,9 @@ function walkPreviewFrames(paths, maneuvers = []) {
     event = { ...event, nextMeters: next };
     const before = Math.min(10, (event.meters - previous) / 3);
     const after = Math.min(10, (next - event.meters) / 3);
-    if (before >= 2) add(event.meters - before, 'approach', event);
+    const approachMeters = Number.isFinite(event.approachMeters)
+      ? Math.max(previous + 2, event.approachMeters) : event.meters - before;
+    if (event.meters - approachMeters >= 2) add(approachMeters, 'approach', event);
     add(event.meters, 'turn', event);
     if (after >= 2) add(event.meters + after, 'depart', event);
   });
@@ -2750,3 +2763,5 @@ function goBack() {
 }
 
 render();
+
+
