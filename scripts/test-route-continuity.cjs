@@ -65,6 +65,7 @@ const snappedPoint=[127,37+10/111320];
 const snappedStraight={...arrowFrame,phase:'straight',cueAhead:[127,37+30/111320]};
 const snappedPhoto={...arrowPhoto,point:snappedPoint,meters:40,offset:10};
 assert.ok(sandbox.walkPreviewTurnArrow(snappedStraight,snappedPoint,snappedPhoto,arrowPov,600,300),'straight cue follows the photograph route position, not a sample behind it');
+assert.ok(sandbox.walkPreviewTurnArrow(snappedStraight,[snappedPoint[0]+10/88804,snappedPoint[1]],{...snappedPhoto,lateral:10,offset:15},arrowPov,600,300),'sidewalk offset does not push connecting direction cue off-screen');
 assert.equal(sandbox.walkPreviewTurnArrow({...snappedStraight,cueAhead:[127,37+15/111320]},snappedPoint,snappedPhoto,arrowPov,600,300),null,'snapped cue cannot extend across an upcoming corner');
 assert.equal(sandbox.walkPreviewTurnArrow({...arrowFrame,phase:'straight'},origin,{...arrowPhoto,nearby:true},arrowPov,600,300),null,'uncertain connecting scene never gets a guessed cue');
 assert.equal(sandbox.walkPreviewTurnArrow(arrowFrame,origin,{...arrowPhoto,nearby:true},arrowPov,600,300),null);

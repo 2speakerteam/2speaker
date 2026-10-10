@@ -1654,7 +1654,7 @@ function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
   const connecting = frame?.phase === 'straight';
   const junction = frame?.important && /교차로|사거리|삼거리|갈림길|횡단보도/.test(frame.description || '');
   if ((!approach && !connecting && frame?.phase !== 'turn') || (!connecting && frame.turnAngle < 35 && !junction) || frame.landmark || !capture
-      || !photo || photo.nearby || photo.offset > 18 || photo.lateral > 12
+      || !photo || photo.nearby || photo.offset > (connecting ? 20 : 18) || photo.lateral > 12
       || (!connecting && photo.meters > frame.meters + 5) || !(width > 0 && height > 0)
       || ![pov?.pan, pov?.tilt, pov?.fov].every(Number.isFinite)) return null;
   const radians = Math.PI / 180;
@@ -1663,8 +1663,12 @@ function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
   const anchor = approach ? frame.turnPosition : connecting && photo.point ? photo.point : frame.position;
   const target = approach ? frame.turnAhead : connecting && frame.cueAhead ? frame.cueAhead : frame.ahead;
   const heading = walkPreviewBearing(anchor, target) * radians;
-  const east = (anchor[0] - capture[0]) * Math.cos(capture[1] * radians) * 111320;
-  const north = (anchor[1] - capture[1]) * 111320;
+  // On connecting scenes indicate the route bearing ahead of the camera.
+  // The walking line is often on the sidewalk while the camera is in the road;
+  // projecting that lateral offset would put a simple forward cue off-screen.
+  // Actual corner cues retain their geographic anchor.
+  const east = connecting ? 0 : (anchor[0] - capture[0]) * Math.cos(capture[1] * radians) * 111320;
+  const north = connecting ? 0 : (anchor[1] - capture[1]) * 111320;
   if (Math.hypot(east, north) > 25 || walkPreviewDistance(anchor, target) < (approach ? 4 : 13)) return null;
   const pan = pov.pan * radians, tilt = pov.tilt * radians;
   const focal = width / (2 * Math.tan(Math.max(20, Math.min(100, pov.fov)) * radians / 2));
