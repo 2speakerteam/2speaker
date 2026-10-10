@@ -1697,6 +1697,18 @@ function startWalkPreview(context, choice) {
     layer.element.remove();
     state.layers.delete(layer);
   };
+  // Keep the starting view and a small recent-view cache, not every WebGL viewer.
+  const retainLayer = (layer) => {
+    if (!layer || layer === state.activeLayer) return;
+    clearTimeout(layer.retireTimer);
+    layer.element.style.opacity = '0';
+    layer.element.style.pointerEvents = 'none';
+    for (const candidate of state.layers) {
+      if (state.layers.size <= 5) break;
+      if (candidate !== state.activeLayer && candidate !== state.pendingLayer
+          && candidate.sceneCursor !== 0) state.disposeLayer(candidate);
+    }
+  };
   walkPreviewState = state;
   state.play.disabled = false;
   state.play.textContent = state.english ? 'Pause' : '일시정지';
@@ -1757,7 +1769,7 @@ function startWalkPreview(context, choice) {
     state.play.textContent = state.english ? 'Replay' : '다시 보기';
     if (state.history.length) {
       // Retain the last real photograph; never call a missing tail "arrival".
-      state.cursor = state.history.length - 1;
+      state.cursor = state.activeLayer?.sceneCursor ?? state.history.length - 1;
       state.index = state.history[state.cursor].index;
       state.viewer.style.visibility = 'visible';
       state.visual.classList.remove('walk-preview-map-fallback');
@@ -1803,7 +1815,7 @@ function startWalkPreview(context, choice) {
       else state.missingEndLandmark = true;
     }
     // Keep the last confirmed scene while seeking, rather than flashing the map.
-    const seeking = !state.revisiting && state.index < frames.length - 1 && !(state.freeSeek && !state.playing);
+    const seeking = !state.revisiting && !state.directSeek && state.playing && state.index < frames.length - 1;
     if (seeking && state.activeLayer && !missingLandmark && !frames[state.index].important) {
       state.loading = true;
       state.skippedScenes += 1;
@@ -1830,12 +1842,12 @@ function startWalkPreview(context, choice) {
     // Missing imagery must not strand playback on a map at the first campus/alley point.
     // Keep manual inspection paused, but auto-play scans forward to the next available view.
     state.skippedScenes += 1;
-    if (!state.revisiting && state.index < frames.length - 1 && !(state.freeSeek && !state.playing)) {
+    if (!state.revisiting && !state.directSeek && state.playing && state.index < frames.length - 1) {
       const nextIndex = state.index + 1;
       state.message.textContent += state.english
         ? ' · Looking for the next available street image…' : ' · 다음 거리뷰가 있는 구간으로 이동 중이에요.';
       state.timer = setTimeout(() => showFrame(nextIndex), missingLandmark ? 3000 : frames[state.index].important ? 1400 : 350);
-    } else if (!state.revisiting && state.index === frames.length - 1) {
+    } else if (!state.directSeek && !state.revisiting && state.index === frames.length - 1) {
       if (missingLandmark) {
         state.finished = true;
         state.playing = false;
@@ -1850,7 +1862,11 @@ function startWalkPreview(context, choice) {
   const showFrame = (index, revisiting = false, directSeek = false) => {
     if (!valid()) return;
     clearTimeout(state.timer);
+    state.disposeLayer(state.pendingLayer);
+    state.pendingLayer = null;
     state.index = Math.max(0, Math.min(frames.length - 1, index));
+    const known = state.history.findIndex(entry => entry.index === state.index);
+    if (known >= 0) { state.cursor = known; revisiting = true; }
     state.revisiting = revisiting;
     state.directSeek = directSeek;
     state.loading = true;
@@ -1863,6 +1879,26 @@ function startWalkPreview(context, choice) {
     // Hiding it here made every position change flash the underlying map.
     if (!state.history.length && !revisiting) state.viewer.style.visibility = 'hidden';
     const saved = revisiting ? state.history[state.cursor] : null;
+    const retained = saved && [...state.layers].find(layer => layer.sceneCursor === state.cursor);
+    if (retained) {
+      clearTimeout(retained.retireTimer);
+      const outgoing = state.activeLayer;
+      state.activeLayer = retained;
+      state.panorama = retained.panorama;
+      state.loading = false;
+      try { retained.panorama.setPov(retained.pov); } catch { /* Keep cached photograph. */ }
+      retained.element.style.transition = 'none';
+      retained.element.style.opacity = '1';
+      retained.element.style.pointerEvents = 'auto';
+      state.viewer.style.visibility = 'visible';
+      if (outgoing !== retained) retainLayer(outgoing);
+      state.message.textContent = retained.caption || '';
+      state.message.style.display = 'none';
+      updateProgress();
+      updateButtons();
+      scheduleNext();
+      return;
+    }
     const departure = !revisiting && frame.phase === 'start'
       && frames[state.history.at(-1)?.index]?.phase === 'landmark-start' ? state.history.at(-1) : null;
     const selectedPanoId = saved?.panoId || frame.verifiedView?.panoId || departure?.panoId;
@@ -1910,10 +1946,10 @@ function startWalkPreview(context, choice) {
           const capturePoint = capture && [capture.lng(), capture.lat()];
           // The entrance photograph has already passed the landmark proximity check.
           // Reuse it for the first head turn even if its camera is off the route line.
-          const photoContext = departure && capturePoint
+          const photoContext = saved?.photoContext || (departure && capturePoint
             ? { offset: walkPreviewDistance(capturePoint, frameNow.position), meters: frameNow.meters,
                 lateral: 0, nearby: false, heading: walkPreviewBearing(capturePoint, frameNow.ahead) }
-            : walkPreviewPhotoContext(capturePoint, frameNow, choice.paths);
+            : walkPreviewPhotoContext(capturePoint, frameNow, choice.paths));
           if (!photoContext) {
             unavailable(state.english ? 'No close street image for this route point. Check the map.' : '이 지점과 가까운 거리뷰가 없어요. 다른 길 사진 대신 지도를 확인해 주세요.');
             return;
@@ -1939,7 +1975,7 @@ function startWalkPreview(context, choice) {
           });
           const previousScene = state.history[state.activeLayer?.sceneCursor] || state.history.at(-1);
           const backwards = !frameNow.landmark && previousScene && photoContext.meters < previousScene.routeMeters - 6;
-          if (!state.revisiting && !state.directSeek && (duplicate || backwards)) {
+          if (state.playing && !state.revisiting && !state.directSeek && (duplicate || backwards)) {
             state.duplicateScenes += 1;
             state.disposeLayer(layer);
             state.pendingLayer = null;
@@ -1952,7 +1988,7 @@ function startWalkPreview(context, choice) {
             }, 80);
             return;
           }
-          const cameraPov = walkPreviewCameraPov(frameNow, photoContext, location?.photodate);
+          const cameraPov = saved?.pov || walkPreviewCameraPov(frameNow, photoContext, location?.photodate);
           layer.pov = cameraPov;
           layer.panoId = panoId;
           try {
@@ -1968,7 +2004,8 @@ function startWalkPreview(context, choice) {
             state.loading = false;
             if (!state.revisiting) {
               state.history.push({ index: state.index, panoId, capturePoint, heading: photoContext.heading,
-                focusMeters: frameNow.focusMeters, routeMeters: photoContext.meters });
+                focusMeters: frameNow.focusMeters, routeMeters: photoContext.meters,
+                photoContext: { ...photoContext }, pov: { ...cameraPov } });
               state.cursor = state.history.length - 1;
               state.shownScenes = state.history.length;
             }
@@ -1980,7 +2017,9 @@ function startWalkPreview(context, choice) {
             layer.sceneCursor = state.cursor;
             state.pendingLayer = null;
             updateButtons();
-            // Both real panoramas overlap briefly; no invented intermediate street geometry.
+            // Manual navigation is a cut, never a delayed overlap of two locations.
+            const instant = !state.playing || state.directSeek;
+            if (instant) element.style.transition = 'none';
             element.style.pointerEvents = 'auto';
             requestAnimationFrame(() => {
               if (!valid() || state.activeLayer !== layer) return;
@@ -1988,7 +2027,8 @@ function startWalkPreview(context, choice) {
               if (previousLayer && previousLayer !== layer) {
                 previousLayer.element.style.pointerEvents = 'none';
                 // Keep the outgoing photograph opaque underneath the incoming fade.
-                previousLayer.retireTimer = setTimeout(() => state.disposeLayer(previousLayer), reduceMotion ? 0 : 450);
+                if (instant || reduceMotion) retainLayer(previousLayer);
+                else previousLayer.retireTimer = setTimeout(() => retainLayer(previousLayer), 450);
               }
             });
             const photoDate = state.panorama.getLocation()?.photodate;
@@ -2015,7 +2055,7 @@ function startWalkPreview(context, choice) {
             if (!valid() || state.pendingLayer !== layer) return;
             // Show a real turn of the head within the same photograph, not a jump
             // between different years/cameras. Reduced motion and seeking stay instant.
-            if (reduceMotion || state.revisiting || !outgoing || outgoing.panoId !== panoId
+            if (reduceMotion || !state.playing || state.directSeek || state.revisiting || !outgoing || outgoing.panoId !== panoId
                 || !outgoing.pov || !departure) { reveal(); return; }
             const from = outgoing.panorama.getPov?.() || outgoing.pov;
             const delta = ((cameraPov.pan - from.pan + 540) % 360) - 180;
@@ -2032,7 +2072,7 @@ function startWalkPreview(context, choice) {
               else reveal();
             };
             rotate();
-          }, 300);
+          }, !state.playing || state.directSeek ? 0 : 300);
         };
         state.onPanoramaReady = onPanoramaReady;
         state.maps.Event.addListener(instance, 'init', onPanoramaReady);
@@ -2063,7 +2103,9 @@ function startWalkPreview(context, choice) {
   const commitScrub = () => {
     clearTimeout(state.seekTimer);
     if (!valid() || !state.scrubbing || !state.history.length) return;
-    const selected = Math.max(0, Math.min(frames.length - 1, Math.round(Number(state.seek.value) || 0)));
+    let selected = Math.max(0, Math.min(frames.length - 1, Math.round(Number(state.seek.value) || 0)));
+    // The far left means the first available photograph, even if lookup point 0 had none.
+    if (selected === 0) selected = Math.min(...state.history.map(entry => entry.index));
     state.scrubbing = false;
     if (state.index === selected) {
       updateProgress();
@@ -2079,7 +2121,7 @@ function startWalkPreview(context, choice) {
     if (cached >= 0) state.cursor = cached;
     showFrame(index, cached >= 0, directSeek);
   };
-  state.seek.onpointerdown = beginScrub;
+  state.seek.onpointerdown = () => { state.pointerSeeking = true; beginScrub(); };
   state.seek.oninput = () => {
     const selected = Math.max(0, Math.min(frames.length - 1, Number(state.seek.value)));
     beginScrub();
@@ -2089,9 +2131,13 @@ function startWalkPreview(context, choice) {
       ? `${Math.round(frames[selected].meters)} m along the route · release to view`
       : `경로 ${Math.round(frames[selected].meters)}m 지점 선택 · 손을 놓으면 이동해요`;
     // Debounce live previews so dragging does not launch a request per pixel.
-    state.seekTimer = setTimeout(commitScrub, 180);
+    if (!state.pointerSeeking) state.seekTimer = setTimeout(commitScrub, 180);
   };
-  state.seek.onchange = state.seek.onpointerup = state.seek.onpointercancel = commitScrub;
+  state.seek.onchange = () => { if (!state.pointerSeeking) commitScrub(); };
+  state.seek.onpointerup = state.seek.onpointercancel = () => {
+    state.pointerSeeking = false;
+    commitScrub();
+  };
   state.prev.onclick = () => {
     if (!valid() || state.prev.disabled) return;
     beginScrub();
@@ -2100,7 +2146,9 @@ function startWalkPreview(context, choice) {
       state.playing = false;
       clearTimeout(state.timer);
       state.play.textContent = state.english ? 'Play' : '자동 재생';
-      seekFrame(Math.max(0, state.index - 1));
+      const previous = state.history.filter(entry => entry.index < state.index)
+        .reduce((best, entry) => Math.max(best, entry.index), -1);
+      seekFrame(previous >= 0 ? previous : Math.max(0, state.index - 1));
       return;
     }
     const previous = state.history[state.cursor]?.index === state.index ? state.cursor - 1 : state.cursor;
