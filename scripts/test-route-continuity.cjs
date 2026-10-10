@@ -49,10 +49,12 @@ const maps = {LatLng, Panorama, Event:{addListener(p,n,f){(p.listeners[n] ||= []
 const sandbox = { document, window:{matchMedia(){return {matches:false};}}, setTimeout:timer, clearTimeout:k=>jobs.delete(k),requestAnimationFrame:f=>timer(f,16),currentPage:'guide',routeRequestToken:1,walkPreviewState:null,console };
 vm.createContext(sandbox); vm.runInContext(part,sandbox);
 const frames = sandbox.walkPreviewFrames(route,[]);
-assert.equal(sandbox.walkPreviewHoldBeforeNext({phase:'landmark-start',holdMs:3500},{phase:'start'}),0,'no exit introduction hold before departure');
+assert.equal(sandbox.walkPreviewHoldBeforeNext({phase:'landmark-start',holdMs:3500},{phase:'start'}),1000,'show starting exit for one second before departure');
 for(const phase of ['approach','turn','depart','landmark-end']) {
-  assert.equal(sandbox.walkPreviewHoldBeforeNext({phase:'turn',holdMs:1600},{phase,important:true}),0,'no added wait before any important orientation');
+  assert.equal(sandbox.walkPreviewHoldBeforeNext({phase:'turn',holdMs:1600},{phase,important:true}),1000,'one-second pause before each important orientation');
 }
+assert.equal(sandbox.walkPreviewHoldBeforeNext({phase:'approach',holdMs:850},{phase:'straight'}),850,'non-rotation approach pacing is unchanged');
+assert.equal(sandbox.walkPreviewHoldBeforeNext({phase:'turn',holdMs:1600},{phase:'straight'}),1600,'post-turn hold is unchanged when no further orientation follows');
 assert.equal(sandbox.walkPreviewHoldBeforeNext({phase:'straight',holdMs:400},{phase:'straight'}),400,'ordinary slide pacing unchanged');
 assert.equal(sandbox.walkPreviewHoldBeforeNext({phase:'straight',holdMs:750},{phase:'straight'}),750,'straight junction reading time unchanged');
 const arrowFrame={phase:'turn',turnAngle:90,position:origin,ahead:[127,37.00013],meters:30};
@@ -376,7 +378,7 @@ assert.equal(instances[0].options.logoControl,false,'official panorama logo cont
 assert.equal(instances[0].pov.fov,100,'exit introduction includes pavement and road context');
 const exitShownAt=now, exitUpdatesBeforeRotation=instances[0].povUpdates;
 until(()=>instances[0].povUpdates>exitUpdatesBeforeRotation);
-assert.equal(now-exitShownAt,50,'rotation begins as soon as next panorama initializes, without exit hold or settle delay');
+assert.equal(now-exitShownAt,1050,'rotation follows one-second exit hold plus panorama initialization');
 until(()=>ep.history.length===2);
 assert.equal(instances[1].options.panoId,ep.history[0].panoId,'departure retains the original camera and capture date');
 assert.ok(instances[0].povUpdates>=30,'departure rotates through intermediate views in the real panorama');

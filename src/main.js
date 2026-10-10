@@ -1685,10 +1685,10 @@ function walkPreviewSceneFrames(frames) {
 }
 
 function walkPreviewHoldBeforeNext(frame, nextFrame) {
-  // Load the next orientation immediately, instead of holding the exit/corner
-  // for several seconds before even requesting its panorama.
+  // Establish the exit/junction for one second before its next orientation.
+  // Ordinary slides retain their original hold instead of advancing immediately.
   const departure = frame.phase === 'landmark-start' && nextFrame?.phase === 'start';
-  return departure || nextFrame?.important ? 0 : frame.holdMs;
+  return departure || nextFrame?.important ? 1000 : frame.holdMs;
 }
 
 // A small ground-plane cue, not a screen-fixed direction icon. Use the actual
