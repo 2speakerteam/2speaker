@@ -74,12 +74,24 @@ const verifiedCenter=[127.09204455377541,37.5516751937452];
 const junctionRoute=[[verifiedCenter.map((v,i)=>v+(i?-50/111320:0)),verifiedCenter.map((v,i)=>v+(i?50/111320:0))]];
 const junctionFrames=sandbox.walkPreviewFrames(junctionRoute,[]);
 assert.ok(junctionFrames.some(f=>f.junctionCue),'verified intersection detected by geographic proximity');
+assert.ok(junctionFrames.filter(f=>f.junctionCue).every(f=>f.important),'confirmed junctions cannot be discarded as duplicate straight scenes');
 assert.ok(junctionFrames.filter(f=>f.junctionCue).length<=3,'brief junction window only');
 assert.ok(junctionFrames.filter(f=>f.meters>55).every(f=>!f.junctionCue),'hide on straight road after junction');
 assert.ok(sandbox.walkPreviewFrames(junctionRoute.map(path=>path.map(p=>[p[0]+.001,p[1]])),[]).every(f=>!f.junctionCue),'unrelated parallel road cannot inherit a junction cue');
 for(const description of ['두 갈래길에서 직진','삼거리에서 직진','사거리에서 직진']) {
   assert.ok(sandbox.walkPreviewFrames(junctionRoute,[{position:verifiedCenter,description}]).some(f=>f.important),'provider fork descriptions retained');
 }
+const stepFrame={phase:'straight',meters:20,total:300,nextDecision:{meters:120,direction:'right'}};
+assert.equal(sandbox.walkPreviewStepInstruction(stepFrame),'약 100m 직진 후 우회전하세요.');
+assert.equal(sandbox.walkPreviewStepInstruction({...stepFrame,meters:70}),'약 50m 직진 후 우회전하세요.');
+assert.equal(sandbox.walkPreviewStepInstruction({...stepFrame,phase:'approach',focusMeters:30,direction:'left'}),'약 10m 직진 후 좌회전하세요.');
+assert.equal(sandbox.walkPreviewStepInstruction({...stepFrame,phase:'turn',direction:'right'}),'여기서 우회전하세요.');
+assert.equal(sandbox.walkPreviewStepInstruction({...stepFrame,junctionCue:true}),'이 갈림길에서는 앞쪽 길로 직진하세요.');
+assert.match(sandbox.walkPreviewStepInstruction({...stepFrame,phase:'depart'}),/100m 직진 후 우회전/);
+assert.match(sandbox.walkPreviewStepInstruction({...stepFrame,nextDecision:null}),/목적지까지 약 280m/);
+assert.match(sandbox.walkPreviewStepInstruction(stepFrame,true),/100 m, then turn right/);
+assert.match(sandbox.walkPreviewStepInstruction({phase:'landmark-start',landmark:{label:'테스트역 2번 출구'}}),/테스트역 2번 출구에서 출발/);
+assert.match(sandbox.walkPreviewStepInstruction({phase:'arrival'}),/실제 입구/);
 assert.equal(sandbox.walkPreviewTurnArrow(arrowFrame,origin,{...arrowPhoto,nearby:true},arrowPov,600,300),null);
 assert.equal(sandbox.walkPreviewTurnArrow(arrowFrame,origin,{...arrowPhoto,meters:40},arrowPov,600,300),null,'no backward cue from overshot camera');
 assert.equal(sandbox.walkPreviewTurnArrow({...arrowFrame,ahead:[127,37.00005]},origin,arrowPhoto,arrowPov,600,300),null,'do not project beyond next close junction');
@@ -165,8 +177,11 @@ tick(); assert.equal(state.history.length,0,'init must allow camera to settle');
 until(()=>state.history.length===1);
 assert.ok(now>=350,'offscreen camera settle');
 const firstMessage = state.message.textContent;
+const firstInstruction = state.instruction.textContent;
+assert.equal(state.instruction.hidden,false);
 until(()=>state.duplicateScenes===1);
 assert.equal(state.message.textContent,firstMessage,'skip must not replace visible cue');
+assert.equal(state.instruction.textContent,firstInstruction,'pending or skipped image cannot change visible step instruction');
 assert.equal(state.viewer.style.visibility,'visible');
 until(()=>state.finished && !state.playing && !state.loading);
 const ids = Array.from(state.history,x=>x.panoId);
@@ -185,7 +200,9 @@ assert.match(state.progress.textContent,/장면 1 · /,'replay counter resets be
 assert.equal(state.seek.value,'0','replay bar resets immediately');
 until(()=>!state.loading);
 assert.equal(state.cursor,0,'replay starts at first cached view');
+assert.equal(state.instruction.textContent,firstInstruction,'cached replay restores starting instruction');
 sandbox.stopWalkPreview(true);
+assert.equal(state.instruction.textContent,state.originalInstruction.text,'closing restores route overview');
 while(tick()) {}
 assert.equal(state.layers.size,0,'close disposes all layers');
 assert.equal(nodes['#walk-preview-panorama'].children.length,0);

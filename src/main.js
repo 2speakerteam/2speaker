@@ -1438,8 +1438,12 @@ function walkPreviewFrames(paths, maneuvers = []) {
   // blanket straight-road fallback. Provider instructions cover other junctions.
   const verifiedJunctions = [
     [127.09069731773641, 37.5515729760091],
-    [127.09204455377541, 37.5516751937452]
+    [127.09204455377541, 37.5516751937452],
+    [127.09526087369866, 37.55257278258103]
   ].map(point => project(point, 0)).filter(match => match && match.distance <= 6);
+  const navigationDecisions = [...unique, ...verifiedJunctions.map(junction => ({
+    meters: junction.meters, direction: 'straight', kind: 'junction'
+  }))].sort((a,b) => a.meters-b.meters);
   const frames = [];
   const add = (meters, phase, event = null) => {
     // Dense samples between the approach and the corner still belong to that
@@ -1461,14 +1465,16 @@ function walkPreviewFrames(paths, maneuvers = []) {
       const behind = pointAt(Math.max(0, total - 12));
       ahead = position.map((value, axis) => value + (value - behind[axis]));
     }
+    const junctionCue = phase === 'straight' && verifiedJunctions.some(junction => meters >= junction.meters - 8 && meters <= junction.meters + 2);
     frames.push({ position, ahead, meters, total, phase,
-      junctionCue: phase === 'straight' && verifiedJunctions.some(junction => meters >= junction.meters - 8 && meters <= junction.meters + 2),
+      junctionCue,
+      nextDecision: navigationDecisions.find(decision => decision.meters > meters + 2) || null,
       cueAhead: phase === 'straight' ? pointAt(Math.min(total, unique.find(item => item.meters > meters)?.meters ?? total, meters + 35)) : null,
       turnPosition: event ? pointAt(event.meters) : null,
       turnAhead: event ? pointAt(Math.min(total, event.nextMeters ?? total, event.meters + 14)) : null,
       direction: event?.direction || 'straight', description: event?.description || '',
-      important: Boolean(event), focusMeters: event?.meters ?? null, turnAngle: Math.abs(event?.delta || 0),
-      holdMs: event ? (phase === 'turn' ? 1600 : 850) : (phase === 'start' || phase === 'arrival' ? 1800 : 400) });
+      important: Boolean(event) || junctionCue, focusMeters: event?.meters ?? null, turnAngle: Math.abs(event?.delta || 0),
+      holdMs: event ? (phase === 'turn' ? 1600 : 850) : junctionCue ? 750 : (phase === 'start' || phase === 'arrival' ? 1800 : 400) });
   };
   add(0, 'start');
   unique.forEach((event, i) => {
@@ -1622,6 +1628,33 @@ function walkPreviewCue(frame, english) {
   return [phase, frame.important ? action : '', !english ? frame.description : ''].filter(Boolean).join(' · ');
 }
 
+function walkPreviewStepInstruction(frame, english = false) {
+  if (frame.landmark) return frame.phase === 'landmark-start'
+    ? (english ? `Start at ${frame.landmark.label}. Check the exit and the road ahead.` : `${frame.landmark.label}에서 출발해요. 출구와 앞으로 걸어갈 길을 확인해 주세요.`)
+    : (english ? `${frame.landmark.label}: check the entrance ahead.` : `${frame.landmark.label} 입구를 확인해 주세요.`);
+  if (frame.phase === 'arrival') return english
+    ? 'Near the destination. Check the actual entrance ahead.' : '목적지 부근이에요. 앞쪽의 실제 입구를 확인해 주세요.';
+  const action = direction => english
+    ? ({left:'turn left',right:'turn right',uturn:'turn back',straight:'continue straight through the junction'}[direction] || 'continue along the route')
+    : ({left:'좌회전',right:'우회전',uturn:'뒤로 돌아 이동',straight:'갈림길에서 직진'}[direction] || '경로를 따라 이동');
+  if (frame.junctionCue || frame.phase === 'turn') {
+    const direction = frame.junctionCue ? 'straight' : frame.direction;
+    if (direction === 'straight') return english ? 'Continue straight through this junction.' : '이 갈림길에서는 앞쪽 길로 직진하세요.';
+    return english ? `Here, ${action(direction)}.` : `여기서 ${action(direction)}하세요.`;
+  }
+  const decision = frame.phase === 'approach' && Number.isFinite(frame.focusMeters)
+    ? {meters:frame.focusMeters,direction:frame.direction} : frame.nextDecision;
+  const remaining = Math.max(0,(decision?.meters ?? frame.total)-frame.meters);
+  const distance = Math.max(1,Math.round(remaining));
+  if (decision?.direction === 'straight') return english
+    ? `Continue straight through the junction about ${distance} m ahead.` : `약 ${distance}m 앞 갈림길에서도 직진하세요.`;
+  if (decision) return english
+    ? `Continue about ${distance} m, then ${action(decision.direction)}.`
+    : `약 ${distance}m 직진 후 ${action(decision.direction)}하세요.`;
+  return english ? `Continue along the route for about ${distance} m to the destination.`
+    : `목적지까지 약 ${distance}m, 길을 따라 계속 이동하세요.`;
+}
+
 function walkPreviewCameraPov(frame, photoContext, photoDate) {
   if (frame.verifiedView) {
     const { pan, tilt, fov } = frame.verifiedView;
@@ -1733,6 +1766,11 @@ function stopWalkPreview(hidePanel = false) {
   clearTimeout(state.timer);
   clearTimeout(state.seekTimer);
   state.playing = false;
+  if (state.instruction) {
+    state.instruction.textContent = state.originalInstruction.text;
+    state.instruction.hidden = state.originalInstruction.hidden;
+    state.instruction.style.minHeight = state.originalInstruction.minHeight;
+  }
   for (const layer of state.layers) state.disposeLayer(layer);
   state.viewer.replaceChildren();
   state.scene.hidden = true;
@@ -1802,6 +1840,17 @@ function startWalkPreview(context, choice) {
     next: panel.querySelector('#walk-preview-next'),
     play: panel.querySelector('#walk-preview-play')
   };
+  state.instruction = panel.querySelector('#route-endpoints');
+  state.originalInstruction = state.instruction ? { text:state.instruction.textContent,
+    hidden:state.instruction.hidden, minHeight:state.instruction.style.minHeight || '' } : null;
+  const updateInstruction = (frame, photo = null) => {
+    if (!state.instruction) return;
+    state.instruction.hidden = false;
+    state.instruction.style.minHeight = '3em';
+    state.instruction.textContent = walkPreviewStepInstruction(frame,state.english)
+      + (photo?.nearby ? (state.english ? ' · Nearby photograph; confirm the junction on the map.' : ' · 주변에서 촬영된 사진이에요. 꺾는 위치는 지도로 확인해 주세요.') : '');
+  };
+  updateInstruction(frames[0]);
   state.disposeLayer = (layer) => {
     if (!layer) return;
     clearTimeout(layer.retireTimer);
@@ -1939,6 +1988,9 @@ function startWalkPreview(context, choice) {
       state.message.textContent = (state.activeLayer?.caption || state.message.textContent) + (state.english
         ? ' · Last available scene. Check the map for any remaining section.'
         : ' · 마지막 확인 가능한 장면이에요. 남은 구간은 지도를 확인해 주세요.');
+      updateInstruction(frames[state.index]);
+      if (state.instruction && state.index < frames.length-1) state.instruction.textContent += state.english
+        ? ' · Last available street view; use the map for the remaining route.' : ' · 거리뷰는 여기까지예요. 남은 구간은 지도로 확인해 주세요.';
     } else {
       state.message.textContent = state.english
         ? 'No usable street images were found along this route. Please use the map.'
@@ -1999,6 +2051,7 @@ function startWalkPreview(context, choice) {
       ? `${missingLandmark.label} · ` + (state.english ? 'No suitable entrance photograph was found. This map marker is the requested entrance, not a confirmed photograph.' : '해당 출입구를 보여줄 적절한 사진을 찾지 못했어요. 지도에 표시한 출입구 위치를 확인해 주세요.')
       : walkPreviewCue(frames[state.index], state.english) + ' · ' + message;
     state.message.style.display = '';
+    updateInstruction(frames[state.index]);
     updateButtons();
     // Missing imagery must not strand playback on a map at the first campus/alley point.
     // Keep manual inspection paused, but auto-play scans forward to the next available view.
@@ -2057,6 +2110,7 @@ function startWalkPreview(context, choice) {
       attachTurnArrow(retained, frame, saved.capturePoint, saved.photoContext, saved.panoId);
       state.message.textContent = retained.caption || '';
       state.message.style.display = 'none';
+      updateInstruction(frame, saved.photoContext);
       updateProgress();
       updateButtons();
       scheduleNext();
@@ -2186,6 +2240,7 @@ function startWalkPreview(context, choice) {
             state.viewer.style.visibility = 'visible';
             const previousLayer = state.activeLayer;
             state.activeLayer = layer;
+            updateInstruction(frameNow, photoContext);
             layer.sceneCursor = state.cursor;
             state.pendingLayer = null;
             hideTurnArrows();
