@@ -336,6 +336,13 @@ currentFixture=bendFrames.map(frame=>({id:frame.meters>=50 && frame.meters<=75?'
   point:frame.meters>=50 && frame.meters<=75?bendPoint:frame.position}));
 sandbox.startWalkPreview({maps,map:{},english:false,requestId:1},{paths:corner,maneuvers:[]});
 const bend=sandbox.walkPreviewState;
+until(()=>!bend.loading && bend.frames[bend.index].phase==='turn');
+assert.equal(bend.activeLayer.turnArrow.hidden,false,'turn scene displays its ground cue');
+const turnView=bend.activeLayer.panorama, turnPov=turnView.getPov();
+turnView.setPov({...turnPov,pan:turnPov.pan+180});
+assert.equal(bend.activeLayer.turnArrow.hidden,true,'user looking away hides the cue');
+turnView.setPov(turnPov);
+assert.equal(bend.activeLayer.turnArrow.hidden,false,'looking back restores the route-anchored cue');
 until(()=>bend.finished && !bend.playing && !bend.loading);
 assert.deepEqual(Array.from(bend.history.filter(entry=>entry.panoId==='corner-camera'),entry=>bend.frames[entry.index].phase),
   ['approach','turn','depart'],'same-camera corner phases are never removed as duplicates');

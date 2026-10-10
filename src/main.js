@@ -2071,8 +2071,6 @@ function startWalkPreview(context, choice) {
             state.duplicateScenes += 1;
             state.disposeLayer(layer);
             state.pendingLayer = null;
-            hideTurnArrows();
-            attachTurnArrow(layer, frameNow, capturePoint, photoContext, panoId);
             state.panorama = null;
             // Keep navigation locked during the seek even when manually paused.
             state.timer = setTimeout(() => {
@@ -2110,6 +2108,8 @@ function startWalkPreview(context, choice) {
             state.activeLayer = layer;
             layer.sceneCursor = state.cursor;
             state.pendingLayer = null;
+            hideTurnArrows();
+            attachTurnArrow(layer, frameNow, capturePoint, photoContext, panoId);
             updateButtons();
             // Manual navigation is a cut, never a delayed overlap of two locations.
             const instant = !state.playing || state.directSeek;
