@@ -16,7 +16,8 @@ function tick() {
 }
 function until(test, max = 1000) { for(let i=0;i<max;i++) { if(test()) return; if(!tick()) break; } assert.ok(test(), 'condition not reached'); }
 class Element {
-  constructor() { this.style = { setProperty(key,value) { this[key]=value; } }; this.children = []; this.textContent = ''; this.isConnected = true; this.disabled = false; this.classList = { add(){}, remove(){} }; }
+  constructor() { this.style = { setProperty(key,value) { this[key]=value; } }; this.children = []; this.textContent = ''; this.isConnected = true; this.disabled = false; const classes=new Set(); this.classList = { add(x){classes.add(x);}, remove(x){classes.delete(x);}, contains(x){return classes.has(x);} }; }
+  getBoundingClientRect() { return {width:600,height:300}; }
   querySelector(s) { return nodes[s] ||= new Element(); }
   closest() { return visual; }
   append(el) { this.children.push(el); el.parent = this; }
@@ -40,6 +41,7 @@ class Panorama {
   emit(name,value) { for(const fn of this.listeners[name]||[]) fn(value); }
   getLocation() { return {coord:new LatLng(this.fixture.point[1],this.fixture.point[0]),photodate:'2026-06-01'}; }
   getPanoId() { return this.fixture.id; }
+  getPov() { return this.pov || this.options.pov; }
   setPov(pov) { this.pov=pov; this.povUpdates=(this.povUpdates||0)+1; this.emit('pov_changed'); }
   setVisible() {}
 }
@@ -47,6 +49,22 @@ const maps = {LatLng, Panorama, Event:{addListener(p,n,f){(p.listeners[n] ||= []
 const sandbox = { document, window:{matchMedia(){return {matches:false};}}, setTimeout:timer, clearTimeout:k=>jobs.delete(k),requestAnimationFrame:f=>timer(f,16),currentPage:'guide',routeRequestToken:1,walkPreviewState:null,console };
 vm.createContext(sandbox); vm.runInContext(part,sandbox);
 const frames = sandbox.walkPreviewFrames(route,[]);
+const arrowFrame={phase:'turn',turnAngle:90,position:origin,ahead:[127,37.00013],meters:30};
+const arrowPhoto={offset:0,lateral:0,meters:30,nearby:false};
+const arrowPov={pan:0,tilt:0,fov:75};
+const arrow=sandbox.walkPreviewTurnArrow(arrowFrame,origin,arrowPhoto,arrowPov,600,300);
+assert.ok(arrow,'small arrow projects onto lower road area');
+const arrowPoints=arrow.split(' ').map(p=>p.split(',').map(Number));
+assert.ok(arrowPoints.every(p=>p[1]>150 && p[1]<282),'ground cue is below horizon, not centered');
+assert.ok(Math.max(...arrowPoints.map(p=>p[0]))-Math.min(...arrowPoints.map(p=>p[0]))<80,'small cue');
+assert.notEqual(sandbox.walkPreviewTurnArrow(arrowFrame,origin,arrowPhoto,{...arrowPov,pan:10},600,300),arrow,'cue follows view rotation');
+assert.equal(sandbox.walkPreviewTurnArrow(arrowFrame,origin,arrowPhoto,{...arrowPov,pan:180},600,300),null,'hide when target is behind camera');
+for(const phase of ['start','straight','approach','depart','arrival']) assert.equal(sandbox.walkPreviewTurnArrow({...arrowFrame,phase},origin,arrowPhoto,arrowPov,600,300),null);
+assert.equal(sandbox.walkPreviewTurnArrow(arrowFrame,origin,{...arrowPhoto,nearby:true},arrowPov,600,300),null);
+assert.equal(sandbox.walkPreviewTurnArrow(arrowFrame,origin,{...arrowPhoto,meters:40},arrowPov,600,300),null,'no backward cue from overshot camera');
+assert.equal(sandbox.walkPreviewTurnArrow({...arrowFrame,ahead:[127,37.00005]},origin,arrowPhoto,arrowPov,600,300),null,'do not project beyond next close junction');
+assert.equal(sandbox.walkPreviewTurnArrow(arrowFrame,origin,arrowPhoto,arrowPov,0,0),null);
+console.log('PASS: small road-plane turn arrow, POV tracking, straight/endpoint/uncertain/offscreen suppression');
 const parkGate = {label:'어린이대공원 정문',kind:'park-gate',position:[127.07579042,37.5495968]};
 const exitOne = {label:'어린이대공원역 1번 출구',kind:'station-exit',position:[127.07548491,37.54901353]};
 const entranceViews = sandbox.walkPreviewEntranceScenes(parkGate,'end');
@@ -398,6 +416,3 @@ console.log('PASS: junction phases survive deduplication, gradual same-camera tu
   assert.equal((await sandbox.pedestrianCandidates('아차산',{})).length,1,'reject distant namesake plaza');
   console.log('PASS: Achasan entrance routing, explicit summit preserved, current-location origin');
 })().catch(error=>{console.error(error);process.exitCode=1;});
-
-
-

@@ -1615,6 +1615,38 @@ function walkPreviewSceneFrames(frames) {
   return frames.map((frame, sceneSlot) => ({ ...frame, sceneSlot }));
 }
 
+// A small ground-plane cue, not a screen-fixed direction icon. Use the actual
+// camera position and POV, so dragging/zooming cannot leave it pointing elsewhere.
+// POV contract: navermaps.github.io/maps.js.ncp/docs/naver.maps.Panorama.html
+function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
+  if (frame?.phase !== 'turn' || frame.turnAngle < 35 || frame.landmark || !capture
+      || !photo || photo.nearby || photo.offset > 18 || photo.lateral > 12
+      || photo.meters > frame.meters + 5 || !(width > 0 && height > 0)
+      || ![pov?.pan, pov?.tilt, pov?.fov].every(Number.isFinite)) return null;
+  const radians = Math.PI / 180;
+  const heading = walkPreviewBearing(frame.position, frame.ahead) * radians;
+  const east = (frame.position[0] - capture[0]) * Math.cos(capture[1] * radians) * 111320;
+  const north = (frame.position[1] - capture[1]) * 111320;
+  if (Math.hypot(east, north) > 20 || walkPreviewDistance(frame.position, frame.ahead) < 13) return null;
+  const pan = pov.pan * radians, tilt = pov.tilt * radians;
+  const focal = width / (2 * Math.tan(Math.max(20, Math.min(100, pov.fov)) * radians / 2));
+  // Approximate flat pavement at camera height 2.4 m. This is a directional cue,
+  // not a surveyed ground anchor; uncertain/off-screen placements are suppressed.
+  const polygon = [[-.32,8],[.32,8],[.32,11],[.95,11],[0,13],[-.95,11],[-.32,11]];
+  const projected = polygon.map(([side, forward]) => {
+    const e = east + Math.sin(heading) * forward + Math.cos(heading) * side;
+    const n = north + Math.cos(heading) * forward - Math.sin(heading) * side;
+    const right = e * Math.cos(pan) - n * Math.sin(pan);
+    const ahead = e * Math.sin(pan) + n * Math.cos(pan);
+    const depth = ahead * Math.cos(tilt) - 2.4 * Math.sin(tilt);
+    const up = -2.4 * Math.cos(tilt) - ahead * Math.sin(tilt);
+    if (depth < 3) return null;
+    return [width / 2 + focal * right / depth, height / 2 - focal * up / depth];
+  });
+  if (projected.some(p => !p || !p.every(Number.isFinite) || p[0] < 14 || p[0] > width-14 || p[1] < 18 || p[1] > height-18)) return null;
+  return projected.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ');
+}
+
 function stopWalkPreview(hidePanel = false) {
   const state = walkPreviewState;
   if (!state) return;
@@ -1694,6 +1726,7 @@ function startWalkPreview(context, choice) {
     if (!layer) return;
     clearTimeout(layer.retireTimer);
     clearTimeout(layer.settleTimer);
+    layer.arrowResize?.disconnect();
     try {
       if (layer.panorama) {
         state.maps.Event.clearInstanceListeners(layer.panorama);
@@ -1722,6 +1755,46 @@ function startWalkPreview(context, choice) {
     && currentPage === 'guide'
     && state.requestId === routeRequestToken
     && document.querySelector('#walk-preview') === panel;
+  const hideTurnArrows = () => {
+    for (const layer of state.layers) if (layer.turnArrow) layer.turnArrow.hidden = true;
+  };
+  const attachTurnArrow = (layer, frame, capture, photo, panoId) => {
+    if (frame.phase !== 'turn' || frame.turnAngle < 35) {
+      layer.arrowContext = null;
+      if (layer.turnArrow) layer.turnArrow.hidden = true;
+      return;
+    }
+    layer.arrowContext = { frame, capture, photo, panoId };
+    if (!layer.turnArrow) {
+      const cue = document.createElement('div');
+      cue.className = 'walk-turn-ground-arrow';
+      cue.setAttribute('aria-hidden', 'true');
+      cue.style.cssText = 'position:absolute;inset:0;z-index:3;pointer-events:none';
+      cue.innerHTML = '<svg width="100%" height="100%" style="display:block;overflow:hidden" aria-hidden="true"><polygon fill="#16c6f4" fill-opacity=".88" stroke="#e3faff" stroke-width="1.5" stroke-linejoin="round" style="filter:drop-shadow(0 2px 2px #00314d)"/></svg>';
+      cue.hidden = true;
+      layer.element.append(cue);
+      layer.turnArrow = cue;
+      layer.updateTurnArrow = () => {
+        const context = layer.arrowContext;
+        cue.hidden = true;
+        if (!context || !valid() || state.activeLayer !== layer || state.visual.classList.contains('walk-preview-map-fallback')
+            || layer.panorama.getPanoId?.() !== context.panoId) return;
+        const size = layer.element.getBoundingClientRect();
+        const points = walkPreviewTurnArrow(context.frame, context.capture, context.photo,
+          layer.panorama.getPov?.(), size.width, size.height);
+        if (!points) return;
+        cue.querySelector('polygon')?.setAttribute('points', points);
+        cue.hidden = false;
+      };
+      state.maps.Event.addListener(layer.panorama, 'pov_changed', layer.updateTurnArrow);
+      state.maps.Event.addListener(layer.panorama, 'pano_changed', () => { cue.hidden = true; });
+      if (typeof ResizeObserver !== 'undefined') {
+        layer.arrowResize = new ResizeObserver(layer.updateTurnArrow);
+        layer.arrowResize.observe(layer.element);
+      }
+    }
+    layer.updateTurnArrow();
+  };
   const scheduleNext = () => {
     clearTimeout(state.timer);
     if (!valid() || !state.playing || state.scrubbing) return;
@@ -1769,6 +1842,7 @@ function startWalkPreview(context, choice) {
     if (!state.scrubbing) updateSeek();
   };
   const finishScan = () => {
+    hideTurnArrows();
     state.finished = true;
     state.playing = false;
     state.loading = false;
@@ -1810,6 +1884,7 @@ function startWalkPreview(context, choice) {
     }
   };
   const unavailable = (message) => {
+    hideTurnArrows();
     clearTimeout(state.timer);
     state.loading = false;
     state.disposeLayer(state.pendingLayer);
@@ -1867,6 +1942,7 @@ function startWalkPreview(context, choice) {
   };
   const showFrame = (index, revisiting = false, directSeek = false) => {
     if (!valid()) return;
+    hideTurnArrows();
     clearTimeout(state.timer);
     state.disposeLayer(state.pendingLayer);
     state.pendingLayer = null;
@@ -1898,6 +1974,7 @@ function startWalkPreview(context, choice) {
       retained.element.style.pointerEvents = 'auto';
       state.viewer.style.visibility = 'visible';
       if (outgoing !== retained) retainLayer(outgoing);
+      attachTurnArrow(retained, frame, saved.capturePoint, saved.photoContext, saved.panoId);
       state.message.textContent = retained.caption || '';
       state.message.style.display = 'none';
       updateProgress();
@@ -1994,6 +2071,8 @@ function startWalkPreview(context, choice) {
             state.duplicateScenes += 1;
             state.disposeLayer(layer);
             state.pendingLayer = null;
+            hideTurnArrows();
+            attachTurnArrow(layer, frameNow, capturePoint, photoContext, panoId);
             state.panorama = null;
             // Keep navigation locked during the seek even when manually paused.
             state.timer = setTimeout(() => {
@@ -2073,6 +2152,7 @@ function startWalkPreview(context, choice) {
             if (reduceMotion || !state.playing || state.directSeek || state.revisiting || !outgoing || outgoing.panoId !== panoId
                 || !outgoing.pov || !(departure || frameNow.important)) { reveal(); return; }
             const from = outgoing.panorama.getPov?.() || outgoing.pov;
+            attachTurnArrow(outgoing, frameNow, capturePoint, photoContext, panoId);
             const delta = ((cameraPov.pan - from.pan + 540) % 360) - 180;
             let step = 0;
             const rotate = () => {
