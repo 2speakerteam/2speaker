@@ -1587,7 +1587,8 @@ function walkPreviewCameraPov(frame, photoContext, photoDate) {
   }
   const stationExit = frame.landmark?.kind === 'station-exit';
   let heading = photoContext.heading;
-  let fov = stationExit ? 48 : 75;
+  // Show the exit canopy together with the pavement/road, not only its number.
+  let fov = stationExit ? 85 : 75;
   // Visually checked sign framing for this capture only. The entrance POI points
   // inside the stairwell, while the visible number sign is on the roadside canopy.
   // Do not carry a photograph-specific adjustment to another station or newer image.
