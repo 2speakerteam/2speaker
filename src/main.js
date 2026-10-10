@@ -269,13 +269,13 @@ function guideScreen() {
         </div>
       </div>
       <button class="route-instruction walk-action" type="button" aria-label="${english ? 'Show walking street view' : '도보 로드뷰 보기'}" aria-expanded="false" aria-controls="walk-preview-scene walk-preview" disabled>${icon('walk', 28)}<span>${loading}</span></button>
-      <p id="route-endpoints" style="margin:10px 4px 0;color:#b2d2e6;font-size:13px;line-height:1.5" hidden></p>
     </section>
     <section class="walk-preview" id="walk-preview" aria-label="${english ? 'Walking street-view preview' : '도보 로드뷰 미리보기'}" hidden>
       <div class="walk-preview-header">
         <div><small>${english ? 'Street-view route preview' : '도보 로드뷰 미리보기'}</small><h2>${escapeHtml(routeOrigin || (english ? 'Your location' : '현재 위치'))} → ${place}</h2></div>
       </div>
-      <p class="walk-preview-message" id="walk-preview-message" role="status" style="height:7.8em;box-sizing:border-box;overflow:auto;overflow-anchor:none"></p>
+      <p class="walk-preview-message" id="route-endpoints" style="box-sizing:border-box;overflow-anchor:none" hidden></p>
+      <p class="walk-preview-message" id="walk-preview-message" role="status" style="display:none"></p>
       <div class="walk-preview-controls">
         <button type="button" id="walk-preview-prev">${english ? 'Previous' : '이전'}</button>
         <button type="button" id="walk-preview-play">${english ? 'Pause' : '일시정지'}</button>
@@ -1653,6 +1653,7 @@ function startWalkPreview(context, choice) {
       panel.querySelector('#walk-preview-message').textContent = context.english
         ? 'The route contains a gap. Use the map instead of a street-view preview.'
         : '경로가 이어지지 않는 구간이 있어요. 로드뷰 대신 지도를 확인해 주세요.';
+      panel.querySelector('#walk-preview-message').style.display = '';
     }
     return;
   }
@@ -1818,6 +1819,7 @@ function startWalkPreview(context, choice) {
     state.message.textContent = missingLandmark
       ? `${missingLandmark.label} · ` + (state.english ? 'No suitable entrance photograph was found. This map marker is the requested entrance, not a confirmed photograph.' : '해당 출입구를 보여줄 적절한 사진을 찾지 못했어요. 지도에 표시한 출입구 위치를 확인해 주세요.')
       : walkPreviewCue(frames[state.index], state.english) + ' · ' + message;
+    state.message.style.display = '';
     updateButtons();
     // Missing imagery must not strand playback on a map at the first campus/alley point.
     // Keep manual inspection paused, but auto-play scans forward to the next available view.
@@ -1995,6 +1997,7 @@ function startWalkPreview(context, choice) {
               + (state.english ? ` · Street image${photoDate ? ` from ${photoDate}` : ''}`
                 : ` · 거리뷰${photoDate ? ` 촬영 ${photoDate}` : ''}`);
             layer.caption = state.message.textContent;
+            state.message.style.display = 'none';
             if (state.finished && state.cursor === state.history.length - 1 && !frameNow.landmark) {
               state.message.textContent += state.english ? ' · Last available scene; check the map for any remaining section.' : ' · 마지막 확인 가능한 장면이에요. 남은 구간은 지도를 확인해 주세요.';
             }
@@ -2220,7 +2223,7 @@ async function requestNaverTransitRoute(maps, map, start, end, isCurrent, instru
       guideTransportRoutes.WALK = { minutes, distance, paths, maneuvers: Array.isArray(payload.maneuvers) ? payload.maneuvers : [] };
       if (walkButton) walkButton.disabled = false;
       instruction.textContent = english ? `Walk · about ${minutes} min` : `도보 · 약 ${minutes}분`;
-      if (endpointLabel && (start.landmark || end.landmark)) {
+      if (endpointLabel) {
         const comparison = start.walkingComparison;
         const from = start.landmark?.label || routeOrigin || (english ? 'Your location' : '현재 위치');
         const to = end.landmark?.label || destination;
