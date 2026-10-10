@@ -1647,8 +1647,12 @@ function walkPreviewSceneFrames(frames) {
 // POV contract: navermaps.github.io/maps.js.ncp/docs/naver.maps.Panorama.html
 function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
   const approach = frame?.phase === 'approach' && frame.turnPosition && frame.turnAhead;
+  // Routing providers omit some straight-through forks. A brief route-bearing
+  // cue on connecting scenes covers those without pretending to detect roads
+  // from the photograph. Endpoint and uncertain photographs remain excluded.
+  const connecting = frame?.phase === 'straight';
   const junction = frame?.important && /교차로|사거리|삼거리|갈림길|횡단보도/.test(frame.description || '');
-  if ((!approach && frame?.phase !== 'turn') || (frame.turnAngle < 35 && !junction) || frame.landmark || !capture
+  if ((!approach && !connecting && frame?.phase !== 'turn') || (!connecting && frame.turnAngle < 35 && !junction) || frame.landmark || !capture
       || !photo || photo.nearby || photo.offset > 18 || photo.lateral > 12
       || photo.meters > frame.meters + 5 || !(width > 0 && height > 0)
       || ![pov?.pan, pov?.tilt, pov?.fov].every(Number.isFinite)) return null;
@@ -1668,14 +1672,26 @@ function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
   let polygon = [[-.32,8],[.32,8],[.32,11],[.95,11],[0,13],[-.95,11],[-.32,11]].map(p=>at(...p));
   if (approach) {
     const incoming = walkPreviewBearing(frame.position, anchor) * radians;
-    const ni = [Math.cos(incoming), -Math.sin(incoming)], no = [Math.cos(heading), -Math.sin(heading)];
-    const denominator = 1 + ni[0]*no[0] + ni[1]*no[1];
-    if (denominator < .25) return null; // No misleading elbow at a hairpin/U-turn.
-    const miter = ni.map((v,i)=>(v+no[i]) * .32 / denominator);
-    const tail = [east-Math.sin(incoming)*1.5,north-Math.cos(incoming)*1.5];
-    polygon = [tail.map((v,i)=>v-ni[i]*.32),tail.map((v,i)=>v+ni[i]*.32),
-      [east+miter[0],north+miter[1]],at(.32,2.2),at(.85,2.2),at(0,4),at(-.85,2.2),at(-.32,2.2),
-      [east-miter[0],north-miter[1]]];
+    const vi = [Math.sin(incoming),Math.cos(incoming)], vo = [Math.sin(heading),Math.cos(heading)];
+    if (1 + vi[0]*vo[0] + vi[1]*vo[1] < .25) return null;
+    // Compact rounded elbow: equal-length legs, no long miter or stretched tip.
+    const center = [east,north], curveStart = center.map((v,i)=>v-vi[i]*.9);
+    const curveEnd = center.map((v,i)=>v+vo[i]*.9);
+    const left = [], right = [];
+    const edge = (p,tangent) => {
+      const length = Math.hypot(...tangent);
+      const normal = [tangent[1]/length,-tangent[0]/length];
+      left.push(p.map((v,i)=>v-normal[i]*.25));
+      right.push(p.map((v,i)=>v+normal[i]*.25));
+    };
+    edge(center.map((v,i)=>v-vi[i]*2.4),vi);
+    for (let step=0;step<=6;step+=1) {
+      const t=step/6;
+      edge(center.map((_,i)=>(1-t)**2*curveStart[i]+2*(1-t)*t*center[i]+t*t*curveEnd[i]),
+        center.map((_,i)=>(1-t)*(center[i]-curveStart[i])+t*(curveEnd[i]-center[i])));
+    }
+    edge(at(0,1.5),vo);
+    polygon = [...right,at(.65,1.5),at(0,2.7),at(-.65,1.5),...left.reverse()];
   }
   const projected = polygon.map(([e, n]) => {
     const right = e * Math.cos(pan) - n * Math.sin(pan);
@@ -1686,6 +1702,14 @@ function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
     return [width / 2 + focal * right / depth, height / 2 - focal * up / depth];
   });
   if (projected.some(p => !p || !p.every(Number.isFinite) || p[0] < 14 || p[0] > width-14 || p[1] < 18 || p[1] > height-18)) return null;
+  if (approach) {
+    // Preserve aspect ratio while limiting a close-up turn's visual footprint.
+    const xs=projected.map(p=>p[0]),ys=projected.map(p=>p[1]);
+    const minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);
+    const scale=Math.min(1,width*.16/(maxX-minX),height*.2/(maxY-minY));
+    const cx=(minX+maxX)/2,cy=(minY+maxY)/2;
+    for (const p of projected) { p[0]=cx+(p[0]-cx)*scale; p[1]=cy+(p[1]-cy)*scale; }
+  }
   return projected.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ');
 }
 
@@ -1801,7 +1825,7 @@ function startWalkPreview(context, choice) {
     for (const layer of state.layers) if (layer.turnArrow) layer.turnArrow.hidden = true;
   };
   const attachTurnArrow = (layer, frame, capture, photo, panoId) => {
-    if (!['approach','turn'].includes(frame.phase)) {
+    if (!['approach','turn','straight'].includes(frame.phase)) {
       layer.arrowContext = null;
       if (layer.turnArrow) layer.turnArrow.hidden = true;
       return;
