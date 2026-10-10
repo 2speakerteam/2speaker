@@ -2127,7 +2127,14 @@ function startWalkPreview(context, choice) {
     // Hiding it here made every position change flash the underlying map.
     if (!state.history.length && !revisiting) state.viewer.style.visibility = 'hidden';
     const saved = revisiting ? state.history[state.cursor] : null;
-    const retained = saved && [...state.layers].find(layer => layer.sceneCursor === state.cursor);
+    const previousEntry = revisiting ? state.history[state.cursor - 1] : null;
+    const replayDeparture = Boolean(saved && state.playing && !directSeek && frame.phase === 'start'
+      && previousEntry && frames[previousEntry.index]?.phase === 'landmark-start'
+      && previousEntry.panoId && previousEntry.panoId === saved.panoId
+      && state.activeLayer?.panoId === saved.panoId);
+    // Replay the exit-to-route head turn even when this scene is already cached.
+    // Loading the same panorama again lets the outgoing exit view turn naturally.
+    const retained = saved && !replayDeparture && [...state.layers].find(layer => layer.sceneCursor === state.cursor);
     if (retained) {
       clearTimeout(retained.retireTimer);
       const outgoing = state.activeLayer;
@@ -2313,15 +2320,17 @@ function startWalkPreview(context, choice) {
             scheduleNext();
           }));
           const rotatingLayer = state.activeLayer;
-          const canRotate = !reduceMotion && state.playing && !state.directSeek && !state.revisiting
-            && rotatingLayer?.panoId === panoId && rotatingLayer.pov && (departure || frameNow.important);
+          const rotationTransition = departure || replayDeparture || frameNow.important;
+          const canRotate = !reduceMotion && state.playing && !state.directSeek
+            && (!state.revisiting || replayDeparture)
+            && rotatingLayer?.panoId === panoId && rotatingLayer.pov && rotationTransition;
           layer.settleTimer = setTimeout(() => {
             const outgoing = state.activeLayer;
             if (!valid() || state.pendingLayer !== layer) return;
             // Show a real turn of the head within the same photograph, not a jump
             // between different years/cameras. Reduced motion and seeking stay instant.
-            if (reduceMotion || !state.playing || state.directSeek || state.revisiting || !outgoing || outgoing.panoId !== panoId
-                || !outgoing.pov || !(departure || frameNow.important)) { reveal(); return; }
+            if (reduceMotion || !state.playing || state.directSeek || (state.revisiting && !replayDeparture)
+                || !outgoing || outgoing.panoId !== panoId || !outgoing.pov || !rotationTransition) { reveal(); return; }
             const from = outgoing.panorama.getPov?.() || outgoing.pov;
             attachTurnArrow(outgoing, frameNow, capturePoint, photoContext, panoId);
             const delta = ((cameraPov.pan - from.pan + 540) % 360) - 180;
@@ -2334,7 +2343,7 @@ function startWalkPreview(context, choice) {
                   tilt: from.tilt + (cameraPov.tilt - from.tilt) * eased,
                   fov: from.fov + (cameraPov.fov - from.fov) * eased });
               } catch { reveal(); return; }
-              if (t < 1) layer.settleTimer = setTimeout(rotate, 20);
+              if (t < 1) layer.settleTimer = setTimeout(rotate, 24);
               else reveal();
             };
             rotate();
@@ -2898,3 +2907,5 @@ function goBack() {
 }
 
 render();
+
+
