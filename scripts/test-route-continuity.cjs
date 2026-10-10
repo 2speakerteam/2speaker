@@ -113,6 +113,23 @@ const compactArrow=sandbox.walkPreviewTurnArrow(approachArrow,origin,arrowPhoto,
 assert.ok(compactArrow.length>15,'turn shaft has a rounded bend');
 assert.ok(Math.max(...compactArrow.map(p=>p[0]))-Math.min(...compactArrow.map(p=>p[0]))<=96.1,'turn cue width capped at 16 percent');
 assert.equal(sandbox.walkPreviewTurnArrow(approachArrow,origin,arrowPhoto,{...arrowPov,pan:180},600,300),null);
+for (const [width,height] of [[600,300],[750,310],[350,250]]) {
+  for (const direction of [-1,1]) {
+    const fixture={...approachArrow,focusMeters:15,turnPosition:[127,37+15/111320],
+      turnAhead:[127+direction*14/88804,37+15/111320]};
+    const polygon=sandbox.walkPreviewTurnArrow(fixture,origin,{...arrowPhoto,meters:0},arrowPov,width,height);
+    assert.ok(polygon,'both left and right approaches remain visible');
+    const points=polygon.split(' ').map(p=>p.split(',').map(Number));
+    const dx=Math.max(...points.map(p=>p[0]))-Math.min(...points.map(p=>p[0]));
+    const dy=Math.max(...points.map(p=>p[1]))-Math.min(...points.map(p=>p[1]));
+    assert.ok(dx<=Math.min(90,width*.12)+.11 && dy<=Math.min(28,height*.10)+.11,'all directions share compact size limits');
+  }
+}
+const snappedApproach={...approachArrow,focusMeters:10};
+assert.ok(sandbox.walkPreviewTurnArrow(snappedApproach,origin,{...arrowPhoto,meters:8},arrowPov,600,300),
+  'camera snapped ahead of sample but still before corner retains turn guidance');
+assert.equal(sandbox.walkPreviewTurnArrow(snappedApproach,origin,{...arrowPhoto,meters:20},arrowPov,600,300),null,
+  'camera beyond actual corner is still rejected');
 const parkGate = {label:'어린이대공원 정문',kind:'park-gate',position:[127.07579042,37.5495968]};
 const exitOne = {label:'어린이대공원역 1번 출구',kind:'station-exit',position:[127.07548491,37.54901353]};
 const entranceViews = sandbox.walkPreviewEntranceScenes(parkGate,'end');
@@ -523,20 +540,18 @@ if (inactiveCueLayer) {
   inactiveCueLayer.panorama.emit('pov_changed');
   assert.equal(sharedCue.hidden,false,'cached viewer events cannot hide the visible overlay');
 }
-once.arrowScenes.set(chosenCue.arrowCueKey,once.frames[otherIndex]);
 once.seek.value=String(chosenIndex); once.seek.oninput(); once.seek.onchange(); until(()=>!once.loading);
 assert.equal(once.activeLayer.turnArrow.hidden,false,'manual revisit clears stale cue claims');
 once.play.onclick();
 until(()=>once.finished && !once.playing && !once.loading);
-once.arrowScenes.set(chosenCue.arrowCueKey,once.frames[otherIndex]);
 once.play.onclick();
 until(()=>once.activeLayer?.arrowContext?.frame===chosenCue && !once.loading);
 assert.equal(once.activeLayer.turnArrow.hidden,false,'full replay shows the primary junction cue again');
 sandbox.stopWalkPreview(true); while(tick()) {}
 console.log('PASS: continuous single junction overlay, late provider events, backward/forward seeking and replay');
 
-// The initial exit turn must not reappear in each adjacent photograph after
-// manual Next/Previous. Failed projections do not consume the single cue.
+// Turn guidance must not be consumed by an earlier photograph. Every valid
+// approach/turn view remains guided, including manual Next/Previous.
 jobs.clear(); instances=[]; now=0;
 currentFixture=exitApproachFrames.map((frame,i)=>({id:'exit-cue-'+i,point:frame.position}));
 sandbox.startWalkPreview({maps,map:{},english:false,requestId:1},{paths:exitApproachPath,maneuvers:[{
@@ -548,16 +563,23 @@ until(()=> {
     exitCueVisible.add(exitCueState.activeLayer.arrowContext.frame);
   return exitCueState.finished && !exitCueState.playing && !exitCueState.loading;
 });
-assert.equal(exitCueVisible.size,1,'initial exit turn uses just one visible photograph');
+assert.ok(exitCueVisible.size>=2,'initial exit turn remains guided across valid adjacent photographs');
 const exitChosen=[...exitCueVisible][0], exitChosenIndex=exitCueState.frames.indexOf(exitChosen);
 exitCueState.seek.value=String(exitChosenIndex); exitCueState.seek.oninput(); exitCueState.seek.onchange(); until(()=>!exitCueState.loading);
 assert.equal(exitCueState.turnArrow.hidden,false,'chosen turn scene restores on seek');
 exitCueState.next.onclick(); until(()=>!exitCueState.loading);
-assert.equal(exitCueState.turnArrow.hidden,true,'manual next does not repeat the turn cue');
+const nextView=exitCueState.activeLayer, nextContext=nextView.arrowContext;
+const validNext=nextContext && sandbox.walkPreviewTurnArrow(nextContext.frame,nextContext.capture,nextContext.photo,
+  nextView.panorama.getPov(),600,300);
+assert.equal(exitCueState.turnArrow.hidden,!validNext,'manual next hides only geometrically invalid views');
 exitCueState.prev.onclick(); until(()=>!exitCueState.loading);
 assert.equal(exitCueState.turnArrow.hidden,false,'manual previous restores the original cue');
+const laterValid=[...exitCueVisible].find(frame=>frame!==exitChosen);
+exitCueState.seek.value=String(exitCueState.frames.indexOf(laterValid));
+exitCueState.seek.oninput(); exitCueState.seek.onchange(); until(()=>!exitCueState.loading);
+assert.equal(exitCueState.turnArrow.hidden,false,'later valid view is not suppressed by the first cue');
 sandbox.stopWalkPreview(true); while(tick()) {}
-console.log('PASS: initial turn has one cue across autoplay, manual Next and Previous');
+console.log('PASS: initial turn guidance survives autoplay, manual Next and Previous');
 
 // The green answer bubble holds the route overview; scene instructions stay separate.
 const overviewContext={maps:{LatLng,LatLngBounds:class {extend(){}},Polyline:class {},Marker:class {}},

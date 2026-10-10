@@ -1707,7 +1707,7 @@ function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
   const junction = frame?.important && /교차로|사거리|삼거리|갈림길|갈래길|분기|횡단보도/.test(frame.description || '');
   if ((!approach && !connecting && frame?.phase !== 'turn') || (!connecting && frame.turnAngle < 35 && !junction) || frame.landmark || !capture
       || !photo || photo.nearby || photo.offset > (connecting ? 20 : 18) || photo.lateral > 12
-      || (!connecting && photo.meters > frame.meters + 5) || !(width > 0 && height > 0)
+      || (!connecting && photo.meters > (approach ? frame.focusMeters ?? frame.meters : frame.meters) + 5) || !(width > 0 && height > 0)
       || ![pov?.pan, pov?.tilt, pov?.fov].every(Number.isFinite)) return null;
   const radians = Math.PI / 180;
   // Straight scene photographs can be snapped ahead of the requested sample.
@@ -1721,14 +1721,17 @@ function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
   // Actual corner cues retain their geographic anchor.
   const east = connecting ? 0 : (anchor[0] - capture[0]) * Math.cos(capture[1] * radians) * 111320;
   const north = connecting ? 0 : (anchor[1] - capture[1]) * 111320;
-  if (Math.hypot(east, north) > 25 || walkPreviewDistance(anchor, target) < (approach ? 4 : 13)) return null;
+  const available = walkPreviewDistance(anchor, target);
+  if (Math.hypot(east, north) > 25 || available < (connecting ? 13 : 4)) return null;
   const pan = pov.pan * radians, tilt = pov.tilt * radians;
   const focal = width / (2 * Math.tan(Math.max(20, Math.min(100, pov.fov)) * radians / 2));
   // Approximate flat pavement at camera height 2.4 m. This is a directional cue,
   // not a surveyed ground anchor; uncertain/off-screen placements are suppressed.
   const at = (side, forward) => [east + Math.sin(heading) * forward + Math.cos(heading) * side,
     north + Math.cos(heading) * forward - Math.sin(heading) * side];
-  let polygon = [[-.32,8],[.32,8],[.32,11],[.95,11],[0,13],[-.95,11],[-.32,11]].map(p=>at(...p));
+  const shaftScale = Math.min(1, available / 13);
+  let polygon = [[-.32,8],[.32,8],[.32,11],[.95,11],[0,13],[-.95,11],[-.32,11]]
+    .map(([side,forward])=>at(side*shaftScale,forward*shaftScale));
   if (approach) {
     const incoming = walkPreviewBearing(frame.position, anchor) * radians;
     const vi = [Math.sin(incoming),Math.cos(incoming)], vo = [Math.sin(heading),Math.cos(heading)];
@@ -1760,15 +1763,17 @@ function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
     if (depth < 3) return null;
     return [width / 2 + focal * right / depth, height / 2 - focal * up / depth];
   });
-  if (projected.some(p => !p || !p.every(Number.isFinite) || p[0] < 14 || p[0] > width-14 || p[1] < 18 || p[1] > height-18)) return null;
-  if (approach) {
-    // Preserve aspect ratio while limiting a close-up turn's visual footprint.
+  if (projected.some(p => !p || !p.every(Number.isFinite))) return null;
+  {
+    // Apply the same compact footprint to every cue, not just approaches.
+    // Preserve the projected road position, proportions and direction.
     const xs=projected.map(p=>p[0]),ys=projected.map(p=>p[1]);
     const minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);
-    const scale=Math.min(1,width*.16/(maxX-minX),height*.2/(maxY-minY));
+    const scale=Math.min(1,Math.min(90,width*.12)/(maxX-minX),Math.min(28,height*.10)/(maxY-minY));
     const cx=(minX+maxX)/2,cy=(minY+maxY)/2;
     for (const p of projected) { p[0]=cx+(p[0]-cx)*scale; p[1]=cy+(p[1]-cy)*scale; }
   }
+  if (projected.some(p => p[0] < 14 || p[0] > width-14 || p[1] < 18 || p[1] > height-18)) return null;
   return projected.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ');
 }
 
@@ -1843,7 +1848,7 @@ function startWalkPreview(context, choice) {
     close: scene.querySelector('#walk-preview-close'),
     frames, index: 0, playing: true, loading: false,
     timer: null, panorama: null, fallbackMarker: null, skippedScenes: 0, shownScenes: 0,
-    layers: new Set(), activeLayer: null, pendingLayer: null, arrowScenes: new Map(),
+    layers: new Set(), activeLayer: null, pendingLayer: null,
     history: [], cursor: -1, finished: false, revisiting: false, duplicateScenes: 0,
     message: panel.querySelector('#walk-preview-message'),
     progress: panel.querySelector('#walk-preview-progress-text'),
@@ -1930,15 +1935,8 @@ function startWalkPreview(context, choice) {
         const points = walkPreviewTurnArrow(context.frame, context.capture, context.photo,
           layer.panorama.getPov?.(), size.width, size.height);
         if (!points) return;
-        // One visible photograph per decision, not the same arrow on every
-        // 5 m sample. Claim only after successful projection so missing or
-        // offscreen candidates cannot consume the junction's only cue.
-        const key = context.frame.arrowCueKey;
-        if (key && !context.frame.junctionCue) {
-          const chosen = state.arrowScenes.get(key);
-          if (chosen && chosen !== context.frame) return;
-          state.arrowScenes.set(key, context.frame);
-        }
+        // Every valid view of this decision remains guided. A cue displayed
+        // earlier must not consume the turn for later views or manual seeking.
         cue.querySelector('polygon')?.setAttribute('points', points);
         cue.hidden = false;
       };
@@ -2108,7 +2106,8 @@ function startWalkPreview(context, choice) {
     if (!valid()) return;
     const currentCue = state.activeLayer?.arrowContext?.frame;
     const nextCue = frames[Math.max(0, Math.min(frames.length - 1, index))];
-    if (!(currentCue?.junctionCue && nextCue?.junctionCue && currentCue.arrowCueKey === nextCue.arrowCueKey)) {
+    if (!(currentCue?.arrowCueKey && currentCue.arrowCueKey === nextCue?.arrowCueKey
+        && (nextCue.junctionCue || ['approach','turn'].includes(nextCue.phase)))) {
       hideTurnArrows();
       if (state.activeLayer) state.activeLayer.arrowContext = null;
     }
@@ -2380,8 +2379,6 @@ function startWalkPreview(context, choice) {
     if (!valid() || !state.history.length) return;
     clearTimeout(state.timer);
     clearTimeout(state.seekTimer);
-    // Keep each turn's chosen photograph when navigating manually. Clearing
-    // it here made every Previous/Next click re-enable a duplicate turn cue.
     state.playing = false;
     state.scrubbing = true;
     state.play.textContent = state.english ? 'Play' : '자동 재생';
@@ -2466,7 +2463,6 @@ function startWalkPreview(context, choice) {
   state.play.onclick = () => {
     if (!valid()) return;
     if (state.finished && (state.freeSeek ? state.index === frames.length - 1 : state.cursor === state.history.length - 1) && !state.playing && !state.loading) {
-      state.arrowScenes.clear();
       state.playing = true;
       state.finished = false;
       state.index = state.history[0]?.index ?? 0;
