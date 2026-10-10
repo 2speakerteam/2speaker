@@ -1463,7 +1463,7 @@ function walkPreviewEndpointFrames(frames, context, paths) {
     const base = side === 'start' ? frames[0] : frames.at(-1);
     // Query the entrance itself so the introduction and onward view share a camera.
     const position = landmark.position;
-    const frame = { ...base, position, ahead: landmark.position, landmark, phase: 'landmark-' + side,
+    const frame = { ...base, position, ahead: landmark.position, onward: base.ahead, landmark, phase: 'landmark-' + side,
       important: true, description: '', holdMs: 3500 };
     const verified = walkPreviewEntranceScenes(landmark, side);
     if (side === 'start') result.unshift({ ...frame, ...(verified[0] || {}) });
@@ -1514,6 +1514,7 @@ function walkPreviewPhotoContext(capture, frame, paths) {
     // Do not label a distant/ambiguous image as the requested entrance.
     if (offset < 2 || offset > 45) return null;
     return { offset, meters: frame.meters, lateral: 0, nearby: false,
+      routeHeading: frame.phase === 'landmark-start' && frame.onward ? walkPreviewBearing(capture, frame.onward) : null,
       heading: walkPreviewBearing(capture, frame.landmark.position), landmark: true };
   }
   let closest = null, traveled = 0;
@@ -1588,7 +1589,11 @@ function walkPreviewCameraPov(frame, photoContext, photoDate) {
   const stationExit = frame.landmark?.kind === 'station-exit';
   let heading = photoContext.heading;
   // Show the exit canopy together with the pavement/road, not only its number.
-  let fov = stationExit ? 85 : 75;
+  let fov = stationExit ? 100 : 75;
+  if (stationExit && Number.isFinite(photoContext.routeHeading)) {
+    const delta = ((photoContext.routeHeading - heading + 540) % 360) - 180;
+    heading += Math.max(-35, Math.min(35, delta));
+  }
   // Visually checked sign framing for this capture only. The entrance POI points
   // inside the stairwell, while the visible number sign is on the roadside canopy.
   // Do not carry a photograph-specific adjustment to another station or newer image.
@@ -1863,7 +1868,7 @@ function startWalkPreview(context, choice) {
         const element = document.createElement('div');
         const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
         element.style.cssText = 'position:absolute;inset:0;opacity:0;pointer-events:none;transition:opacity '
-          + (reduceMotion ? '0ms' : '160ms') + ' ease-out';
+          + (reduceMotion ? '0ms' : '400ms') + ' ease-in-out';
         viewer.append(element);
         const layer = { element, panorama: null, retireTimer: null, settleTimer: null, readyStarted: false };
         state.pendingLayer = layer;
@@ -1969,7 +1974,7 @@ function startWalkPreview(context, choice) {
               if (previousLayer && previousLayer !== layer) {
                 previousLayer.element.style.pointerEvents = 'none';
                 // Keep the outgoing photograph opaque underneath the incoming fade.
-                previousLayer.retireTimer = setTimeout(() => state.disposeLayer(previousLayer), 200);
+                previousLayer.retireTimer = setTimeout(() => state.disposeLayer(previousLayer), reduceMotion ? 0 : 450);
               }
             });
             const photoDate = state.panorama.getLocation()?.photodate;
