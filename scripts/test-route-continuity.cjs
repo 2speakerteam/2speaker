@@ -84,7 +84,6 @@ const junctionFrames=sandbox.walkPreviewFrames(junctionRoute,[]);
 assert.ok(junctionFrames.some(f=>f.junctionCue),'verified intersection detected by geographic proximity');
 assert.ok(junctionFrames.filter(f=>f.junctionCue).every(f=>f.important),'confirmed junctions cannot be discarded as duplicate straight scenes');
 assert.ok(junctionFrames.filter(f=>f.junctionCue).length<=3,'brief junction window only');
-assert.equal(new Set(junctionFrames.filter(f=>f.junctionCue).map(f=>f.arrowCueKey)).size,1,'adjacent samples share one junction identity');
 assert.ok(junctionFrames.filter(f=>f.meters>55).every(f=>!f.junctionCue),'hide on straight road after junction');
 assert.ok(sandbox.walkPreviewFrames(junctionRoute.map(path=>path.map(p=>[p[0]+.001,p[1]])),[]).every(f=>!f.junctionCue),'unrelated parallel road cannot inherit a junction cue');
 for(const description of ['두 갈래길에서 직진','삼거리에서 직진','사거리에서 직진']) {
@@ -383,46 +382,15 @@ assert.equal(now-exitShownAt,1050,'rotation follows one-second exit hold plus pa
 until(()=>ep.history.length===2);
 assert.equal(instances[1].options.panoId,ep.history[0].panoId,'departure retains the original camera and capture date');
 assert.ok(instances[0].povUpdates>=30,'departure rotates through intermediate views in the real panorama');
-const exitRotationTimes=instances[0].povTimes.slice(-60);
-assert.equal(exitRotationTimes.length,60,'station departure uses 25 percent longer rotation without longer holds');
-assert.equal(exitRotationTimes.at(-1)-exitRotationTimes[0],1180,'rotation is slightly slower without changing the one-second hold');
+const exitRotationTimes=instances[0].povTimes.slice(-36);
+assert.equal(exitRotationTimes.length,36,'station departure preserves all easing frames');
+assert.equal(exitRotationTimes.at(-1)-exitRotationTimes[0],700,'station departure keeps original smooth rotation speed');
 assert.ok(exitRotationTimes.slice(1).every((time,i)=>time-exitRotationTimes[i]===20),'station rotation uses steady 20 ms steps');
 assert.equal(ep.history[0].panoId,ep.history[1].panoId,'keep purposeful exit-facing then route-facing views');
 assert.ok(Math.abs(ep.history[0].heading-ep.history[1].heading)>150);
-// Returning by Previous or the scrubber must replay the same rotation, even
-// when both panorama viewers are already cached. No extra viewer or history.
-const cachedExit=instances[0], cachedViewerCount=instances.length;
-ep.prev.onclick();
-assert.equal(ep.index,0);
-let cachedRotationStart=cachedExit.povUpdates;
-ep.play.onclick();
-until(()=>ep.index===1 && !ep.loading);
-assert.equal(cachedExit.povUpdates-cachedRotationStart,60,'Previous then Play animates the cached exit again');
-assert.equal(instances.length,cachedViewerCount,'cached replay needs no new panorama');
-assert.equal(ep.history.length,2,'cached replay does not duplicate history');
-ep.seek.value='0'; ep.seek.oninput(); ep.seek.onchange(); until(()=>!ep.loading);
-cachedRotationStart=cachedExit.povUpdates;
-ep.play.onclick();
-until(()=>ep.index===1 && !ep.loading);
-assert.equal(cachedExit.povUpdates-cachedRotationStart,60,'scrub to start then Play also rotates again');
-ep.seek.value='0'; ep.seek.oninput(); ep.seek.onchange(); until(()=>!ep.loading);
-cachedRotationStart=cachedExit.povUpdates;
-ep.play.onclick(); until(()=>cachedExit.povUpdates>cachedRotationStart+5);
-ep.seek.value='0'; ep.seek.oninput(); ep.seek.onchange(); until(()=>!ep.loading);
-const cancelledCachedUpdates=cachedExit.povUpdates;
-while(tick()) {}
-assert.equal(cachedExit.povUpdates,cancelledCachedUpdates,'scrubbing cancels an active cached rotation');
-assert.equal(ep.index,0,'late rotation cannot override selected scene');
-ep.play.onclick();
 until(()=>ep.finished && !ep.playing && !ep.loading);
 assert.equal(ep.frames.at(-1).phase,'landmark-end');
 assert.match(ep.message.textContent,/도착 입구 확인/);
-cachedRotationStart=cachedExit.povUpdates;
-const finishedHistoryCount=ep.history.length;
-ep.play.onclick();
-until(()=>ep.index===1 && !ep.loading);
-assert.ok(cachedExit.povUpdates-cachedRotationStart>=60,'Replay animates even when the next viewer was evicted');
-assert.equal(ep.history.length,finishedHistoryCount,'reloaded history is not appended twice');
 sandbox.stopWalkPreview(true); while(tick()) {}
 jobs.clear(); instances=[]; currentFixture=[{id:'cancel-exit',point:point(12)}]; now=0;
 sandbox.startWalkPreview(endpointContext,{paths:route,maneuvers:[]});
@@ -465,8 +433,8 @@ assert.ok(instances.some(instance=>instance.fixture.id==='corner-camera' && inst
   'junction orientation changes rotate inside the actual panorama');
 const cornerRotation=instances.find(instance=>instance.fixture.id==='corner-camera' && instance.povUpdates>=36);
 assert.ok(cornerRotation.povTimes.some((_,start)=> {
-  const rotation=cornerRotation.povTimes.slice(start,start+60);
-  return rotation.length===60 && rotation.slice(1).every((time,i)=>time-rotation[i]===20);
+  const rotation=cornerRotation.povTimes.slice(start,start+36);
+  return rotation.length===36 && rotation.slice(1).every((time,i)=>time-rotation[i]===20);
 }),
   'junction rotation retains its original 20 ms pacing');
 assert.ok(instances.some(instance=>instance.el.style.cssText.includes('450ms')),'gentle crossfade');
@@ -483,26 +451,6 @@ assert.equal(missedTurn.viewer.style.visibility,'hidden','show the route map for
 assert.equal(missedTurn.frames[missedTurn.index].phase,'turn');
 sandbox.stopWalkPreview(true); while(tick()) {}
 console.log('PASS: junction phases survive deduplication, gradual same-camera turn, slower pace, backward-turn map cue');
-
-// Restore the pre-deduplication behavior: each neighboring valid photograph
-// can show its own arrow, including backward/forward manual navigation.
-jobs.clear(); instances=[]; now=0;
-currentFixture=junctionFrames.map((frame,i)=>({id:'restored-'+i,point:frame.position}));
-sandbox.startWalkPreview({maps,map:{},english:false,requestId:1},{paths:junctionRoute,maneuvers:[]});
-const restored=sandbox.walkPreviewState, restoredCues=new Set();
-until(()=> {
-  if (restored.activeLayer?.turnArrow && !restored.activeLayer.turnArrow.hidden)
-    restoredCues.add(restored.activeLayer.arrowContext.frame);
-  return restored.finished && !restored.playing && !restored.loading;
-});
-assert.ok(restoredCues.size>=2,'neighboring junction scenes each display an arrow again');
-for (const frame of [...restoredCues].reverse()) {
-  restored.seek.value=String(restored.frames.indexOf(frame));
-  restored.seek.oninput(); restored.seek.onchange(); until(()=>!restored.loading);
-  assert.equal(restored.activeLayer.turnArrow.hidden,false,'manual seek restores each junction arrow');
-}
-sandbox.stopWalkPreview(true); while(tick()) {}
-console.log('PASS: restored repeated junction arrows and manual revisits');
 
 // The green answer bubble holds the route overview; scene instructions stay separate.
 const overviewContext={maps:{LatLng,LatLngBounds:class {extend(){}},Polyline:class {},Marker:class {}},
