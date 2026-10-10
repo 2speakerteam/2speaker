@@ -1425,6 +1425,15 @@ function walkPreviewFrames(paths, maneuvers = []) {
   const unique = decisions.filter((event, i) => !i || event.meters - decisions[i - 1].meters > 2);
   const frames = [];
   const add = (meters, phase, event = null) => {
+    // Dense samples between the approach and the corner still belong to that
+    // approach. Otherwise their generic 12 m look-ahead turns the camera early.
+    if (phase === 'straight') {
+      const next = unique.find(item => item.meters > meters && item.meters - meters <= 12);
+      if (next) {
+        phase = 'approach';
+        event = { ...next, nextMeters: unique.find(item => item.meters > next.meters)?.meters ?? total };
+      }
+    }
     const position = pointAt(meters);
     let ahead = pointAt(Math.min(total, event?.nextMeters ?? total, meters + 20));
     if (phase === 'approach') ahead = pointAt(event.meters);
@@ -1435,6 +1444,8 @@ function walkPreviewFrames(paths, maneuvers = []) {
       ahead = position.map((value, axis) => value + (value - behind[axis]));
     }
     frames.push({ position, ahead, meters, total, phase,
+      turnPosition: event ? pointAt(event.meters) : null,
+      turnAhead: event ? pointAt(Math.min(total, event.nextMeters ?? total, event.meters + 14)) : null,
       direction: event?.direction || 'straight', description: event?.description || '',
       important: Boolean(event), focusMeters: event?.meters ?? null, turnAngle: Math.abs(event?.delta || 0),
       holdMs: event ? (phase === 'turn' ? 1600 : 850) : (phase === 'start' || phase === 'arrival' ? 1800 : 400) });
@@ -1566,6 +1577,9 @@ function walkPreviewPhotoContext(capture, frame, paths) {
   }
   const nearTurn = frame.focusMeters !== null && Math.abs(closest.meters - frame.focusMeters) < 5;
   if (nearTurn && frame.phase === 'turn') closest.heading = walkPreviewBearing(frame.position, frame.ahead);
+  if (frame.phase === 'approach' && frame.turnPosition) {
+    closest.heading = walkPreviewBearing(frame.position, frame.turnPosition);
+  }
   return { ...closest, offset, nearby: offset > 20 };
 }
 
@@ -1619,23 +1633,38 @@ function walkPreviewSceneFrames(frames) {
 // camera position and POV, so dragging/zooming cannot leave it pointing elsewhere.
 // POV contract: navermaps.github.io/maps.js.ncp/docs/naver.maps.Panorama.html
 function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
-  if (frame?.phase !== 'turn' || frame.turnAngle < 35 || frame.landmark || !capture
+  const approach = frame?.phase === 'approach' && frame.turnPosition && frame.turnAhead;
+  const junction = frame?.important && /교차로|사거리|삼거리|갈림길|횡단보도/.test(frame.description || '');
+  if ((!approach && frame?.phase !== 'turn') || (frame.turnAngle < 35 && !junction) || frame.landmark || !capture
       || !photo || photo.nearby || photo.offset > 18 || photo.lateral > 12
       || photo.meters > frame.meters + 5 || !(width > 0 && height > 0)
       || ![pov?.pan, pov?.tilt, pov?.fov].every(Number.isFinite)) return null;
   const radians = Math.PI / 180;
-  const heading = walkPreviewBearing(frame.position, frame.ahead) * radians;
-  const east = (frame.position[0] - capture[0]) * Math.cos(capture[1] * radians) * 111320;
-  const north = (frame.position[1] - capture[1]) * 111320;
-  if (Math.hypot(east, north) > 20 || walkPreviewDistance(frame.position, frame.ahead) < 13) return null;
+  const anchor = approach ? frame.turnPosition : frame.position;
+  const target = approach ? frame.turnAhead : frame.ahead;
+  const heading = walkPreviewBearing(anchor, target) * radians;
+  const east = (anchor[0] - capture[0]) * Math.cos(capture[1] * radians) * 111320;
+  const north = (anchor[1] - capture[1]) * 111320;
+  if (Math.hypot(east, north) > 25 || walkPreviewDistance(anchor, target) < (approach ? 4 : 13)) return null;
   const pan = pov.pan * radians, tilt = pov.tilt * radians;
   const focal = width / (2 * Math.tan(Math.max(20, Math.min(100, pov.fov)) * radians / 2));
   // Approximate flat pavement at camera height 2.4 m. This is a directional cue,
   // not a surveyed ground anchor; uncertain/off-screen placements are suppressed.
-  const polygon = [[-.32,8],[.32,8],[.32,11],[.95,11],[0,13],[-.95,11],[-.32,11]];
-  const projected = polygon.map(([side, forward]) => {
-    const e = east + Math.sin(heading) * forward + Math.cos(heading) * side;
-    const n = north + Math.cos(heading) * forward - Math.sin(heading) * side;
+  const at = (side, forward) => [east + Math.sin(heading) * forward + Math.cos(heading) * side,
+    north + Math.cos(heading) * forward - Math.sin(heading) * side];
+  let polygon = [[-.32,8],[.32,8],[.32,11],[.95,11],[0,13],[-.95,11],[-.32,11]].map(p=>at(...p));
+  if (approach) {
+    const incoming = walkPreviewBearing(frame.position, anchor) * radians;
+    const ni = [Math.cos(incoming), -Math.sin(incoming)], no = [Math.cos(heading), -Math.sin(heading)];
+    const denominator = 1 + ni[0]*no[0] + ni[1]*no[1];
+    if (denominator < .25) return null; // No misleading elbow at a hairpin/U-turn.
+    const miter = ni.map((v,i)=>(v+no[i]) * .32 / denominator);
+    const tail = [east-Math.sin(incoming)*1.5,north-Math.cos(incoming)*1.5];
+    polygon = [tail.map((v,i)=>v-ni[i]*.32),tail.map((v,i)=>v+ni[i]*.32),
+      [east+miter[0],north+miter[1]],at(.32,2.2),at(.85,2.2),at(0,4),at(-.85,2.2),at(-.32,2.2),
+      [east-miter[0],north-miter[1]]];
+  }
+  const projected = polygon.map(([e, n]) => {
     const right = e * Math.cos(pan) - n * Math.sin(pan);
     const ahead = e * Math.sin(pan) + n * Math.cos(pan);
     const depth = ahead * Math.cos(tilt) - 2.4 * Math.sin(tilt);
@@ -1759,7 +1788,7 @@ function startWalkPreview(context, choice) {
     for (const layer of state.layers) if (layer.turnArrow) layer.turnArrow.hidden = true;
   };
   const attachTurnArrow = (layer, frame, capture, photo, panoId) => {
-    if (frame.phase !== 'turn' || frame.turnAngle < 35) {
+    if (!['approach','turn'].includes(frame.phase)) {
       layer.arrowContext = null;
       if (layer.turnArrow) layer.turnArrow.hidden = true;
       return;

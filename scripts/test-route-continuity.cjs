@@ -65,6 +65,10 @@ assert.equal(sandbox.walkPreviewTurnArrow(arrowFrame,origin,{...arrowPhoto,meter
 assert.equal(sandbox.walkPreviewTurnArrow({...arrowFrame,ahead:[127,37.00005]},origin,arrowPhoto,arrowPov,600,300),null,'do not project beyond next close junction');
 assert.equal(sandbox.walkPreviewTurnArrow(arrowFrame,origin,arrowPhoto,arrowPov,0,0),null);
 console.log('PASS: small road-plane turn arrow, POV tracking, straight/endpoint/uncertain/offscreen suppression');
+const junctionPoint=[127,37+10/111320];
+const approachArrow={...arrowFrame,phase:'approach',position:origin,turnPosition:junctionPoint,turnAhead:[127+14/88804,junctionPoint[1]]};
+assert.ok(sandbox.walkPreviewTurnArrow(approachArrow,origin,arrowPhoto,arrowPov,600,300),'intersection approach shows a bent directional cue before turning');
+assert.equal(sandbox.walkPreviewTurnArrow(approachArrow,origin,arrowPhoto,{...arrowPov,pan:180},600,300),null);
 const parkGate = {label:'어린이대공원 정문',kind:'park-gate',position:[127.07579042,37.5495968]};
 const exitOne = {label:'어린이대공원역 1번 출구',kind:'station-exit',position:[127.07548491,37.54901353]};
 const entranceViews = sandbox.walkPreviewEntranceScenes(parkGate,'end');
@@ -89,6 +93,10 @@ const turnFrames = sandbox.walkPreviewFrames(corner,[]);
 for (const phase of ['approach','turn','depart']) assert.ok(turnFrames.some(x=>x.phase===phase),phase);
 assert.equal(turnFrames.find(x=>x.phase==='turn').holdMs,1600);
 assert.equal(turnFrames.find(x=>x.phase==='approach').holdMs,850);
+const cornerBridge=turnFrames.find(x=>Math.abs(x.meters-55)<.1);
+assert.equal(cornerBridge.phase,'approach','sample immediately before corner keeps junction context');
+const bridgePhoto=sandbox.walkPreviewPhotoContext(point(55),cornerBridge,corner);
+assert.ok(Math.abs(bridgePhoto.heading-90)<1,'do not look around corner while still approaching it');
 const css = fs.readFileSync(__dirname + '/../src/styles.css','utf8');
 assert.match(css,/\.walk-preview-panorama \{[^}]*z-index: 0;[^}]*isolation: isolate;/);
 assert.match(css,/\.walk-preview-map-button \{[^}]*z-index: 3;/);
@@ -345,7 +353,7 @@ turnView.setPov(turnPov);
 assert.equal(bend.activeLayer.turnArrow.hidden,false,'looking back restores the route-anchored cue');
 until(()=>bend.finished && !bend.playing && !bend.loading);
 assert.deepEqual(Array.from(bend.history.filter(entry=>entry.panoId==='corner-camera'),entry=>bend.frames[entry.index].phase),
-  ['approach','turn','depart'],'same-camera corner phases are never removed as duplicates');
+  ['approach','approach','turn','depart'],'same-camera corner phases are never removed as duplicates');
 assert.ok(instances.some(instance=>instance.fixture.id==='corner-camera' && instance.povUpdates>=36),
   'junction orientation changes rotate inside the actual panorama');
 assert.ok(instances.some(instance=>instance.el.style.cssText.includes('450ms')),'gentle crossfade');
