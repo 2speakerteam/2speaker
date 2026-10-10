@@ -49,6 +49,12 @@ const maps = {LatLng, Panorama, Event:{addListener(p,n,f){(p.listeners[n] ||= []
 const sandbox = { document, window:{matchMedia(){return {matches:false};}}, setTimeout:timer, clearTimeout:k=>jobs.delete(k),requestAnimationFrame:f=>timer(f,16),currentPage:'guide',routeRequestToken:1,walkPreviewState:null,console };
 vm.createContext(sandbox); vm.runInContext(part,sandbox);
 const frames = sandbox.walkPreviewFrames(route,[]);
+assert.equal(sandbox.walkPreviewHoldBeforeNext({phase:'landmark-start',holdMs:3500},{phase:'start'}),0,'no exit introduction hold before departure');
+for(const phase of ['approach','turn','depart','landmark-end']) {
+  assert.equal(sandbox.walkPreviewHoldBeforeNext({phase:'turn',holdMs:1600},{phase,important:true}),0,'no added wait before any important orientation');
+}
+assert.equal(sandbox.walkPreviewHoldBeforeNext({phase:'straight',holdMs:400},{phase:'straight'}),400,'ordinary slide pacing unchanged');
+assert.equal(sandbox.walkPreviewHoldBeforeNext({phase:'straight',holdMs:750},{phase:'straight'}),750,'straight junction reading time unchanged');
 const arrowFrame={phase:'turn',turnAngle:90,position:origin,ahead:[127,37.00013],meters:30};
 const arrowPhoto={offset:0,lateral:0,meters:30,nearby:false};
 const arrowPov={pan:0,tilt:0,fov:75};
@@ -368,13 +374,16 @@ const ep=sandbox.walkPreviewState;
 until(()=>ep.history.length===1 && !ep.loading);
 assert.equal(instances[0].options.logoControl,false,'official panorama logo control is disabled');
 assert.equal(instances[0].pov.fov,100,'exit introduction includes pavement and road context');
+const exitShownAt=now, exitUpdatesBeforeRotation=instances[0].povUpdates;
+until(()=>instances[0].povUpdates>exitUpdatesBeforeRotation);
+assert.equal(now-exitShownAt,50,'rotation begins as soon as next panorama initializes, without exit hold or settle delay');
 until(()=>ep.history.length===2);
 assert.equal(instances[1].options.panoId,ep.history[0].panoId,'departure retains the original camera and capture date');
 assert.ok(instances[0].povUpdates>=30,'departure rotates through intermediate views in the real panorama');
 const exitRotationTimes=instances[0].povTimes.slice(-36);
 assert.equal(exitRotationTimes.length,36,'station departure preserves all easing frames');
-assert.equal(exitRotationTimes.at(-1)-exitRotationTimes[0],560,'station departure rotation is 20% shorter');
-assert.ok(exitRotationTimes.slice(1).every((time,i)=>time-exitRotationTimes[i]===16),'station rotation uses steady 16 ms steps');
+assert.equal(exitRotationTimes.at(-1)-exitRotationTimes[0],700,'station departure keeps original smooth rotation speed');
+assert.ok(exitRotationTimes.slice(1).every((time,i)=>time-exitRotationTimes[i]===20),'station rotation uses steady 20 ms steps');
 assert.equal(ep.history[0].panoId,ep.history[1].panoId,'keep purposeful exit-facing then route-facing views');
 assert.ok(Math.abs(ep.history[0].heading-ep.history[1].heading)>150);
 until(()=>ep.finished && !ep.playing && !ep.loading);

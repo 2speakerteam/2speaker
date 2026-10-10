@@ -1684,6 +1684,13 @@ function walkPreviewSceneFrames(frames) {
   return frames.map((frame, sceneSlot) => ({ ...frame, sceneSlot }));
 }
 
+function walkPreviewHoldBeforeNext(frame, nextFrame) {
+  // Load the next orientation immediately, instead of holding the exit/corner
+  // for several seconds before even requesting its panorama.
+  const departure = frame.phase === 'landmark-start' && nextFrame?.phase === 'start';
+  return departure || nextFrame?.important ? 0 : frame.holdMs;
+}
+
 // A small ground-plane cue, not a screen-fixed direction icon. Use the actual
 // camera position and POV, so dragging/zooming cannot leave it pointing elsewhere.
 // POV contract: navermaps.github.io/maps.js.ncp/docs/naver.maps.Panorama.html
@@ -1932,7 +1939,9 @@ function startWalkPreview(context, choice) {
       state.play.textContent = state.english ? 'Replay' : '다시 보기';
       return;
     }
-    state.timer = setTimeout(advance, frames[state.index].holdMs);
+    const nextIndex = !state.freeSeek && state.cursor + 1 < state.history.length
+      ? state.history[state.cursor + 1].index : state.index + 1;
+    state.timer = setTimeout(advance, walkPreviewHoldBeforeNext(frames[state.index], frames[nextIndex]));
   };
   const updateButtons = () => {
     // Loading is transient, not a navigation boundary. Base controls on the
@@ -2279,6 +2288,9 @@ function startWalkPreview(context, choice) {
             }
             scheduleNext();
           }));
+          const rotatingLayer = state.activeLayer;
+          const canRotate = !reduceMotion && state.playing && !state.directSeek && !state.revisiting
+            && rotatingLayer?.panoId === panoId && rotatingLayer.pov && (departure || frameNow.important);
           layer.settleTimer = setTimeout(() => {
             const outgoing = state.activeLayer;
             if (!valid() || state.pendingLayer !== layer) return;
@@ -2289,9 +2301,6 @@ function startWalkPreview(context, choice) {
             const from = outgoing.panorama.getPov?.() || outgoing.pov;
             attachTurnArrow(outgoing, frameNow, capturePoint, photoContext, panoId);
             const delta = ((cameraPov.pan - from.pan + 540) % 360) - 180;
-            // Only the initial station-exit orientation is a little quicker.
-            // Keep every easing frame and the slower junction-turn pacing.
-            const rotationInterval = departure && frames[departure.index]?.landmark?.kind === 'station-exit' ? 16 : 20;
             let step = 0;
             const rotate = () => {
               if (!valid() || state.pendingLayer !== layer || state.activeLayer !== outgoing) return;
@@ -2301,11 +2310,11 @@ function startWalkPreview(context, choice) {
                   tilt: from.tilt + (cameraPov.tilt - from.tilt) * eased,
                   fov: from.fov + (cameraPov.fov - from.fov) * eased });
               } catch { reveal(); return; }
-              if (t < 1) layer.settleTimer = setTimeout(rotate, rotationInterval);
+              if (t < 1) layer.settleTimer = setTimeout(rotate, 20);
               else reveal();
             };
             rotate();
-          }, !state.playing || state.directSeek ? 0 : 300);
+          }, !state.playing || state.directSeek || canRotate ? 0 : 300);
         };
         state.onPanoramaReady = onPanoramaReady;
         state.maps.Event.addListener(instance, 'init', onPanoramaReady);
