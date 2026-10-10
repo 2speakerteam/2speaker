@@ -2148,6 +2148,7 @@ function selectGuideTransport(mode, userInitiated = false) {
     routeMapOverlays.push(new maps.Marker({ map, position: endPoint, title: destination.trim() }));
     map.fitBounds(bounds, 36);
     summary = english ? `Walk · about ${choice.minutes} min` : `도보 · 약 ${choice.minutes}분`;
+    if (choice.distance > 0) summary += ` · ${Math.round(choice.distance)}m`;
     if (userInitiated) startWalkPreview(context, choice);
   } else if (mode === 'TAXI') {
     // A separate car-routing entitlement supplies the taxi estimate. Do not fabricate one.
@@ -2166,8 +2167,8 @@ function selectGuideTransport(mode, userInitiated = false) {
     summary = `${english ? { BUS: 'Bus', SUBWAY: 'Subway' }[mode] : { BUS: '버스', SUBWAY: '지하철' }[mode]} · ${transportText(mode, choice.itinerary, english)}`;
   }
   setGuideAnswer(english
-    ? `Route from ${routeOrigin || 'your location'} to ${destination}: ${summary}.`
-    : `${routeOrigin || '현재 위치'}에서 ${destination}까지 ${summary} 경로를 확인했어요.`);
+    ? `Route from ${mode === 'WALK' ? (start.landmark?.label || routeOrigin || 'your location') : (routeOrigin || 'your location')} to ${mode === 'WALK' ? (end.landmark?.label || destination) : destination}: ${summary}.`
+    : `${mode === 'WALK' ? (start.landmark?.label || routeOrigin || '현재 위치') : (routeOrigin || '현재 위치')}에서 ${mode === 'WALK' ? (end.landmark?.label || destination) : destination}까지 ${summary} 경로를 확인했어요.`);
 }
 
 async function requestNaverTransitRoute(maps, map, start, end, isCurrent, instruction) {
@@ -2313,7 +2314,8 @@ async function requestNaverTransitRoute(maps, map, start, end, isCurrent, instru
   } else updateTransportChoice('TAXI', english ? 'Taxi route unavailable' : '택시 경로 이용 불가', false);
 
   if (guideTransportContext.userSelectedMode) return;
-  if (guideTransportRoutes.BUS) selectGuideTransport('BUS');
+  if (start.walkingComparison && guideTransportRoutes.WALK) selectGuideTransport('WALK');
+  else if (guideTransportRoutes.BUS) selectGuideTransport('BUS');
   else if (guideTransportRoutes.SUBWAY) selectGuideTransport('SUBWAY');
   else if (guideTransportRoutes.TAXI) selectGuideTransport('TAXI');
   else {
