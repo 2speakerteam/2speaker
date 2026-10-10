@@ -1944,7 +1944,9 @@ function startWalkPreview(context, choice) {
         cue.hidden = false;
       };
       state.maps.Event.addListener(layer.panorama, 'pov_changed', layer.updateTurnArrow);
-      state.maps.Event.addListener(layer.panorama, 'pano_changed', () => { cue.hidden = true; });
+      // A delayed readiness event for the same photograph must not erase the cue.
+      // updateTurnArrow still hides it if the actual panorama ID has changed.
+      state.maps.Event.addListener(layer.panorama, 'pano_changed', layer.updateTurnArrow);
       if (typeof ResizeObserver !== 'undefined') {
         layer.arrowResize = new ResizeObserver(layer.updateTurnArrow);
         layer.arrowResize.observe(layer.element);
@@ -2046,7 +2048,6 @@ function startWalkPreview(context, choice) {
     }
   };
   const unavailable = (message) => {
-    hideTurnArrows();
     clearTimeout(state.timer);
     state.loading = false;
     state.disposeLayer(state.pendingLayer);
@@ -2066,6 +2067,7 @@ function startWalkPreview(context, choice) {
       state.timer = setTimeout(() => showFrame(state.index + 1), 80);
       return;
     }
+    hideTurnArrows();
     state.viewer.style.visibility = 'hidden';
     state.visual.classList.add('walk-preview-map-fallback');
     const point = missingLandmark?.position || frames[state.index].position;
@@ -2105,7 +2107,8 @@ function startWalkPreview(context, choice) {
   };
   const showFrame = (index, revisiting = false, directSeek = false) => {
     if (!valid()) return;
-    hideTurnArrows();
+    // Keep the visible photo's cue during background loading. Replace it only
+    // when the new scene is revealed, not when its network request begins.
     clearTimeout(state.timer);
     state.disposeLayer(state.pendingLayer);
     state.pendingLayer = null;

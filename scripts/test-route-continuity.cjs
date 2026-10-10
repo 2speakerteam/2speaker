@@ -437,11 +437,17 @@ sandbox.startWalkPreview({maps,map:{},english:false,requestId:1},{paths:corner,m
 const bend=sandbox.walkPreviewState;
 until(()=>!bend.loading && bend.frames[bend.index].phase==='turn');
 assert.equal(bend.activeLayer.turnArrow.hidden,false,'turn scene displays its ground cue');
+const visibleTurnLayer=bend.activeLayer;
+visibleTurnLayer.panorama.emit('pano_changed');
+assert.equal(visibleTurnLayer.turnArrow.hidden,false,'late same-panorama readiness event cannot erase a visible cue');
 const turnView=bend.activeLayer.panorama, turnPov=turnView.getPov();
 turnView.setPov({...turnPov,pan:turnPov.pan+180});
 assert.equal(bend.activeLayer.turnArrow.hidden,true,'user looking away hides the cue');
 turnView.setPov(turnPov);
 assert.equal(bend.activeLayer.turnArrow.hidden,false,'looking back restores the route-anchored cue');
+until(()=>bend.loading);
+assert.equal(bend.activeLayer,visibleTurnLayer,'outgoing turn image remains visible during next lookup');
+assert.equal(visibleTurnLayer.turnArrow.hidden,false,'keep arrow for as long as its photograph is visible');
 until(()=>bend.finished && !bend.playing && !bend.loading);
 assert.deepEqual(Array.from(bend.history.filter(entry=>entry.panoId==='corner-camera'),entry=>bend.frames[entry.index].phase),
   ['approach','approach','turn','depart'],'same-camera corner phases are never removed as duplicates');
