@@ -2115,30 +2115,56 @@ function startWalkPreview(context, choice) {
     // Hiding it here made every position change flash the underlying map.
     if (!state.history.length && !revisiting) state.viewer.style.visibility = 'hidden';
     const saved = revisiting ? state.history[state.cursor] : null;
+    const previousScene = state.history[state.activeLayer?.sceneCursor];
+    const departure = frame.phase === 'start'
+      && frames[previousScene?.index]?.phase === 'landmark-start' ? previousScene : null;
     const retained = saved && [...state.layers].find(layer => layer.sceneCursor === state.cursor);
     if (retained) {
       clearTimeout(retained.retireTimer);
       const outgoing = state.activeLayer;
-      state.activeLayer = retained;
-      state.panorama = retained.panorama;
-      state.loading = false;
-      try { retained.panorama.setPov(retained.pov); } catch { /* Keep cached photograph. */ }
-      retained.element.style.transition = 'none';
-      retained.element.style.opacity = '1';
-      retained.element.style.pointerEvents = 'auto';
-      state.viewer.style.visibility = 'visible';
-      if (outgoing !== retained) retainLayer(outgoing);
-      attachTurnArrow(retained, frame, saved.capturePoint, saved.photoContext, saved.panoId);
-      state.message.textContent = retained.caption || '';
-      state.message.style.display = 'none';
-      updateInstruction(frame, saved.photoContext);
-      updateProgress();
-      updateButtons();
-      scheduleNext();
+      const revealRetained = () => {
+        state.activeLayer = retained;
+        state.panorama = retained.panorama;
+        state.loading = false;
+        try { retained.panorama.setPov(retained.pov); } catch { /* Keep cached photograph. */ }
+        retained.element.style.transition = 'none';
+        retained.element.style.opacity = '1';
+        retained.element.style.pointerEvents = 'auto';
+        state.viewer.style.visibility = 'visible';
+        if (outgoing !== retained) retainLayer(outgoing);
+        attachTurnArrow(retained, frame, saved.capturePoint, saved.photoContext, saved.panoId);
+        state.message.textContent = retained.caption || '';
+        state.message.style.display = 'none';
+        updateInstruction(frame, saved.photoContext);
+        updateProgress();
+        updateButtons();
+        scheduleNext();
+      };
+      // Revisiting a cached scene must keep the same head-turn animation during
+      // playback. Manual scrubbing itself remains immediate and interruptible.
+      const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      if (!reduceMotion && state.playing && !directSeek && outgoing && outgoing !== retained
+          && outgoing.panoId === saved.panoId && outgoing.pov && (departure || frame.important)) {
+        const from = outgoing.panorama.getPov?.() || outgoing.pov;
+        const targetPov = retained.pov;
+        const delta = ((targetPov.pan - from.pan + 540) % 360) - 180;
+        attachTurnArrow(outgoing, frame, saved.capturePoint, saved.photoContext, saved.panoId);
+        let step = 0;
+        const rotateRetained = () => {
+          if (!valid() || state.activeLayer !== outgoing || state.index !== index || state.scrubbing) return;
+          const t = Math.min(1, ++step / 48), eased = t * t * (3 - 2 * t);
+          try {
+            outgoing.panorama.setPov({ pan: ((from.pan + delta * eased + 540) % 360) - 180,
+              tilt: from.tilt + (targetPov.tilt - from.tilt) * eased,
+              fov: from.fov + (targetPov.fov - from.fov) * eased });
+          } catch { revealRetained(); return; }
+          if (t < 1) state.timer = setTimeout(rotateRetained, 20);
+          else revealRetained();
+        };
+        rotateRetained();
+      } else revealRetained();
       return;
     }
-    const departure = !revisiting && frame.phase === 'start'
-      && frames[state.history.at(-1)?.index]?.phase === 'landmark-start' ? state.history.at(-1) : null;
     const selectedPanoId = saved?.panoId || frame.verifiedView?.panoId || departure?.panoId;
     const target = saved?.capturePoint || frame.position;
     const position = new state.maps.LatLng(target[1], target[0]);
@@ -2301,14 +2327,14 @@ function startWalkPreview(context, choice) {
             scheduleNext();
           }));
           const rotatingLayer = state.activeLayer;
-          const canRotate = !reduceMotion && state.playing && !state.directSeek && !state.revisiting
+          const canRotate = !reduceMotion && state.playing && !state.directSeek
             && rotatingLayer?.panoId === panoId && rotatingLayer.pov && (departure || frameNow.important);
           layer.settleTimer = setTimeout(() => {
             const outgoing = state.activeLayer;
             if (!valid() || state.pendingLayer !== layer) return;
             // Show a real turn of the head within the same photograph, not a jump
             // between different years/cameras. Reduced motion and seeking stay instant.
-            if (reduceMotion || !state.playing || state.directSeek || state.revisiting || !outgoing || outgoing.panoId !== panoId
+            if (reduceMotion || !state.playing || state.directSeek || !outgoing || outgoing.panoId !== panoId
                 || !outgoing.pov || !(departure || frameNow.important)) { reveal(); return; }
             const from = outgoing.panorama.getPov?.() || outgoing.pov;
             attachTurnArrow(outgoing, frameNow, capturePoint, photoContext, panoId);
@@ -2316,7 +2342,7 @@ function startWalkPreview(context, choice) {
             let step = 0;
             const rotate = () => {
               if (!valid() || state.pendingLayer !== layer || state.activeLayer !== outgoing) return;
-              const t = Math.min(1, ++step / 36), eased = t * t * (3 - 2 * t);
+              const t = Math.min(1, ++step / 48), eased = t * t * (3 - 2 * t);
               try {
                 outgoing.panorama.setPov({ pan: ((from.pan + delta * eased + 540) % 360) - 180,
                   tilt: from.tilt + (cameraPov.tilt - from.tilt) * eased,
