@@ -42,7 +42,7 @@ class Panorama {
   getLocation() { return {coord:new LatLng(this.fixture.point[1],this.fixture.point[0]),photodate:'2026-06-01'}; }
   getPanoId() { return this.fixture.id; }
   getPov() { return this.pov || this.options.pov; }
-  setPov(pov) { this.pov=pov; this.povUpdates=(this.povUpdates||0)+1; this.emit('pov_changed'); }
+  setPov(pov) { this.pov=pov; this.povUpdates=(this.povUpdates||0)+1; (this.povTimes||=[]).push(now); this.emit('pov_changed'); }
   setVisible() {}
 }
 const maps = {LatLng, Panorama, Event:{addListener(p,n,f){(p.listeners[n] ||= []).push(f);},clearInstanceListeners(p){p.listeners={};}}};
@@ -371,6 +371,10 @@ assert.equal(instances[0].pov.fov,100,'exit introduction includes pavement and r
 until(()=>ep.history.length===2);
 assert.equal(instances[1].options.panoId,ep.history[0].panoId,'departure retains the original camera and capture date');
 assert.ok(instances[0].povUpdates>=30,'departure rotates through intermediate views in the real panorama');
+const exitRotationTimes=instances[0].povTimes.slice(-36);
+assert.equal(exitRotationTimes.length,36,'station departure preserves all easing frames');
+assert.equal(exitRotationTimes.at(-1)-exitRotationTimes[0],560,'station departure rotation is 20% shorter');
+assert.ok(exitRotationTimes.slice(1).every((time,i)=>time-exitRotationTimes[i]===16),'station rotation uses steady 16 ms steps');
 assert.equal(ep.history[0].panoId,ep.history[1].panoId,'keep purposeful exit-facing then route-facing views');
 assert.ok(Math.abs(ep.history[0].heading-ep.history[1].heading)>150);
 until(()=>ep.finished && !ep.playing && !ep.loading);
@@ -416,6 +420,12 @@ assert.deepEqual(Array.from(bend.history.filter(entry=>entry.panoId==='corner-ca
   ['approach','approach','turn','depart'],'same-camera corner phases are never removed as duplicates');
 assert.ok(instances.some(instance=>instance.fixture.id==='corner-camera' && instance.povUpdates>=36),
   'junction orientation changes rotate inside the actual panorama');
+const cornerRotation=instances.find(instance=>instance.fixture.id==='corner-camera' && instance.povUpdates>=36);
+assert.ok(cornerRotation.povTimes.some((_,start)=> {
+  const rotation=cornerRotation.povTimes.slice(start,start+36);
+  return rotation.length===36 && rotation.slice(1).every((time,i)=>time-rotation[i]===20);
+}),
+  'junction rotation retains its original 20 ms pacing');
 assert.ok(instances.some(instance=>instance.el.style.cssText.includes('450ms')),'gentle crossfade');
 sandbox.stopWalkPreview(true); while(tick()) {}
 // A backward snap at an important junction must show an explicit map cue,

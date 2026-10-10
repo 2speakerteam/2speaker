@@ -2289,6 +2289,9 @@ function startWalkPreview(context, choice) {
             const from = outgoing.panorama.getPov?.() || outgoing.pov;
             attachTurnArrow(outgoing, frameNow, capturePoint, photoContext, panoId);
             const delta = ((cameraPov.pan - from.pan + 540) % 360) - 180;
+            // Only the initial station-exit orientation is a little quicker.
+            // Keep every easing frame and the slower junction-turn pacing.
+            const rotationInterval = departure && frames[departure.index]?.landmark?.kind === 'station-exit' ? 16 : 20;
             let step = 0;
             const rotate = () => {
               if (!valid() || state.pendingLayer !== layer || state.activeLayer !== outgoing) return;
@@ -2298,7 +2301,7 @@ function startWalkPreview(context, choice) {
                   tilt: from.tilt + (cameraPov.tilt - from.tilt) * eased,
                   fov: from.fov + (cameraPov.fov - from.fov) * eased });
               } catch { reveal(); return; }
-              if (t < 1) layer.settleTimer = setTimeout(rotate, 20);
+              if (t < 1) layer.settleTimer = setTimeout(rotate, rotationInterval);
               else reveal();
             };
             rotate();
