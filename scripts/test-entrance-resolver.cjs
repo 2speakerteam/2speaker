@@ -24,7 +24,8 @@ async function run(q,fixtures,status=200) {
   result=await run('어린이대공원 정문',[poi('어린이대공원정문'),poi('어린이대공원정문',129,35)]);assert.equal(result.statusCode,409);
   result=await run('x',[]);assert.equal(result.statusCode,400);assert.equal(result.calls.length,0);
   result=await run('아차산',[poi('아차산'),poi('아차산정상'),poi('아차산등산로입구',127.099,37.556),
-    poi('아차산등산로입구',127.103,37.554),poi('아차산주차장입구'),poi('용마산등산로입구')]);
+    poi('아차산등산로입구',127.103,37.554),poi('아차산등산로입구',129,35),
+    poi('아차산주차장입구'),poi('용마산등산로입구')]);
   assert.equal(result.statusCode,200);
   assert.equal(result.data.candidates.length,2,'distinct named trail entrances retained; summit and car park excluded');
   assert.equal(result.calls.length,2);

@@ -59,9 +59,14 @@ module.exports = async function handler(req, res) {
       // For a named EXIT/GATE POI, its centre is the landmark itself. A vehicle front point may be on another road.
       const location = point(poi.noorLat, poi.noorLon) || point(poi.pnsLat, poi.pnsLon) || point(poi.frontLat, poi.frontLon);
       return location && { ...location, name: String(poi.name).slice(0, 120), kind: descriptor(poi.name).kind, source: 'TMAP POI', matched: true };
-    }).filter(Boolean).filter((candidate,i,all) => !all.slice(0,i).some(prior => compact(prior.name) === compact(candidate.name) && distance(prior,candidate)<10));
+    }).filter(Boolean)
+      // The unqualified POI query also returns namesake mountains outside Seoul.
+      // Geographic disambiguation only: this TMAP Seoul entrance anchor is NOT
+      // used as the destination; compare the returned trail-entrance POIs instead.
+      .filter(candidate => !mountain || distance(candidate, {longitude:127.10378724,latitude:37.5716503}) < 6000)
+      .filter((candidate,i,all) => !all.slice(0,i).some(prior => compact(prior.name) === compact(candidate.name) && distance(prior,candidate)<10));
     if (!candidates.length) return res.status(404).json({ error: '번호와 이름이 일치하는 출입구 위치를 찾지 못했어요.' });
-    if (candidates.some(candidate => distance(candidate, candidates[0]) > (automatic ? 4000 : 80))) return res.status(409).json({ error: '같은 이름의 출입구가 여러 곳이에요. 지역명을 함께 입력해 주세요.' });
+    if (candidates.some(candidate => distance(candidate, candidates[0]) > (mountain ? 8000 : automatic ? 4000 : 80))) return res.status(409).json({ error: '같은 이름의 출입구가 여러 곳이에요. 지역명을 함께 입력해 주세요.' });
     const value = automatic ? { candidates } : candidates[0];
     if (cache.size >= 128) cache.delete(cache.keys().next().value);
     cache.set(key, { time: Date.now(), value });
