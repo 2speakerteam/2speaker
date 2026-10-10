@@ -1129,6 +1129,10 @@ async function pedestrianCandidates(query, maps, nearby) {
   const candidates = response.ok && Array.isArray(payload.candidates) ? payload.candidates : [];
   const base = query.replace(/\s+/g, '');
   return candidates.filter(place => {
+    if (/^(?:서울)?아차산$/.test(base) && String(place.name || '').replace(/\s+/g, '') === '아차산어울림광장') {
+      return place.matched && isKoreaCoordinate(place) && place.kind === 'approach'
+        && walkPreviewDistance([place.longitude, place.latitude], [127.10378724,37.5716503]) < 6000;
+    }
     const desc = entranceDescriptor(place.name);
     if (!place.matched || !isKoreaCoordinate(place) || !desc) return false;
     return /역$/.test(base) ? desc.kind === 'station-exit' && desc.base === base

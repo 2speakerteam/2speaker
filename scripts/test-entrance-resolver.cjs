@@ -28,7 +28,10 @@ async function run(q,fixtures,status=200) {
     poi('아차산주차장입구'),poi('용마산등산로입구')]);
   assert.equal(result.statusCode,200);
   assert.equal(result.data.candidates.length,2,'distinct named trail entrances retained; summit and car park excluded');
-  assert.equal(result.calls.length,2);
+  assert.equal(result.calls.length,3);
+  result=await run('아차산',[poi('아차산등산로입구',127.10378724,37.5716503),poi('아차산어울림광장',127.103,37.553)]);
+  assert.equal(result.data.candidates.length,2,'compare southern public approach as well as northern trail entrance');
+  assert.equal(result.data.candidates.find(p=>p.name==='아차산어울림광장').kind,'approach');
   result=await run('아차산',[poi('아차산')]);assert.equal(result.statusCode,404,'no fallback to a mountain centroid');
   result=await run('아차산 정상',[]);assert.equal(result.statusCode,400,'explicit summit is not an entrance alias');
   result=await run('부산',[]);assert.equal(result.statusCode,400,'do not treat arbitrary 산 suffix as a mountain');

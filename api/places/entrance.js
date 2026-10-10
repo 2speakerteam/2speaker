@@ -37,7 +37,7 @@ module.exports = async function handler(req, res) {
   try {
     const station = automatic && /역$/.test(compact(query));
     const queries = !automatic ? [query] : station ? [query + ' 출구']
-      : mountain ? [query + ' 등산로입구', query + ' 입구'] : [query + ' 정문', query + ' 후문', query + ' 입구'];
+      : mountain ? [query + ' 등산로입구', query + ' 입구', '아차산어울림광장'] : [query + ' 정문', query + ' 후문', query + ' 입구'];
     const responses = await Promise.all(queries.map(async searchKeyword => {
       const url = new URL('https://apis.openapi.sk.com/tmap/pois');
       url.search = new URLSearchParams({ version: '1', searchKeyword, searchType: 'all', searchtypCd: 'A',
@@ -50,6 +50,10 @@ module.exports = async function handler(req, res) {
     const pois = responses.flat();
     const candidates = pois.filter(poi => {
       if (!automatic) return matches(query, poi.name);
+      // Southern public approach: Gwangjin-gu lists 광장동 370-3 as the
+      // Achasan garden access area; Naver place 1307855900 names this plaza.
+      // Preserve its real name instead of claiming a summit or an exact gate.
+      if (mountain && compact(poi.name) === '아차산어울림광장') return true;
       const got = descriptor(poi.name);
       if (station) return got?.kind === 'station-exit' && got.base === compact(query);
       // Only exterior park gates, not zoo/playground/toilet entrances inside the park.
@@ -58,7 +62,7 @@ module.exports = async function handler(req, res) {
     }).map(poi => {
       // For a named EXIT/GATE POI, its centre is the landmark itself. A vehicle front point may be on another road.
       const location = point(poi.noorLat, poi.noorLon) || point(poi.pnsLat, poi.pnsLon) || point(poi.frontLat, poi.frontLon);
-      return location && { ...location, name: String(poi.name).slice(0, 120), kind: descriptor(poi.name).kind, source: 'TMAP POI', matched: true };
+      return location && { ...location, name: String(poi.name).slice(0, 120), kind: descriptor(poi.name)?.kind || 'approach', source: 'TMAP POI', matched: true };
     }).filter(Boolean)
       // The unqualified POI query also returns namesake mountains outside Seoul.
       // Geographic disambiguation only: this TMAP Seoul entrance anchor is NOT

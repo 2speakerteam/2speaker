@@ -1,7 +1,7 @@
 const fs = require('node:fs');
 const vm = require('node:vm');
 const assert = require('node:assert/strict');
-const source = fs.readFileSync(__dirname + '/../src/main.js', 'utf8');
+const source = fs.readFileSync(__dirname + '/walk-endpoints-main.js', 'utf8');
 new Function(source);
 const part = source.slice(source.indexOf('function walkPreviewDistance'), source.indexOf('function selectGuideTransport'));
 const origin = [127, 37];
@@ -71,7 +71,7 @@ const turnFrames = sandbox.walkPreviewFrames(corner,[]);
 for (const phase of ['approach','turn','depart']) assert.ok(turnFrames.some(x=>x.phase===phase),phase);
 assert.equal(turnFrames.find(x=>x.phase==='turn').holdMs,1600);
 assert.equal(turnFrames.find(x=>x.phase==='approach').holdMs,850);
-const css = fs.readFileSync(__dirname + '/../src/styles.css','utf8');
+const css = fs.readFileSync(__dirname + '/walk-seek-styles.css','utf8');
 assert.match(css,/\.walk-preview-panorama \{[^}]*z-index: 0;[^}]*isolation: isolate;/);
 assert.match(css,/\.walk-preview-map-button \{[^}]*z-index: 3;/);
 // Nearby reverse-running parallel segment must not override the requested forward section.
@@ -392,5 +392,9 @@ console.log('PASS: junction phases survive deduplication, gradual same-camera tu
   sandbox.getCurrentPosition=async()=>({longitude:127,latitude:37});
   const current=await sandbox.choosePedestrianEndpoints('','아차산',()=>true,{});
   assert.equal(current.end.landmark.label,'아차산등산로입구');
+  candidates['아차산'].push({name:'아차산어울림광장',longitude:127.103,latitude:37.553,kind:'approach',matched:true});
+  assert.equal((await sandbox.pedestrianCandidates('아차산',{})).length,2,'include the verified southern public approach');
+  candidates['아차산'][2].longitude=129;
+  assert.equal((await sandbox.pedestrianCandidates('아차산',{})).length,1,'reject distant namesake plaza');
   console.log('PASS: Achasan entrance routing, explicit summit preserved, current-location origin');
 })().catch(error=>{console.error(error);process.exitCode=1;});
