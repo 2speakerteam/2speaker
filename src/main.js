@@ -88,6 +88,28 @@ function parseNearbyStopRequest(raw) {
   return { anchor, taxi, bus, raw: input };
 }
 
+function normalizeEntranceQuery(value) {
+  let name = String(value || '').trim();
+  // Colloquial “어린이대공원 1번역” means station exit 1, never station number 1.
+  name = name.replace(/^(.+?)\s*(\d{1,2}(?:-\d)?)\s*번\s*역$/, (_, base, n) => `${base.trim().replace(/역$/, '')}역 ${n}번 출구`);
+  return name.replace(/역\s*(\d{1,2}(?:-\d)?)\s*번\s*출구/g, '역 $1번 출구');
+}
+
+function entranceDescriptor(query) {
+  const name = normalizeEntranceQuery(query).replace(/\([^)]*\)/g, '').replace(/\d+호선/g, '').replace(/\s+/g, '');
+  const exit = name.match(/^(.+역)(\d{1,2}(?:-\d)?)번출구$/);
+  if (exit) return { kind: 'station-exit', name, base: exit[1], number: exit[2] };
+  if (/(?:정문|후문|동문|서문|남문|북문|입구)$/.test(name)) return { kind: 'gate', name };
+  return null;
+}
+
+function entranceNameMatches(query, resultName) {
+  const want = entranceDescriptor(query), got = entranceDescriptor(resultName);
+  if (!want || !got || want.kind !== got.kind) return false;
+  return want.kind === 'station-exit' ? want.base === got.base && want.number === got.number
+    : want.name === got.name || '서울' + want.name === got.name || want.name === '서울' + got.name;
+}
+
 function parseRouteRequest(raw) {
   const input = String(raw ?? '').trim().replace(/\s+/g, ' ');
   let phrase = input.replace(/[?!.。！？]+$/g, '').trim();
@@ -119,7 +141,7 @@ function parseRouteRequest(raw) {
     const currentLocation = phrase.match(/^(?:여기서|이곳에서|현재\s*위치에서|내\s*위치에서|지금\s*있는\s*곳에서)\s*(.+)$/);
     if (currentLocation) phrase = currentLocation[1].trim();
     else {
-      const explicitOrigin = phrase.match(/^(.+?)(?:에서|부터)\s+(.+)$/);
+      const explicitOrigin = phrase.match(/^(.+?)(?:에서|부터)\s*(.+)$/);
       if (explicitOrigin) {
         origin = explicitOrigin[1].trim();
         phrase = explicitOrigin[2].trim();
@@ -130,7 +152,7 @@ function parseRouteRequest(raw) {
     else phrase = phrase.replace(/(?:까지|으로)$/, '');
     phrase = phrase.replace(/\s+(?:가는 길|가는 방법|가려면|어떻게 가나요|길찾기).*$/, '').trim();
   }
-  return { origin, destination: phrase || input, language };
+  return { origin: normalizeEntranceQuery(origin), destination: normalizeEntranceQuery(phrase || input), language };
 }
 
 function bottomNav() {
@@ -247,6 +269,7 @@ function guideScreen() {
         </div>
       </div>
       <button class="route-instruction walk-action" type="button" aria-label="${english ? 'Show walking street view' : '도보 로드뷰 보기'}" aria-expanded="false" aria-controls="walk-preview-scene walk-preview" disabled>${icon('walk', 28)}<span>${loading}</span></button>
+      <p id="route-endpoints" style="margin:10px 4px 0;color:#b2d2e6;font-size:13px;line-height:1.5" hidden></p>
     </section>
     <section class="walk-preview" id="walk-preview" aria-label="${english ? 'Walking street-view preview' : '도보 로드뷰 미리보기'}" hidden>
       <div class="walk-preview-header">
@@ -1040,12 +1063,84 @@ function getCurrentPosition() {
 
 async function resolveRouteStart(naverMaps, originQuery) {
   if (!originQuery) return getCurrentPosition();
+  if (entranceDescriptor(originQuery)) return resolvePedestrianLandmark(originQuery);
   const naverResult = naverMaps
     ? await geocodeDestination(naverMaps, originQuery).catch(() => null)
     : null;
   if (naverResult) return naverResult;
   const googleMaps = await loadGoogleMaps();
   return searchGoogleDestination(googleMaps, originQuery);
+}
+
+async function resolvePedestrianLandmark(query) {
+  const label = normalizeEntranceQuery(query);
+  const request = entranceDescriptor(label);
+  if (!request) return null;
+  try {
+    const response = await fetch('/api/places/entrance?q=' + encodeURIComponent(label));
+    const place = await response.json();
+    if (response.ok && place.matched && entranceNameMatches(label, place.name) && isKoreaCoordinate(place)) {
+      return { ...place, landmark: { label, kind: request.kind, position: [place.longitude, place.latitude], source: place.source } };
+    }
+    if (response.status === 409) throw new Error('AMBIGUOUS_ENTRANCE');
+  } catch (error) {
+    if (error.message === 'AMBIGUOUS_ENTRANCE') throw new Error('같은 이름의 출입구가 여러 곳이에요. 지역명을 함께 입력해 주세요.');
+  }
+  // A fallback must still match the exit number/gate; never silently accept the station centre.
+  const maps = await loadGoogleMaps();
+  const { Place } = await maps.importLibrary('places');
+  const { places = [] } = await Place.searchByText({ textQuery: label, fields: ['location', 'displayName'], maxResultCount: 5, language: 'ko' });
+  const matched = places.filter(place => entranceNameMatches(label, place.displayName) && place.location);
+  const locations = matched.map(place => ({ latitude: Number(place.location.lat()), longitude: Number(place.location.lng()) })).filter(isKoreaCoordinate);
+  if (!locations.length || locations.some(place => walkPreviewDistance([place.longitude, place.latitude], [locations[0].longitude, locations[0].latitude]) > 80)) {
+    throw new Error('요청한 출구·입구 위치를 정확히 확인하지 못했어요. 지역명과 출구 번호를 확인해 주세요.');
+  }
+  const place = locations[0];
+  return { ...place, landmark: { label, kind: request.kind, position: [place.longitude, place.latitude], source: 'Google Places' } };
+}
+
+function automaticEntranceQuery(query) {
+  return !entranceDescriptor(query) && /(?:역|공원)$/.test(String(query || '').trim());
+}
+
+async function pedestrianCandidates(query) {
+  if (!automaticEntranceQuery(query)) return [await resolvePedestrianLandmark(query)];
+  const response = await fetch('/api/places/entrance?q=' + encodeURIComponent(query));
+  const payload = await response.json();
+  const candidates = response.ok && Array.isArray(payload.candidates) ? payload.candidates : [];
+  const base = query.replace(/\s+/g, '');
+  return candidates.filter(place => {
+    const desc = entranceDescriptor(place.name);
+    if (!place.matched || !isKoreaCoordinate(place) || !desc) return false;
+    return /역$/.test(base) ? desc.kind === 'station-exit' && desc.base === base
+      : ['정문','후문','동문','서문','남문','북문','입구'].some(gate => entranceNameMatches(query + gate,place.name));
+  }).map(place => ({ ...place, landmark: { label: normalizeEntranceQuery(place.name), kind: place.kind,
+    position: [place.longitude,place.latitude], source: place.source, automatic: true } }));
+}
+
+async function choosePedestrianEndpoints(origin, destinationQuery, isCurrent) {
+  const [starts, ends] = await Promise.all([pedestrianCandidates(origin),pedestrianCandidates(destinationQuery)]);
+  if (!isCurrent()) return null;
+  if (!starts.length || !ends.length) throw new Error('역 출구 또는 공원 출입구를 확인하지 못했어요. 출구 번호·입구 이름을 지정해 주세요.');
+  const pairs = starts.flatMap(start => ends.map(end => ({ start,end,
+    direct: walkPreviewDistance([start.longitude,start.latitude],[end.longitude,end.latitude]) })));
+  // Shortlist by proximity only; choose using the real pedestrian route, never straight-line time.
+  const shortlist = pairs.sort((a,b)=>a.direct-b.direct).slice(0,3);
+  const routes = await Promise.all(shortlist.map(async pair => {
+    try {
+      const response = await fetch('/api/walking/routes', { method:'POST',headers:{'content-type':'application/json'},
+        body:JSON.stringify({startX:pair.start.longitude,startY:pair.start.latitude,endX:pair.end.longitude,endY:pair.end.latitude}) });
+      const walkingRoute = await response.json();
+      if (!response.ok || !(Number(walkingRoute.totalTime)>0) || !walkPreviewFrames(walkingRoute.paths,walkingRoute.maneuvers).length) return null;
+      const measured = walkingRoute.paths.reduce((sum,path)=>sum+path.slice(1).reduce((part,p,i)=>part+walkPreviewDistance(path[i],p),0),0);
+      return { ...pair,walkingRoute,distance:Number(walkingRoute.totalDistance)>0?Number(walkingRoute.totalDistance):measured };
+    } catch { return null; }
+  }));
+  if (!isCurrent()) return null;
+  const best = routes.filter(Boolean).sort((a,b)=>a.distance-b.distance || a.walkingRoute.totalTime-b.walkingRoute.totalTime)[0];
+  if (!best) throw new Error('출입구 사이의 도보 경로를 확인하지 못했어요. 잠시 후 다시 시도해 주세요.');
+  best.start.walkingRoute = best.walkingRoute;
+  return best;
 }
 
 function routeErrorMessage(error) {
@@ -1332,9 +1427,44 @@ function walkPreviewFrames(paths, maneuvers = []) {
   return frames.sort((a, b) => a.meters - b.meters);
 }
 
+function walkPreviewEndpointFrames(frames, context, paths) {
+  if (!frames.length) return frames;
+  const result = frames.slice();
+  const along = (target) => {
+    let traveled = 0;
+    for (const path of paths) for (let i = 1; i < path.length; i += 1) {
+      const a = path[i - 1], b = path[i], length = walkPreviewDistance(a, b);
+      if (!length) continue;
+      if (traveled + length >= target) return a.map((n, axis) => n + (b[axis] - n) * Math.max(0, target - traveled) / length);
+      traveled += length;
+    }
+    return paths.at(-1).at(-1);
+  };
+  const total = frames.at(-1).total;
+  for (const [side, endpoint] of [['start', context.start], ['end', context.end]]) {
+    const landmark = endpoint?.landmark;
+    if (!landmark) continue;
+    const base = side === 'start' ? frames[0] : frames.at(-1);
+    // Stand a little away from the landmark and look back at it, rather than looking past it.
+    const position = along(side === 'start' ? Math.min(12, total / 3) : Math.max(0, total - Math.min(16, total / 3)));
+    const frame = { ...base, position, ahead: landmark.position, landmark, phase: 'landmark-' + side,
+      important: true, description: '', holdMs: 3500 };
+    if (side === 'start') result.unshift(frame);
+    else result[result.length - 1] = frame;
+  }
+  return result;
+}
+
 // A nearby photograph is context, not proof of the exact turn location.
 function walkPreviewPhotoContext(capture, frame, paths) {
   if (!capture || !capture.every(Number.isFinite)) return null;
+  if (frame.landmark) {
+    const offset = walkPreviewDistance(capture, frame.landmark.position);
+    // Do not label a distant/ambiguous image as the requested entrance.
+    if (offset < 2 || offset > 45) return null;
+    return { offset, meters: frame.meters, lateral: 0, nearby: false,
+      heading: walkPreviewBearing(capture, frame.landmark.position), landmark: true };
+  }
   let closest = null, traveled = 0;
   const segments = [];
   const cos = Math.cos(capture[1] * Math.PI / 180);
@@ -1383,6 +1513,9 @@ function walkPreviewPhotoContext(capture, frame, paths) {
 }
 
 function walkPreviewCue(frame, english) {
+  if (frame.landmark) return (frame.phase === 'landmark-start'
+    ? (english ? 'Start landmark' : '출발 지점 확인') : (english ? 'Destination entrance' : '도착 입구 확인'))
+    + ' · ' + frame.landmark.label + (english ? ' · Facing the entrance; check the sign in the photograph' : ' · 출입구 방향 보기 · 사진 속 표지판을 확인해 주세요');
   const action = english
     ? { left: 'Turn left', right: 'Turn right', uturn: 'Turn back', straight: 'Check the path ahead' }[frame.direction]
     : { left: '왼쪽으로 꺾는 길', right: '오른쪽으로 꺾는 길', uturn: '되돌아가는 지점', straight: '앞쪽 진행 경로 확인' }[frame.direction];
@@ -1434,7 +1567,7 @@ function startWalkPreview(context, choice) {
   const mapElement = visual?.querySelector('.naver-map');
   const walkButton = visual?.querySelector('.walk-action');
   if (!panel || !viewer || !scene || !visual || !mapElement) return;
-  const frames = walkPreviewSceneFrames(walkPreviewFrames(choice.paths, choice.maneuvers));
+  const frames = walkPreviewSceneFrames(walkPreviewEndpointFrames(walkPreviewFrames(choice.paths, choice.maneuvers), context, choice.paths));
   if (!frames.length) {
     if (panel) {
       panel.hidden = false;
@@ -1574,9 +1707,14 @@ function startWalkPreview(context, choice) {
     state.disposeLayer(state.pendingLayer);
     state.pendingLayer = null;
     state.panorama = null;
+    const missingLandmark = frames[state.index].landmark;
+    if (missingLandmark) {
+      if (frames[state.index].phase === 'landmark-start') state.missingStartLandmark = true;
+      else state.missingEndLandmark = true;
+    }
     // Keep the last confirmed scene while seeking, rather than flashing the map.
     const seeking = !state.revisiting && state.index < frames.length - 1;
-    if (seeking && state.activeLayer) {
+    if (seeking && state.activeLayer && !missingLandmark) {
       state.loading = true;
       state.skippedScenes += 1;
       updateButtons();
@@ -1585,7 +1723,7 @@ function startWalkPreview(context, choice) {
     }
     state.viewer.style.visibility = 'hidden';
     state.visual.classList.add('walk-preview-map-fallback');
-    const point = frames[state.index].position;
+    const point = missingLandmark?.position || frames[state.index].position;
     if (state.maps.Marker) {
       state.fallbackMarker?.setMap(null);
       state.fallbackMarker = new state.maps.Marker({
@@ -1594,7 +1732,9 @@ function startWalkPreview(context, choice) {
         icon: { content: '<span style="display:block;padding:5px 8px;border:2px solid #fff;border-radius:14px;background:#9b5500;color:#fff;font-size:12px;font-weight:700;white-space:nowrap">' + (state.english ? 'Viewpoint' : '확인 지점') + '</span>' }
       });
     }
-    state.message.textContent = walkPreviewCue(frames[state.index], state.english) + ' · ' + message;
+    state.message.textContent = missingLandmark
+      ? `${missingLandmark.label} · ` + (state.english ? 'No suitable entrance photograph was found. This map marker is the requested entrance, not a confirmed photograph.' : '해당 출입구를 보여줄 적절한 사진을 찾지 못했어요. 지도에 표시한 출입구 위치를 확인해 주세요.')
+      : walkPreviewCue(frames[state.index], state.english) + ' · ' + message;
     updateButtons();
     // Missing imagery must not strand playback on a map at the first campus/alley point.
     // Keep manual inspection paused, but auto-play scans forward to the next available view.
@@ -1603,9 +1743,14 @@ function startWalkPreview(context, choice) {
       const nextIndex = state.index + 1;
       state.message.textContent += state.english
         ? ' · Looking for the next available street image…' : ' · 다음 거리뷰가 있는 구간으로 이동 중이에요.';
-      state.timer = setTimeout(() => showFrame(nextIndex), 350);
+      state.timer = setTimeout(() => showFrame(nextIndex), missingLandmark ? 3000 : 350);
     } else if (!state.revisiting && state.index === frames.length - 1) {
-      finishScan();
+      if (missingLandmark) {
+        state.finished = true;
+        state.playing = false;
+        state.play.textContent = state.english ? 'Replay' : '다시 보기';
+        updateButtons();
+      } else finishScan();
     } else if (state.revisiting) {
       state.playing = false;
       state.play.textContent = state.english ? 'Play' : '자동 재생';
@@ -1678,11 +1823,17 @@ function startWalkPreview(context, choice) {
           const panoId = state.panorama.getPanoId?.() || location?.panoId || null;
           // The same provider photograph can be returned for many nearby route points.
           // Count physical scenes, not queries or changes to the camera angle.
-          const duplicate = state.history.some((entry) =>
-            (panoId && entry.panoId === panoId)
-            || (capturePoint && walkPreviewDistance(entry.capturePoint, capturePoint) < 6));
+          const duplicate = state.history.some((entry) => {
+            const samePlace = (panoId && entry.panoId === panoId)
+              || (capturePoint && walkPreviewDistance(entry.capturePoint, capturePoint) < 6);
+            // Endpoint views are intentional: an exit-facing view followed by the walking direction.
+            // Arrival must not be discarded just because the last road image used the same panorama.
+            const endpointTransition = frameNow.landmark || frames[entry.index].landmark;
+            const angle = Math.abs(((photoContext.heading - entry.heading + 540) % 360) - 180);
+            return samePlace && !frameNow.landmark && !(endpointTransition && angle >= 25);
+          });
           const previousScene = state.history.at(-1);
-          const backwards = previousScene && photoContext.meters < previousScene.routeMeters - 6;
+          const backwards = !frameNow.landmark && previousScene && photoContext.meters < previousScene.routeMeters - 6;
           if (!state.revisiting && (duplicate || backwards)) {
             state.duplicateScenes += 1;
             state.disposeLayer(layer);
@@ -1739,13 +1890,15 @@ function startWalkPreview(context, choice) {
               ? (state.english ? `Nearby street view · about ${Math.round(photoContext.offset)} m from the preview point; check the map for the turn`
                 : `주변 거리뷰 · 안내 지점에서 약 ${Math.round(photoContext.offset)}m 떨어진 촬영 위치예요. 꺾는 위치는 지도를 함께 확인해 주세요.`)
               : walkPreviewCue(frameNow, state.english);
-            const skipped = state.skippedScenes
+            const skipped = state.missingStartLandmark
+              ? (state.english ? ' · The starting entrance photograph was unavailable' : ' · 출발 출입구 사진은 확인하지 못했어요')
+              : state.skippedScenes
               ? (state.english ? ' · Sections without street imagery were skipped' : ' · 거리뷰 없는 일부 구간은 건너뛰었어요') : '';
             state.message.textContent = cue + skipped
               + (state.english ? ` · Street image${photoDate ? ` from ${photoDate}` : ''}`
                 : ` · 거리뷰${photoDate ? ` 촬영 ${photoDate}` : ''}`);
             layer.caption = state.message.textContent;
-            if (state.finished && state.cursor === state.history.length - 1) {
+            if (state.finished && state.cursor === state.history.length - 1 && !frameNow.landmark) {
               state.message.textContent += state.english ? ' · Last available scene; check the map for any remaining section.' : ' · 마지막 확인 가능한 장면이에요. 남은 구간은 지도를 확인해 주세요.';
             }
             scheduleNext();
@@ -1912,6 +2065,15 @@ async function requestNaverTransitRoute(maps, map, start, end, isCurrent, instru
   const english = routeLanguage === 'en';
   guideTransportRoutes = {};
   guideTransportContext = { maps, map, start, end, instruction, english, requestId: routeRequestToken };
+  const endpointLabel = document.querySelector('#route-endpoints');
+  if (endpointLabel && (start.landmark || end.landmark)) {
+    const labels = `${start.landmark?.label || routeOrigin || (english ? 'Your location' : '현재 위치')} → ${end.landmark?.label || destination}`;
+    endpointLabel.hidden = false;
+    endpointLabel.textContent = (english ? 'Walking entrances: ' : '도보 출입구: ') + labels
+      + ((start.landmark?.automatic || end.landmark?.automatic) ? (english ? ' · compared nearby entrance routes' : ' · 가까운 출입구 후보의 도보 경로 비교') : '');
+    const title = document.querySelector('#walk-preview h2');
+    if (title) title.textContent = labels;
+  }
   const coordinates = {
     startX: start.longitude,
     startY: start.latitude,
@@ -1920,11 +2082,11 @@ async function requestNaverTransitRoute(maps, map, start, end, isCurrent, instru
   };
   const walkButton = document.querySelector('.walk-action');
   if (instruction) instruction.textContent = english ? 'Checking walking time...' : '도보 시간을 확인하고 있어요.';
-  fetch('/api/walking/routes', {
+  (start.walkingRoute ? Promise.resolve({ok:true,json:async()=>start.walkingRoute}) : fetch('/api/walking/routes', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(coordinates)
-  }).then(async (response) => {
+  })).then(async (response) => {
     const payload = await response.json().catch(() => ({}));
     if (!isCurrent() || !instruction) return;
     const seconds = Number(payload.totalTime);
@@ -2090,8 +2252,20 @@ async function requestGuideRoute(naverMaps, container, scene, requestId) {
     const query = destination.trim() || '경복궁';
     let end = null;
 
+    if (naverMaps && routeOrigin && (automaticEntranceQuery(routeOrigin) || automaticEntranceQuery(query))
+      && (entranceDescriptor(routeOrigin) || automaticEntranceQuery(routeOrigin))
+      && (entranceDescriptor(query) || automaticEntranceQuery(query))) {
+      if (instruction) instruction.textContent = '역 출구와 공원 입구의 도보 경로를 비교하고 있어요.';
+      const pair = await choosePedestrianEndpoints(routeOrigin, query, isCurrent);
+      if (!pair || !isCurrent()) return;
+      const map = createNaverMap(naverMaps, container, scene, pair.end);
+      await requestNaverTransitRoute(naverMaps, map, pair.start, pair.end, isCurrent, instruction);
+      return;
+    }
+
     if (naverMaps) {
       end = localPedestrianEntrance(query)
+        || (entranceDescriptor(query) ? await resolvePedestrianLandmark(query) : null)
         || await geocodeDestination(naverMaps, query).catch(() => null);
       if (!isCurrent()) return;
     }
