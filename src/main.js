@@ -1110,7 +1110,9 @@ async function resolvePedestrianLandmark(query) {
 }
 
 function automaticEntranceQuery(query) {
-  return !entranceDescriptor(query) && /(?:역|공원)$/.test(String(query || '').trim());
+  const name = String(query || '').replace(/\s+/g, '');
+  // Only verified mountain names opt in; never reinterpret e.g. 부산 or a summit request.
+  return !entranceDescriptor(query) && (/(?:역|공원)$/.test(name) || /^(?:서울)?아차산$/.test(name));
 }
 
 async function pedestrianCandidates(query, maps, nearby) {
@@ -1130,17 +1132,17 @@ async function pedestrianCandidates(query, maps, nearby) {
     const desc = entranceDescriptor(place.name);
     if (!place.matched || !isKoreaCoordinate(place) || !desc) return false;
     return /역$/.test(base) ? desc.kind === 'station-exit' && desc.base === base
-      : ['정문','후문','동문','서문','남문','북문','입구'].some(gate => entranceNameMatches(query + gate,place.name));
+      : ['정문','후문','동문','서문','남문','북문','입구','등산로입구'].some(gate => entranceNameMatches(query + gate,place.name));
   }).map(place => ({ ...place, landmark: { label: normalizeEntranceQuery(place.name), kind: place.kind,
     position: [place.longitude,place.latitude], source: place.source, automatic: true } }));
 }
 
 async function choosePedestrianEndpoints(origin, destinationQuery, isCurrent, maps) {
-  const starts = await pedestrianCandidates(origin, maps);
+  const starts = origin ? await pedestrianCandidates(origin, maps) : [await getCurrentPosition()];
   if (!isCurrent()) return null;
   const ends = await pedestrianCandidates(destinationQuery, maps, starts[0]);
   if (!isCurrent()) return null;
-  if (!starts.length || !ends.length) throw new Error('역 출구 또는 공원 출입구를 확인하지 못했어요. 출구 번호·입구 이름을 지정해 주세요.');
+  if (!starts.length || !ends.length) throw new Error('역 출구 또는 목적지 입구를 확인하지 못했어요. 출구 번호·입구 이름을 지정해 주세요.');
   const pairs = starts.flatMap(start => ends.map(end => ({ start,end,
     direct: walkPreviewDistance([start.longitude,start.latitude],[end.longitude,end.latitude]) })));
   // Compare every returned exit. A geometrically close exit can require a long
@@ -1431,7 +1433,7 @@ function walkPreviewFrames(paths, maneuvers = []) {
     frames.push({ position, ahead, meters, total, phase,
       direction: event?.direction || 'straight', description: event?.description || '',
       important: Boolean(event), focusMeters: event?.meters ?? null, turnAngle: Math.abs(event?.delta || 0),
-      holdMs: event ? (phase === 'turn' ? 1400 : 700) : (phase === 'start' || phase === 'arrival' ? 1800 : 250) });
+      holdMs: event ? (phase === 'turn' ? 1600 : 850) : (phase === 'start' || phase === 'arrival' ? 1800 : 400) });
   };
   add(0, 'start');
   unique.forEach((event, i) => {
@@ -1918,7 +1920,7 @@ function startWalkPreview(context, choice) {
         const element = document.createElement('div');
         const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
         element.style.cssText = 'position:absolute;inset:0;opacity:0;pointer-events:none;transition:opacity '
-          + (reduceMotion ? '0ms' : '400ms') + ' ease-in-out';
+          + (reduceMotion ? '0ms' : '450ms') + ' ease-in-out';
         viewer.append(element);
         const layer = { element, panorama: null, retireTimer: null, settleTimer: null, readyStarted: false };
         state.pendingLayer = layer;
@@ -1964,7 +1966,9 @@ function startWalkPreview(context, choice) {
           const panoId = state.panorama.getPanoId?.() || location?.panoId || null;
           // The same provider photograph can be returned for many nearby route points.
           // Count physical scenes, not queries or changes to the camera angle.
-          const duplicate = state.history.some((entry) => {
+          // Approach / turn / departure are distinct route instructions even when
+          // the provider returns the same camera and a very similar heading.
+          const duplicate = !frameNow.important && state.history.some((entry) => {
             const samePlace = panoId && entry.panoId ? entry.panoId === panoId
               : (capturePoint && walkPreviewDistance(entry.capturePoint, capturePoint) < 2);
             // Endpoint views are intentional: an exit-facing view followed by the walking direction.
@@ -1975,6 +1979,13 @@ function startWalkPreview(context, choice) {
           });
           const previousScene = state.history[state.activeLayer?.sceneCursor] || state.history.at(-1);
           const backwards = !frameNow.landmark && previousScene && photoContext.meters < previousScene.routeMeters - 6;
+          if (state.playing && !state.revisiting && !state.directSeek && backwards && frameNow.important) {
+            // Never silently discard an intersection, or show a backward camera
+            // as though it were the next alley. Keep this decision point on the map.
+            unavailable(state.english ? 'The available photo is behind this junction. Check the turn on the map.'
+              : '이 갈림길의 사진은 이전 구간으로 잡혀요. 지도에서 꺾는 위치를 확인해 주세요.');
+            return;
+          }
           if (state.playing && !state.revisiting && !state.directSeek && (duplicate || backwards)) {
             state.duplicateScenes += 1;
             state.disposeLayer(layer);
@@ -2028,7 +2039,7 @@ function startWalkPreview(context, choice) {
                 previousLayer.element.style.pointerEvents = 'none';
                 // Keep the outgoing photograph opaque underneath the incoming fade.
                 if (instant || reduceMotion) retainLayer(previousLayer);
-                else previousLayer.retireTimer = setTimeout(() => retainLayer(previousLayer), 450);
+                else previousLayer.retireTimer = setTimeout(() => retainLayer(previousLayer), 500);
               }
             });
             const photoDate = state.panorama.getLocation()?.photodate;
@@ -2056,13 +2067,13 @@ function startWalkPreview(context, choice) {
             // Show a real turn of the head within the same photograph, not a jump
             // between different years/cameras. Reduced motion and seeking stay instant.
             if (reduceMotion || !state.playing || state.directSeek || state.revisiting || !outgoing || outgoing.panoId !== panoId
-                || !outgoing.pov || !departure) { reveal(); return; }
+                || !outgoing.pov || !(departure || frameNow.important)) { reveal(); return; }
             const from = outgoing.panorama.getPov?.() || outgoing.pov;
             const delta = ((cameraPov.pan - from.pan + 540) % 360) - 180;
             let step = 0;
             const rotate = () => {
               if (!valid() || state.pendingLayer !== layer || state.activeLayer !== outgoing) return;
-              const t = Math.min(1, ++step / 30), eased = t * t * (3 - 2 * t);
+              const t = Math.min(1, ++step / 36), eased = t * t * (3 - 2 * t);
               try {
                 outgoing.panorama.setPov({ pan: ((from.pan + delta * eased + 540) % 360) - 180,
                   tilt: from.tilt + (cameraPov.tilt - from.tilt) * eased,
@@ -2474,8 +2485,8 @@ async function requestGuideRoute(naverMaps, container, scene, requestId) {
     const query = destination.trim() || '경복궁';
     let end = null;
 
-    if (naverMaps && routeOrigin && (automaticEntranceQuery(routeOrigin) || automaticEntranceQuery(query)
-      || entranceDescriptor(routeOrigin)?.kind === 'station-exit')) {
+    if (naverMaps && (automaticEntranceQuery(query) || (routeOrigin && (automaticEntranceQuery(routeOrigin)
+      || entranceDescriptor(routeOrigin)?.kind === 'station-exit')))) {
       if (instruction) instruction.textContent = '출구별 실제 도보 거리와 경로를 비교하고 있어요.';
       const pair = await choosePedestrianEndpoints(routeOrigin, query, isCurrent, naverMaps);
       if (!pair || !isCurrent()) return;

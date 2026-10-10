@@ -25,7 +25,10 @@ module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'GET') { res.setHeader('Allow', 'GET'); return res.status(405).json({ error: 'GET only' }); }
   const query = typeof req.query?.q === 'string' ? req.query.q.trim() : '';
-  const automatic = !descriptor(query) && /(?:역|공원)$/.test(compact(query));
+  // Opt in known mountain entrances, not every Korean place name ending in 산.
+  // An explicit summit/peak remains an explicit destination, never an entrance alias.
+  const mountain = /^(?:서울)?아차산$/.test(compact(query));
+  const automatic = !descriptor(query) && (/(?:역|공원)$/.test(compact(query)) || mountain);
   if (query.length < 2 || query.length > 120 || (!descriptor(query) && !automatic)) return res.status(400).json({ error: '역·공원 또는 출입구 이름을 지정해 주세요.' });
   const key = compact(query), cached = cache.get(key);
   if (cached && Date.now() - cached.time < 6 * 60 * 60 * 1000) return res.status(200).json(cached.value);
@@ -33,7 +36,8 @@ module.exports = async function handler(req, res) {
   if (!appKey) return res.status(503).json({ error: '장소 검색을 사용할 수 없어요.' });
   try {
     const station = automatic && /역$/.test(compact(query));
-    const queries = !automatic ? [query] : station ? [query + ' 출구'] : [query + ' 정문', query + ' 후문', query + ' 입구'];
+    const queries = !automatic ? [query] : station ? [query + ' 출구']
+      : mountain ? [query + ' 등산로입구', query + ' 입구'] : [query + ' 정문', query + ' 후문', query + ' 입구'];
     const responses = await Promise.all(queries.map(async searchKeyword => {
       const url = new URL('https://apis.openapi.sk.com/tmap/pois');
       url.search = new URLSearchParams({ version: '1', searchKeyword, searchType: 'all', searchtypCd: 'A',
@@ -49,7 +53,8 @@ module.exports = async function handler(req, res) {
       const got = descriptor(poi.name);
       if (station) return got?.kind === 'station-exit' && got.base === compact(query);
       // Only exterior park gates, not zoo/playground/toilet entrances inside the park.
-      return ['정문','후문','동문','서문','남문','북문','입구'].some(gate => matches(query + gate, poi.name));
+      return (mountain ? ['등산로입구','입구'] : ['정문','후문','동문','서문','남문','북문','입구'])
+        .some(gate => matches(query + gate, poi.name));
     }).map(poi => {
       // For a named EXIT/GATE POI, its centre is the landmark itself. A vehicle front point may be on another road.
       const location = point(poi.noorLat, poi.noorLon) || point(poi.pnsLat, poi.pnsLon) || point(poi.frontLat, poi.frontLon);
