@@ -1724,6 +1724,7 @@ function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
   const at = (side, forward) => [east + Math.sin(heading) * forward + Math.cos(heading) * side,
     north + Math.cos(heading) * forward - Math.sin(heading) * side];
   let polygon = [[-.32,8],[.32,8],[.32,11],[.95,11],[0,13],[-.95,11],[-.32,11]].map(p=>at(...p));
+  let tipIndex = 4;
   if (approach) {
     const incoming = walkPreviewBearing(frame.position, anchor) * radians;
     const vi = [Math.sin(incoming),Math.cos(incoming)], vo = [Math.sin(heading),Math.cos(heading)];
@@ -1746,6 +1747,7 @@ function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
     }
     edge(at(0,1.5),vo);
     polygon = [...right,at(.65,1.5),at(0,2.7),at(-.65,1.5),...left.reverse()];
+    tipIndex = right.length + 1;
   }
   const projected = polygon.map(([e, n]) => {
     const right = e * Math.cos(pan) - n * Math.sin(pan);
@@ -1755,7 +1757,7 @@ function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
     if (depth < 3) return null;
     return [width / 2 + focal * right / depth, height / 2 - focal * up / depth];
   });
-  if (projected.some(p => !p || !p.every(Number.isFinite) || p[0] < 14 || p[0] > width-14 || p[1] < 18 || p[1] > height-18)) return null;
+  if (projected.some(p => !p || !p.every(Number.isFinite))) return null;
   if (approach) {
     // Preserve aspect ratio while limiting a close-up turn's visual footprint.
     const xs=projected.map(p=>p[0]),ys=projected.map(p=>p[1]);
@@ -1763,6 +1765,25 @@ function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
     const scale=Math.min(1,width*.16/(maxX-minX),height*.2/(maxY-minY));
     const cx=(minX+maxX)/2,cy=(minY+maxY)/2;
     for (const p of projected) { p[0]=cx+(p[0]-cx)*scale; p[1]=cy+(p[1]-cy)*scale; }
+  }
+  // A short panorama (including browser zoom) used to discard the entire cue
+  // when only its tail crossed the bottom margin. Keep its directional tip at
+  // the projected road position and uniformly fit the shaft around that tip.
+  // Never move an off-screen direction into view or change junction eligibility.
+  const tip = projected[tipIndex];
+  if (tip[0] < 14 || tip[0] > width-14 || tip[1] < 18 || tip[1] > height-6) return null;
+  let fit = 1;
+  for (const p of projected) {
+    for (let axis=0;axis<2;axis+=1) {
+      const delta=p[axis]-tip[axis], min=axis===0?14:18, max=axis===0?width-14:height-6;
+      if (delta>0) fit=Math.min(fit,(max-tip[axis])/delta);
+      else if (delta<0) fit=Math.min(fit,(min-tip[axis])/delta);
+    }
+  }
+  if (fit < .35) return null; // The direction is too close to the edge to read.
+  if (fit < 1) for (const p of projected) {
+    p[0]=tip[0]+(p[0]-tip[0])*fit;
+    p[1]=tip[1]+(p[1]-tip[1])*fit;
   }
   return projected.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ');
 }
@@ -2874,5 +2895,3 @@ function goBack() {
 }
 
 render();
-
-

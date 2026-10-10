@@ -111,6 +111,22 @@ assert.ok(sandbox.walkPreviewTurnArrow(approachArrow,origin,arrowPhoto,arrowPov,
 const compactArrow=sandbox.walkPreviewTurnArrow(approachArrow,origin,arrowPhoto,arrowPov,600,300).split(' ').map(p=>p.split(',').map(Number));
 assert.ok(compactArrow.length>15,'turn shaft has a rounded bend');
 assert.ok(Math.max(...compactArrow.map(p=>p[0]))-Math.min(...compactArrow.map(p=>p[0]))<=96.1,'turn cue width capped at 16 percent');
+// Desktop zoom / a short browser window can make the panorama wider and shorter.
+// A shaft touching the bottom safe margin must not hide its visible arrowhead.
+for (const [width,height] of [[478,198],[747,311],[338,198],[600,300]]) {
+  for (const frame of [snappedStraight,approachArrow,{...approachArrow,turnAhead:[127-14/88804,junctionPoint[1]]}]) {
+    const isStraight=frame===snappedStraight;
+    const result=sandbox.walkPreviewTurnArrow(frame,isStraight?snappedPoint:origin,
+      isStraight?snappedPhoto:arrowPhoto,arrowPov,width,height);
+    assert.ok(result,`visible ${frame.phase} cue survives ${width}x${height} viewport`);
+    const points=result.split(' ').map(p=>p.split(',').map(Number));
+    assert.ok(points.every(p=>p[0]>=13.9 && p[0]<=width-13.9 && p[1]>=17.9 && p[1]<=height-5.9),
+      'responsive cue stays inside the safe display area');
+    assert.equal(sandbox.walkPreviewTurnArrow(frame,isStraight?snappedPoint:origin,
+      isStraight?snappedPhoto:arrowPhoto,{...arrowPov,pan:180},width,height),null,
+      'responsive fitting never brings a behind-camera cue into view');
+  }
+}
 assert.equal(sandbox.walkPreviewTurnArrow(approachArrow,origin,arrowPhoto,{...arrowPov,pan:180},600,300),null);
 const parkGate = {label:'어린이대공원 정문',kind:'park-gate',position:[127.07579042,37.5495968]};
 const exitOne = {label:'어린이대공원역 1번 출구',kind:'station-exit',position:[127.07548491,37.54901353]};
@@ -540,6 +556,3 @@ console.log('PASS: green walking answer overview, dynamic exit/comparison, Engli
   assert.equal((await sandbox.pedestrianCandidates('아차산',{})).length,1,'reject distant namesake plaza');
   console.log('PASS: Achasan entrance routing, explicit summit preserved, current-location origin');
 })().catch(error=>{console.error(error);process.exitCode=1;});
-
-
-
