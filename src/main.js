@@ -258,7 +258,11 @@ function guideScreen() {
         <button type="button" id="walk-preview-play">${english ? 'Pause' : '일시정지'}</button>
         <button type="button" id="walk-preview-next">${english ? 'Next' : '다음'} →</button>
       </div>
-      <div class="walk-preview-progress"><span id="walk-preview-progress-text"></span><div><span id="walk-preview-progress-bar"></span></div></div>
+      <div class="walk-preview-progress">
+        <span id="walk-preview-progress-text"></span>
+        <input class="walk-preview-seek" id="walk-preview-seek" type="range" min="0" max="0" step="1" value="0" disabled aria-label="${english ? 'Seek through viewed scenes' : '지나온 장면 이동'}" aria-describedby="walk-preview-seek-help">
+        <small id="walk-preview-seek-help">${english ? 'Drag through viewed scenes · far left returns to the first scene' : '지나온 장면을 끌어서 이동 · 맨 왼쪽은 처음으로'}</small>
+      </div>
       <p class="walk-preview-note">${english ? 'Move forward about thirty steps between street views. Junctions and alley entrances play more slowly. Image spacing depends on available street photography.' : '약 서른 걸음씩 앞으로 이동하듯 이어 보여드려요. 사거리·골목은 꺾기 전후를 천천히 보여드려요. 실제 장면 간격은 촬영된 거리뷰 위치에 따라 달라요.'}</p>
     </section>
     <section class="transport-options" aria-label="${english ? 'Compare transport options' : '교통수단 비교'}">
@@ -1401,6 +1405,7 @@ function stopWalkPreview(hidePanel = false) {
   const state = walkPreviewState;
   if (!state) return;
   clearTimeout(state.timer);
+  clearTimeout(state.seekTimer);
   state.playing = false;
   for (const layer of state.layers) state.disposeLayer(layer);
   state.viewer.replaceChildren();
@@ -1413,6 +1418,7 @@ function stopWalkPreview(hidePanel = false) {
   state.mapElement.removeAttribute('aria-hidden');
   state.walkButton?.setAttribute('aria-expanded', 'false');
   state.prev.onclick = state.next.onclick = state.play.onclick = state.close.onclick = null;
+  state.seek.oninput = state.seek.onchange = state.seek.onpointerdown = state.seek.onpointerup = state.seek.onpointercancel = null;
   state.visual.removeEventListener('keydown', state.onKeyDown);
   state.panel.removeEventListener('keydown', state.onKeyDown);
   if (hidePanel && state.panel.isConnected) state.panel.hidden = true;
@@ -1432,7 +1438,7 @@ function startWalkPreview(context, choice) {
   if (!frames.length) {
     if (panel) {
       panel.hidden = false;
-      for (const selector of ['#walk-preview-prev', '#walk-preview-next', '#walk-preview-play']) panel.querySelector(selector).disabled = true;
+      for (const selector of ['#walk-preview-prev', '#walk-preview-next', '#walk-preview-play', '#walk-preview-seek']) panel.querySelector(selector).disabled = true;
       panel.querySelector('#walk-preview-message').textContent = context.english
         ? 'The route contains a gap. Use the map instead of a street-view preview.'
         : '경로가 이어지지 않는 구간이 있어요. 로드뷰 대신 지도를 확인해 주세요.';
@@ -1443,7 +1449,11 @@ function startWalkPreview(context, choice) {
   const transportDisplay = transportOptions?.style.display || '';
   if (transportOptions) transportOptions.style.display = 'none';
   panel.querySelector('#walk-preview-progress-text').textContent = context.english ? 'Loading the walking sequence…' : '걸어갈 길의 거리뷰를 순서대로 준비하고 있어요.';
-  panel.querySelector('#walk-preview-progress-bar').style.width = '0%';
+  const seek = panel.querySelector('#walk-preview-seek');
+  seek.value = '0';
+  seek.max = '0';
+  seek.disabled = true;
+  seek.style.setProperty('--seek-fill', '0%');
   panel.hidden = false;
   scene.hidden = false;
   visual.classList.add('walk-preview-open');
@@ -1460,7 +1470,7 @@ function startWalkPreview(context, choice) {
     history: [], cursor: -1, finished: false, revisiting: false, duplicateScenes: 0,
     message: panel.querySelector('#walk-preview-message'),
     progress: panel.querySelector('#walk-preview-progress-text'),
-    progressBar: panel.querySelector('#walk-preview-progress-bar'),
+    seek, seekTimer: null, scrubbing: false,
     prev: panel.querySelector('#walk-preview-prev'),
     next: panel.querySelector('#walk-preview-next'),
     play: panel.querySelector('#walk-preview-play')
@@ -1487,7 +1497,7 @@ function startWalkPreview(context, choice) {
     && document.querySelector('#walk-preview') === panel;
   const scheduleNext = () => {
     clearTimeout(state.timer);
-    if (!valid() || !state.playing) return;
+    if (!valid() || !state.playing || state.scrubbing) return;
     if (state.finished && state.cursor === state.history.length - 1) {
       state.playing = false;
       state.play.textContent = state.english ? 'Replay' : '다시 보기';
@@ -1496,8 +1506,21 @@ function startWalkPreview(context, choice) {
     state.timer = setTimeout(advance, frames[state.index].holdMs);
   };
   const updateButtons = () => {
-    state.prev.disabled = state.loading || (state.cursor <= 0 && state.history[state.cursor]?.index === state.index) || state.cursor < 0;
-    state.next.disabled = state.loading || (state.finished && state.cursor === state.history.length - 1);
+    state.prev.disabled = state.scrubbing || state.loading || (state.cursor <= 0 && state.history[state.cursor]?.index === state.index) || state.cursor < 0;
+    state.next.disabled = state.scrubbing || state.loading || (state.finished && state.cursor === state.history.length - 1);
+    state.play.disabled = state.scrubbing;
+    // The seek control stays usable even while the next photograph is loading.
+    state.seek.disabled = state.history.length < 2;
+  };
+
+  const updateSeek = (cursor = state.cursor) => {
+    const max = Math.max(0, state.history.length - 1);
+    state.seek.max = String(max);
+    state.seek.value = String(Math.max(0, Math.min(max, cursor)));
+    state.seek.style.setProperty('--seek-fill', (max ? 100 * Number(state.seek.value) / max : 0) + '%');
+    state.seek.setAttribute('aria-valuetext', state.english
+      ? `Scene ${Math.max(1, cursor + 1)} of ${state.history.length} viewed scenes`
+      : `지나온 ${state.history.length}개 장면 중 ${Math.max(1, cursor + 1)}번 장면`);
   };
 
   const updateProgress = () => {
@@ -1507,7 +1530,7 @@ function startWalkPreview(context, choice) {
     state.progress.textContent = state.english
       ? 'Scene ' + sceneNumber + count + ' · ' + Math.round(frame.meters) + ' m of ' + Math.round(frame.total) + ' m'
       : '장면 ' + sceneNumber + count + ' · 전체 ' + Math.round(frame.total) + 'm 중 ' + Math.round(frame.meters) + 'm';
-    state.progressBar.style.width = Math.min(100, 100 * frame.meters / frame.total) + '%';
+    if (!state.scrubbing) updateSeek();
   };
   const finishScan = () => {
     state.finished = true;
@@ -1698,6 +1721,7 @@ function startWalkPreview(context, choice) {
             state.viewer.style.visibility = 'visible';
             const previousLayer = state.activeLayer;
             state.activeLayer = layer;
+            layer.sceneCursor = state.cursor;
             state.pendingLayer = null;
             // Both real panoramas overlap briefly; no invented intermediate street geometry.
             element.style.pointerEvents = 'auto';
@@ -1734,6 +1758,51 @@ function startWalkPreview(context, choice) {
       unavailable(state.english ? 'Street view could not be opened.' : '거리뷰를 열지 못했어요. 지도 경로를 확인해 주세요.');
     }
   };
+  // Freeze autoplay and cancel only the in-flight layer, preserving the visible photograph.
+  // This prevents late init/settle callbacks from overriding the user's selected scene.
+  const beginScrub = () => {
+    if (!valid() || state.history.length < 2) return;
+    clearTimeout(state.timer);
+    clearTimeout(state.seekTimer);
+    state.playing = false;
+    state.scrubbing = true;
+    state.play.textContent = state.english ? 'Play' : '자동 재생';
+    state.disposeLayer(state.pendingLayer);
+    state.pendingLayer = null;
+    state.panorama = state.activeLayer?.panorama || null;
+    state.loading = false;
+    if (Number.isInteger(state.activeLayer?.sceneCursor)) {
+      state.cursor = state.activeLayer.sceneCursor;
+      state.index = state.history[state.cursor].index;
+    }
+    updateButtons();
+  };
+  const commitScrub = () => {
+    clearTimeout(state.seekTimer);
+    if (!valid() || !state.scrubbing || !state.history.length) return;
+    const selected = Math.max(0, Math.min(state.history.length - 1, Math.round(Number(state.seek.value) || 0)));
+    state.scrubbing = false;
+    if (state.cursor === selected && state.index === state.history[selected].index) {
+      updateProgress();
+      updateButtons();
+      return;
+    }
+    state.cursor = selected;
+    showFrame(state.history[selected].index, true);
+  };
+  state.seek.onpointerdown = beginScrub;
+  state.seek.oninput = () => {
+    const selected = Number(state.seek.value);
+    beginScrub();
+    if (!state.scrubbing) return;
+    updateSeek(selected);
+    state.progress.textContent = state.english
+      ? `Choose scene ${selected + 1} · release to view`
+      : `장면 ${selected + 1} 선택 · 손을 놓으면 이동해요`;
+    // Debounce live previews so dragging does not launch a request per pixel.
+    state.seekTimer = setTimeout(commitScrub, 180);
+  };
+  state.seek.onchange = state.seek.onpointerup = state.seek.onpointercancel = commitScrub;
   state.prev.onclick = () => {
     if (state.loading || state.cursor < 0) return;
     const previous = state.history[state.cursor]?.index === state.index ? state.cursor - 1 : state.cursor;
