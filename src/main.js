@@ -1017,8 +1017,19 @@ function initializeNearbyMap() {
 // Verified pedestrian entrance for the adjoining Yongmasan forest facilities.
 // Place-name geocoding can resolve to a park centroid far from the public entrance.
 // Keep this as a small, source-verified exception; do not infer shortcuts elsewhere.
-function localPedestrianEntrance(query) {
+function localPedestrianEntrance(query, nearby) {
   const name = String(query ?? '').replace(/[\s·ㆍ.,]/g, '');
+  // User-confirmed blue market arch between 안경나라 and 호호왕만두.
+  // Naver map destination at 서울 중랑구 면목로 418, checked 2026-10-10.
+  // Scope unqualified aliases to this neighbourhood, not similarly named markets.
+  const marketPosition = [127.0876148, 37.5891198];
+  if (/^(?:서울(?:특별시)?중랑구)?동원(?:전통)?(?:종합)?시장(?:입구)?$/.test(name)
+    && (name.includes('중랑구') || (nearby && walkPreviewDistance(
+      [nearby.longitude, nearby.latitude], marketPosition) < 2000))) {
+    return { longitude: marketPosition[0], latitude: marketPosition[1],
+      landmark: { label: '동원전통시장 면목로 입구', kind: 'gate', position: marketPosition,
+        source: 'Naver map / user-confirmed entrance' } };
+  }
   if (/^(?:용마산)?(?:아토피)?치유의숲(?:입구)?$/.test(name)
     || /^용마산유아숲체험(?:원|장)(?:입구)?$/.test(name)
     || /^용마산녹색복지숲(?:입구)?$/.test(name)) {
@@ -1103,8 +1114,15 @@ function automaticEntranceQuery(query) {
   return !entranceDescriptor(query) && /(?:역|공원)$/.test(String(query || '').trim());
 }
 
-async function pedestrianCandidates(query) {
-  if (!automaticEntranceQuery(query)) return [await resolvePedestrianLandmark(query)];
+async function pedestrianCandidates(query, maps, nearby) {
+  if (!automaticEntranceQuery(query)) {
+    const landmark = await resolvePedestrianLandmark(query);
+    if (landmark) return [landmark];
+    const local = localPedestrianEntrance(query, nearby);
+    if (local) return [local];
+    const point = await resolveRouteStart(maps, query);
+    return point && isKoreaCoordinate(point) ? [point] : [];
+  }
   const response = await fetch('/api/places/entrance?q=' + encodeURIComponent(query));
   const payload = await response.json();
   const candidates = response.ok && Array.isArray(payload.candidates) ? payload.candidates : [];
@@ -1118,15 +1136,21 @@ async function pedestrianCandidates(query) {
     position: [place.longitude,place.latitude], source: place.source, automatic: true } }));
 }
 
-async function choosePedestrianEndpoints(origin, destinationQuery, isCurrent) {
-  const [starts, ends] = await Promise.all([pedestrianCandidates(origin),pedestrianCandidates(destinationQuery)]);
+async function choosePedestrianEndpoints(origin, destinationQuery, isCurrent, maps) {
+  const starts = await pedestrianCandidates(origin, maps);
+  if (!isCurrent()) return null;
+  const ends = await pedestrianCandidates(destinationQuery, maps, starts[0]);
   if (!isCurrent()) return null;
   if (!starts.length || !ends.length) throw new Error('역 출구 또는 공원 출입구를 확인하지 못했어요. 출구 번호·입구 이름을 지정해 주세요.');
   const pairs = starts.flatMap(start => ends.map(end => ({ start,end,
     direct: walkPreviewDistance([start.longitude,start.latitude],[end.longitude,end.latitude]) })));
-  // Shortlist by proximity only; choose using the real pedestrian route, never straight-line time.
-  const shortlist = pairs.sort((a,b)=>a.direct-b.direct).slice(0,3);
-  const routes = await Promise.all(shortlist.map(async pair => {
+  // Compare every returned exit. A geometrically close exit can require a long
+  // detour around a barrier/crossing. Bound concurrency rather than dropping exits.
+  const shortlist = pairs.sort((a,b)=>a.direct-b.direct);
+  const routes = [];
+  for (let offset = 0; offset < shortlist.length; offset += 3) {
+    if (!isCurrent()) return null;
+    routes.push(...await Promise.all(shortlist.slice(offset, offset + 3).map(async pair => {
     try {
       const response = await fetch('/api/walking/routes', { method:'POST',headers:{'content-type':'application/json'},
         body:JSON.stringify({startX:pair.start.longitude,startY:pair.start.latitude,endX:pair.end.longitude,endY:pair.end.latitude}) });
@@ -1135,11 +1159,14 @@ async function choosePedestrianEndpoints(origin, destinationQuery, isCurrent) {
       const measured = walkingRoute.paths.reduce((sum,path)=>sum+path.slice(1).reduce((part,p,i)=>part+walkPreviewDistance(path[i],p),0),0);
       return { ...pair,walkingRoute,distance:Number(walkingRoute.totalDistance)>0?Number(walkingRoute.totalDistance):measured };
     } catch { return null; }
-  }));
+    })));
+  }
   if (!isCurrent()) return null;
   const best = routes.filter(Boolean).sort((a,b)=>a.distance-b.distance || a.walkingRoute.totalTime-b.walkingRoute.totalTime)[0];
   if (!best) throw new Error('출입구 사이의 도보 경로를 확인하지 못했어요. 잠시 후 다시 시도해 주세요.');
   best.start.walkingRoute = best.walkingRoute;
+  best.start.walkingComparison = { candidates: pairs.length, checked: routes.filter(Boolean).length,
+    distance: best.distance, entranceConfirmed: !!best.end.landmark };
   return best;
 }
 
@@ -2177,9 +2204,29 @@ async function requestNaverTransitRoute(maps, map, start, end, isCurrent, instru
       ? payload.paths.filter((path) => Array.isArray(path) && path.length > 1)
       : [];
     if (response.ok && Number.isFinite(seconds) && seconds > 0 && paths.length) {
-      guideTransportRoutes.WALK = { minutes, paths, maneuvers: Array.isArray(payload.maneuvers) ? payload.maneuvers : [] };
+      const distance = Number(payload.totalDistance) || paths.reduce((sum,path)=>sum+path.slice(1).reduce((n,p,i)=>n+walkPreviewDistance(path[i],p),0),0);
+      guideTransportRoutes.WALK = { minutes, distance, paths, maneuvers: Array.isArray(payload.maneuvers) ? payload.maneuvers : [] };
       if (walkButton) walkButton.disabled = false;
       instruction.textContent = english ? `Walk · about ${minutes} min` : `도보 · 약 ${minutes}분`;
+      if (endpointLabel && (start.landmark || end.landmark)) {
+        const comparison = start.walkingComparison;
+        const from = start.landmark?.label || routeOrigin || (english ? 'Your location' : '현재 위치');
+        const to = end.landmark?.label || destination;
+        endpointLabel.hidden = false;
+        endpointLabel.textContent = english
+          ? `${from} → ${to} · ${Math.round(distance)} m · about ${minutes} min`
+          : `${from}${start.landmark?.kind === 'station-exit' ? '로 나와서' : ''} → ${to} · 약 ${Math.round(distance)}m · 약 ${minutes}분`;
+        if (comparison) endpointLabel.textContent += english
+          ? ` · shortest of ${comparison.checked} available routes (${comparison.candidates} requested)`
+          : ` · 확인된 ${comparison.checked}개 경로 중 최단 (${comparison.candidates}개 비교 요청)`;
+        if (!end.landmark) endpointLabel.textContent += english
+          ? ' · Destination representative point; entrance not confirmed'
+          : ' · 목적지 대표 위치 기준, 입구 미확인';
+        endpointLabel.textContent += english ? ' · Signal waits may add time' : ' · 신호 대기 시간은 달라질 수 있어요';
+        if (start.landmark?.kind === 'station-exit') endpointLabel.textContent += english
+          ? ' · From outside the exit; indoor station travel excluded'
+          : ' · 출구 밖 기준 (역 내부 이동 제외)';
+      }
     } else {
       instruction.textContent = english ? 'Walking route unavailable' : '도보 경로 확인 불가';
     }
@@ -2334,11 +2381,10 @@ async function requestGuideRoute(naverMaps, container, scene, requestId) {
     const query = destination.trim() || '경복궁';
     let end = null;
 
-    if (naverMaps && routeOrigin && (automaticEntranceQuery(routeOrigin) || automaticEntranceQuery(query))
-      && (entranceDescriptor(routeOrigin) || automaticEntranceQuery(routeOrigin))
-      && (entranceDescriptor(query) || automaticEntranceQuery(query))) {
-      if (instruction) instruction.textContent = '역 출구와 공원 입구의 도보 경로를 비교하고 있어요.';
-      const pair = await choosePedestrianEndpoints(routeOrigin, query, isCurrent);
+    if (naverMaps && routeOrigin && (automaticEntranceQuery(routeOrigin) || automaticEntranceQuery(query)
+      || entranceDescriptor(routeOrigin)?.kind === 'station-exit')) {
+      if (instruction) instruction.textContent = '출구별 실제 도보 거리와 경로를 비교하고 있어요.';
+      const pair = await choosePedestrianEndpoints(routeOrigin, query, isCurrent, naverMaps);
       if (!pair || !isCurrent()) return;
       const map = createNaverMap(naverMaps, container, scene, pair.end);
       await requestNaverTransitRoute(naverMaps, map, pair.start, pair.end, isCurrent, instruction);
