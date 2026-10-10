@@ -84,6 +84,7 @@ const junctionFrames=sandbox.walkPreviewFrames(junctionRoute,[]);
 assert.ok(junctionFrames.some(f=>f.junctionCue),'verified intersection detected by geographic proximity');
 assert.ok(junctionFrames.filter(f=>f.junctionCue).every(f=>f.important),'confirmed junctions cannot be discarded as duplicate straight scenes');
 assert.ok(junctionFrames.filter(f=>f.junctionCue).length<=3,'brief junction window only');
+assert.equal(new Set(junctionFrames.filter(f=>f.junctionCue).map(f=>f.arrowCueKey)).size,1,'adjacent samples share one junction identity');
 assert.ok(junctionFrames.filter(f=>f.meters>55).every(f=>!f.junctionCue),'hide on straight road after junction');
 assert.ok(sandbox.walkPreviewFrames(junctionRoute.map(path=>path.map(p=>[p[0]+.001,p[1]])),[]).every(f=>!f.junctionCue),'unrelated parallel road cannot inherit a junction cue');
 for(const description of ['두 갈래길에서 직진','삼거리에서 직진','사거리에서 직진']) {
@@ -451,6 +452,29 @@ assert.equal(missedTurn.viewer.style.visibility,'hidden','show the route map for
 assert.equal(missedTurn.frames[missedTurn.index].phase,'turn');
 sandbox.stopWalkPreview(true); while(tick()) {}
 console.log('PASS: junction phases survive deduplication, gradual same-camera turn, slower pace, backward-turn map cue');
+
+// Forward cues at the same fork appear in one photograph only, without
+// removing connecting photographs or changing their playback timing.
+jobs.clear(); instances=[]; now=0;
+currentFixture=junctionFrames.map((frame,i)=>({id:'once-'+i,point:frame.position}));
+sandbox.startWalkPreview({maps,map:{},english:false,requestId:1},{paths:junctionRoute,maneuvers:[]});
+const once=sandbox.walkPreviewState, visibleCueFrames=new Set();
+until(()=> {
+  if (once.activeLayer?.turnArrow && !once.activeLayer.turnArrow.hidden)
+    visibleCueFrames.add(once.activeLayer.arrowContext.frame);
+  return once.finished && !once.playing && !once.loading;
+});
+assert.equal(visibleCueFrames.size,1,'one arrow-bearing scene for the entire fork');
+const chosenCue=[...visibleCueFrames][0], chosenIndex=once.frames.indexOf(chosenCue);
+const otherIndex=once.frames.findIndex(f=>f!==chosenCue && f.arrowCueKey===chosenCue.arrowCueKey);
+assert.ok(otherIndex>=0,'test covers multiple adjacent junction candidates');
+assert.ok(once.history.some(entry=>entry.index===otherIndex),'second photograph is retained, only its repeated arrow is suppressed');
+once.seek.value=String(chosenIndex); once.seek.oninput(); once.seek.onchange(); until(()=>!once.loading);
+assert.equal(once.activeLayer.turnArrow.hidden,false,'backward seek restores the selected cue photograph');
+once.seek.value=String(otherIndex); once.seek.oninput(); once.seek.onchange(); until(()=>!once.loading);
+assert.equal(once.activeLayer.turnArrow.hidden,true,'adjacent photograph stays cue-free after seeking');
+sandbox.stopWalkPreview(true); while(tick()) {}
+console.log('PASS: one arrow scene per junction, contiguous photographs preserved, stable backward/forward seek cues');
 
 // The green answer bubble holds the route overview; scene instructions stay separate.
 const overviewContext={maps:{LatLng,LatLngBounds:class {extend(){}},Polyline:class {},Marker:class {}},

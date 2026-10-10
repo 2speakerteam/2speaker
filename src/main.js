@@ -1465,9 +1465,12 @@ function walkPreviewFrames(paths, maneuvers = []) {
       const behind = pointAt(Math.max(0, total - 12));
       ahead = position.map((value, axis) => value + (value - behind[axis]));
     }
-    const junctionCue = phase === 'straight' && verifiedJunctions.some(junction => meters >= junction.meters - 8 && meters <= junction.meters + 2);
+    const junction = phase === 'straight' && verifiedJunctions.find(junction => meters >= junction.meters - 8 && meters <= junction.meters + 2);
+    const junctionCue = Boolean(junction);
+    const arrowDecision = event || (junction && (unique.find(item => Math.abs(item.meters - junction.meters) < 12) || junction));
     frames.push({ position, ahead, meters, total, phase,
       junctionCue,
+      arrowCueKey: arrowDecision ? `decision:${arrowDecision.meters.toFixed(2)}` : null,
       nextDecision: navigationDecisions.find(decision => decision.meters > meters + 2) || null,
       cueAhead: phase === 'straight' ? pointAt(Math.min(total, unique.find(item => item.meters > meters)?.meters ?? total, meters + 35)) : null,
       turnPosition: event ? pointAt(event.meters) : null,
@@ -1838,7 +1841,7 @@ function startWalkPreview(context, choice) {
     close: scene.querySelector('#walk-preview-close'),
     frames, index: 0, playing: true, loading: false,
     timer: null, panorama: null, fallbackMarker: null, skippedScenes: 0, shownScenes: 0,
-    layers: new Set(), activeLayer: null, pendingLayer: null,
+    layers: new Set(), activeLayer: null, pendingLayer: null, arrowScenes: new Map(),
     history: [], cursor: -1, finished: false, revisiting: false, duplicateScenes: 0,
     message: panel.querySelector('#walk-preview-message'),
     progress: panel.querySelector('#walk-preview-progress-text'),
@@ -1919,6 +1922,15 @@ function startWalkPreview(context, choice) {
         const points = walkPreviewTurnArrow(context.frame, context.capture, context.photo,
           layer.panorama.getPov?.(), size.width, size.height);
         if (!points) return;
+        // One visible photograph per decision, not the same arrow on every
+        // 5 m sample. Claim only after successful projection so missing or
+        // offscreen candidates cannot consume the junction's only cue.
+        const key = context.frame.arrowCueKey;
+        if (key) {
+          const chosen = state.arrowScenes.get(key);
+          if (chosen && chosen !== context.frame) return;
+          state.arrowScenes.set(key, context.frame);
+        }
         cue.querySelector('polygon')?.setAttribute('points', points);
         cue.hidden = false;
       };
