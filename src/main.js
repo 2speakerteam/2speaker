@@ -259,7 +259,7 @@ function guideScreen() {
         <button type="button" id="walk-preview-next">${english ? 'Next' : '다음'} →</button>
       </div>
       <div class="walk-preview-progress"><span id="walk-preview-progress-text"></span><div><span id="walk-preview-progress-bar"></span></div></div>
-      <p class="walk-preview-note">${english ? 'Move forward about fifteen steps between street views. Junctions and alley entrances play more slowly. Image spacing depends on available street photography.' : '약 열다섯 걸음씩 앞으로 이동하듯 이어 보여드려요. 사거리·골목은 꺾기 전후를 천천히 보여드려요. 실제 장면 간격은 촬영된 거리뷰 위치에 따라 달라요.'}</p>
+      <p class="walk-preview-note">${english ? 'Move forward about thirty steps between street views. Junctions and alley entrances play more slowly. Image spacing depends on available street photography.' : '약 서른 걸음씩 앞으로 이동하듯 이어 보여드려요. 사거리·골목은 꺾기 전후를 천천히 보여드려요. 실제 장면 간격은 촬영된 거리뷰 위치에 따라 달라요.'}</p>
     </section>
     <section class="transport-options" aria-label="${english ? 'Compare transport options' : '교통수단 비교'}">
       ${['BUS', 'SUBWAY', 'TAXI'].map((mode) => {
@@ -1306,7 +1306,7 @@ function walkPreviewFrames(paths, maneuvers = []) {
     frames.push({ position, ahead, meters, total, phase,
       direction: event?.direction || 'straight', description: event?.description || '',
       important: Boolean(event), focusMeters: event?.meters ?? null, turnAngle: Math.abs(event?.delta || 0),
-      holdMs: event ? (phase === 'turn' ? 4500 : 2800) : (phase === 'start' || phase === 'arrival' ? 3000 : 1500) });
+      holdMs: event ? (phase === 'turn' ? 3000 : 1800) : (phase === 'start' || phase === 'arrival' ? 1800 : 1000) });
   };
   add(0, 'start');
   unique.forEach((event, i) => {
@@ -1320,7 +1320,7 @@ function walkPreviewFrames(paths, maneuvers = []) {
     if (after >= 2) add(event.meters + after, 'depart', event);
   });
   // Provide connecting street scenes and alternatives when several points share one photograph.
-  const spacing = 10.5;
+  const spacing = 21;
   for (let meters = spacing; meters < total - 3; meters += spacing) {
     if (!frames.some((frame) => Math.abs(frame.meters - meters) < 3)) add(meters, 'straight');
   }
@@ -1391,7 +1391,7 @@ function walkPreviewCue(frame, english) {
 }
 
 
-// About fifteen walking steps per candidate, with slower approach/turn/departure frames.
+// About thirty walking steps per candidate, with slower approach/turn/departure frames.
 // Physical duplicate photographs are removed during playback, not by dropping connecting roads.
 function walkPreviewSceneFrames(frames) {
   return frames.map((frame, sceneSlot) => ({ ...frame, sceneSlot }));
@@ -1786,7 +1786,8 @@ function startWalkPreview(context, choice) {
   panel.addEventListener('keydown', state.onKeyDown);
   showFrame(0);
   state.close.focus({ preventScroll: true });
-  visual.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // Avoid moving the controls through a smooth page scroll while the first image appears.
+  visual.scrollIntoView({ behavior: 'auto', block: 'nearest' });
 }
 
 function selectGuideTransport(mode, userInitiated = false) {
