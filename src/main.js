@@ -1589,10 +1589,8 @@ function walkPreviewCameraPov(frame, photoContext, photoDate) {
   let heading = photoContext.heading;
   // Show the exit canopy together with the pavement/road, not only its number.
   let fov = stationExit ? 100 : 75;
-  if (stationExit && Number.isFinite(photoContext.routeHeading)) {
-    const delta = ((photoContext.routeHeading - heading + 540) % 360) - 180;
-    heading += Math.max(-35, Math.min(35, delta));
-  }
+  // Center the entrance first. The following departure scene turns towards
+  // the walking route; biasing this introduction can push the exit offscreen.
   // Visually checked sign framing for this capture only. The entrance POI points
   // inside the stairwell, while the visible number sign is on the roadside canopy.
   // Do not carry a photograph-specific adjustment to another station or newer image.
@@ -1734,15 +1732,19 @@ function startWalkPreview(context, choice) {
     state.seek.max = String(max);
     state.seek.value = String(Math.max(0, Math.min(max, index)));
     state.seek.style.setProperty('--seek-fill', (max ? 100 * Number(state.seek.value) / max : 0) + '%');
+    const frame = frames[index];
     state.seek.setAttribute('aria-valuetext', state.english
-      ? `Route point ${index + 1} of ${frames.length}`
-      : `전체 ${frames.length}개 경로 지점 중 ${index + 1}번`);
+      ? `${Math.round(frame.meters)} m of ${Math.round(frame.total)} m`
+      : `전체 ${Math.round(frame.total)}m 중 ${Math.round(frame.meters)}m`);
   };
 
   const updateProgress = () => {
     const frame = frames[state.index];
-    const sceneNumber = state.index + 1;
-    const count = ' / ' + frames.length;
+    // Lookup candidates are not displayed scenes: missing/duplicate photographs
+    // must never make the visible scene counter jump from 2 to 30.
+    const sceneNumber = Math.max(1, new Set(state.history
+      .filter(entry => entry.index <= state.index).map(entry => entry.index)).size);
+    const count = '';
     state.progress.textContent = state.english
       ? 'Scene ' + sceneNumber + count + ' · ' + Math.round(frame.meters) + ' m of ' + Math.round(frame.total) + ' m'
       : '장면 ' + sceneNumber + count + ' · 전체 ' + Math.round(frame.total) + 'm 중 ' + Math.round(frame.meters) + 'm';
@@ -2084,8 +2086,8 @@ function startWalkPreview(context, choice) {
     if (!state.scrubbing) return;
     updateSeek(selected);
     state.progress.textContent = state.english
-      ? `Choose scene ${selected + 1} · release to view`
-      : `장면 ${selected + 1} 선택 · 손을 놓으면 이동해요`;
+      ? `${Math.round(frames[selected].meters)} m along the route · release to view`
+      : `경로 ${Math.round(frames[selected].meters)}m 지점 선택 · 손을 놓으면 이동해요`;
     // Debounce live previews so dragging does not launch a request per pixel.
     state.seekTimer = setTimeout(commitScrub, 180);
   };
