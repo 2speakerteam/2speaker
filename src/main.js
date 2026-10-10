@@ -1725,9 +1725,14 @@ function startWalkPreview(context, choice) {
   };
 
   const updateSeek = (cursor = state.cursor) => {
-    const max = Math.max(0, state.history.length - 1);
+    // Unseen candidates must occupy space too: history alone makes each newly
+    // loaded scene look like the end. Missing/duplicate candidates shrink the
+    // remaining estimate as scanning proceeds; completed playback uses real scenes.
+    const lastScanned = state.history.at(-1)?.index ?? 0;
+    const remaining = state.finished ? 0 : Math.max(0, frames.length - 1 - lastScanned);
+    const max = Math.max(0, state.history.length - 1) + remaining;
     state.seek.max = String(max);
-    state.seek.value = String(Math.max(0, Math.min(max, cursor)));
+    state.seek.value = String(Math.max(0, Math.min(state.history.length - 1, cursor)));
     state.seek.style.setProperty('--seek-fill', (max ? 100 * Number(state.seek.value) / max : 0) + '%');
     state.seek.setAttribute('aria-valuetext', state.english
       ? `Scene ${Math.max(1, cursor + 1)} of ${state.history.length} viewed scenes`
@@ -2060,7 +2065,7 @@ function startWalkPreview(context, choice) {
   };
   state.seek.onpointerdown = beginScrub;
   state.seek.oninput = () => {
-    const selected = Number(state.seek.value);
+    const selected = Math.max(0, Math.min(state.history.length - 1, Number(state.seek.value)));
     beginScrub();
     if (!state.scrubbing) return;
     updateSeek(selected);
