@@ -2177,7 +2177,25 @@ function walkPreviewPhotoContext(capture, frame, paths) {
   if (frame.phase === 'approach' && frame.turnPosition) {
     closest.heading = walkPreviewBearing(frame.position, frame.turnPosition);
   }
-  return { ...closest, offset, nearby: offset > 20 };
+  // Keep a short, exact path trace in front of this panorama. It lets the
+  // preview draw a forward cue on the visible pavement while the next
+  // instruction is still tens of metres away from this camera.
+  const pointAtRouteMeter = (meters) => {
+    const segment = segments.find((item) => item.end >= meters - 1e-6);
+    if (!segment) return null;
+    const fraction = Math.max(0, Math.min(1, (meters - segment.start) / (segment.end - segment.start)));
+    return segment.a.map((value, axis) => value + (segment.b[axis] - value) * fraction);
+  };
+  const routeTrace = [];
+  const traceStart = closest.meters + 10;
+  const traceEnd = Math.min(traveled, closest.meters + 21);
+  if (traceEnd - traceStart >= 8) {
+    for (let i = 0; i <= 10; i += 1) {
+      const point = pointAtRouteMeter(traceStart + (traceEnd - traceStart) * i / 10);
+      if (point && (!routeTrace.length || walkPreviewDistance(routeTrace.at(-1), point) > 0.2)) routeTrace.push(point);
+    }
+  }
+  return { ...closest, offset, nearby: offset > 20, routeTrace };
 }
 
 function walkPreviewCue(frame, english) {
@@ -2279,16 +2297,28 @@ function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
     && photoBeforeTurn >= -3 && photoBeforeTurn <= 35
     // On foot, do not trust a panorama across another block or far from the path.
     && photo.offset > 20 && photo.offset <= 30 && photo.lateral <= 12);
-  if ((!approach && !connecting && frame?.phase !== 'turn') || (!connecting && frame.turnAngle < 35 && !junction) || frame.landmark || !capture
-      || !photo || (photo.nearby && !routeAlignedTurnPhoto)
-      || (!routeAlignedTurnPhoto && (photo.offset > (connecting ? 20 : 18) || photo.lateral > 12
+  // If the instruction is still 35–120 m ahead, draw a short forward arrow
+  // over this panorama's own route trace. The trace is grounded in the selected
+  // walking path and the camera must be close to that path, so the cue remains
+  // useful without pretending the distant junction is already under the camera.
+  const routeAheadCue = Boolean(approach && frame?.important && Number.isFinite(photoBeforeTurn)
+    && photoBeforeTurn > 35 && photoBeforeTurn <= 120
+    && Number.isFinite(photo?.meters) && photo.offset > 20 && photo.offset <= 80
+    && photo.lateral <= 12 && Array.isArray(photo.routeTrace) && photo.routeTrace.length >= 8);
+  const trustedRoutePhoto = routeAlignedTurnPhoto || routeAheadCue;
+  if ((!approach && !connecting && frame?.phase !== 'turn')
+      || (!connecting && !routeAheadCue && frame.turnAngle < 35 && !junction)
+      || frame.landmark || !capture || !photo || (photo.nearby && !trustedRoutePhoto)
+      || (!trustedRoutePhoto && (photo.offset > (connecting ? 20 : 18) || photo.lateral > 12
         || (!connecting && photo.meters > frame.meters + 5))) || !(width > 0 && height > 0)
       || ![pov?.pan, pov?.tilt, pov?.fov].every(Number.isFinite)) return null;
   const radians = Math.PI / 180;
   // Straight scene photographs can be snapped ahead of the requested sample.
   // Start from their actual route projection, never draw backwards to the sample.
-  const anchor = approach ? frame.turnPosition : connecting && photo.point ? photo.point : frame.position;
-  const target = approach ? frame.turnAhead : connecting && frame.cueAhead ? frame.cueAhead : frame.ahead;
+  const anchor = routeAheadCue ? photo.point
+    : approach ? frame.turnPosition : connecting && photo.point ? photo.point : frame.position;
+  const target = routeAheadCue ? photo.routeTrace.at(-1)
+    : approach ? frame.turnAhead : connecting && frame.cueAhead ? frame.cueAhead : frame.ahead;
   const heading = walkPreviewBearing(anchor, target) * radians;
   // On connecting scenes indicate the route bearing ahead of the camera.
   // The walking line is often on the sidewalk while the camera is in the road;
@@ -2296,8 +2326,8 @@ function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
   // Actual corner cues retain their geographic anchor.
   const east = connecting ? 0 : (anchor[0] - capture[0]) * Math.cos(capture[1] * radians) * 111320;
   const north = connecting ? 0 : (anchor[1] - capture[1]) * 111320;
-  if (Math.hypot(east, north) > (routeAlignedTurnPhoto ? 30 : 25)
-      || walkPreviewDistance(anchor, target) < (approach ? 4 : 13)) return null;
+  if ((!routeAheadCue && Math.hypot(east, north) > (routeAlignedTurnPhoto ? 30 : 25))
+      || walkPreviewDistance(anchor, target) < (approach && !routeAheadCue ? 4 : 8)) return null;
   const pan = pov.pan * radians, tilt = pov.tilt * radians;
   const focal = width / (2 * Math.tan(Math.max(20, Math.min(100, pov.fov)) * radians / 2));
   // Approximate flat pavement at camera height 2.4 m. This is a directional cue,
@@ -2308,8 +2338,9 @@ function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
   let tipIndex = 4;
   let usesRoutePath = false;
   if (approach) {
-    const routePath = Array.isArray(frame.turnPath) && frame.turnPath.length >= 5
-      ? frame.turnPath.map(point => [
+    const sourcePath = routeAheadCue ? photo.routeTrace : frame.turnPath;
+    const routePath = Array.isArray(sourcePath) && sourcePath.length >= 5
+      ? sourcePath.map(point => [
         (point[0] - capture[0]) * Math.cos(capture[1] * radians) * 111320,
         (point[1] - capture[1]) * 111320
       ]) : null;
