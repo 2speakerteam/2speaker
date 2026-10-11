@@ -24,7 +24,7 @@ module.exports = async function handler(req, res) {
     }
 
     const languages = payload.languages
-      .filter((item) => typeof item.languageCode === 'string' && typeof item.displayName === 'string')
+      .filter((item) => item.supportTarget !== false && typeof item.languageCode === 'string' && typeof item.displayName === 'string')
       .map(({ languageCode, displayName }) => ({ code: languageCode, name: displayName }))
       .sort((left, right) => left.name.localeCompare(right.name, 'ko'));
     return res.status(200).json({ languages });
