@@ -479,7 +479,7 @@ function routeScreen() {
 }
 
 function nearbyPlacesScreen() {
-  const { status, criteria, origin, places, error } = placeSearchState;
+  const { status, criteria, origin, places, error, query } = placeSearchState;
   const statusCopy = status === 'loading'
     ? '주변 장소를 찾고 있어요.'
     : status === 'error'
@@ -505,7 +505,11 @@ function nearbyPlacesScreen() {
             <div><button type="button" data-action="place-roadview-map">지도보기</button><button type="button" data-action="place-roadview-route">길찾기</button></div>
           </div>
         </section>
-        <div class="place-results" aria-label="장소 검색 결과">${placeCards}</div>` : ''}
+        <div class="place-results" aria-label="장소 검색 결과">${placeCards}</div>
+        <section class="guide-dialogue places-dialogue" aria-label="검색 대화">
+          <p class="bubble question">${escapeHtml(query || '')}</p>
+          <p class="bubble answer">${escapeHtml(originName)} 주변 ${places.length}개의 ${escapeHtml(categoryLabel)}${categoryParticle} 찾았습니다.</p>
+        </section>` : ''}
       ${status === 'done' && !places.length ? '<div class="places-empty">다른 기준 장소나 더 긴 도보시간으로 다시 검색해 보세요.</div>' : ''}
       ${status === 'error' ? '<button class="places-retry" type="button" data-action="places-retry">다시 검색</button>' : ''}
     </section>
