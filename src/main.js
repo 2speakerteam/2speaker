@@ -27,7 +27,7 @@ let guideTransportRoutes = {};
 let guideTransportContext = null;
 let walkPreviewState = null;
 const sentTextMessages = [];
-let textSendNotice = '';
+let activeRouteContext = null;
 const pageHistory = [];
 let faqOpenIndex = 3;
 
@@ -365,11 +365,17 @@ function voiceScreen() {
 }
 
 function textScreen() {
-  const outgoingMessages = sentTextMessages.map((message, index) => {
-    const pendingNotice = index === sentTextMessages.length - 1 && textSendNotice
-      ? `<small class="translation-pending" role="status" aria-live="polite">${escapeHtml(textSendNotice)}</small>`
+  const outgoingMessages = sentTextMessages.map((message) => {
+    const pendingNotice = message.status
+      ? `<small class="translation-pending" role="status" aria-live="polite">${escapeHtml(message.status)}</small>`
       : '';
-    return `<article class="text-bubble me"><span>나</span><p>${escapeHtml(message)}</p>${pendingNotice}</article>`;
+    const translatedText = message.intent === 'translation' && message.response
+      ? `<strong>${escapeHtml(message.response)}</strong>`
+      : '';
+    const assistantReply = message.response && message.intent !== 'translation'
+      ? `<article class="text-bubble other"><span>2SPEAKER</span><p>${escapeHtml(message.response)}</p></article>`
+      : '';
+    return `<article class="text-bubble me"><span>나</span><p>${escapeHtml(message.message)}</p>${translatedText}${pendingNotice}</article>${assistantReply}`;
   }).join('');
   return `<main class="screen content-screen conversation-screen text-screen">
     ${conversationHeader('문자로 대화', false)}
@@ -654,16 +660,79 @@ function render() {
     const input = event.currentTarget.querySelector('input');
     const message = input.value.trim();
     if (!message) return;
-    sentTextMessages.push(message);
-    textSendNotice = '메시지를 화면에 추가했어요. 실제 번역은 번역 서버 연결 후 제공됩니다.';
-    render();
-    const dialogue = document.querySelector('.text-dialogue');
-    if (dialogue) dialogue.scrollTop = dialogue.scrollHeight;
+    input.value = '';
+    sendTextMessage(message);
   });
   document.querySelector('#contact-form')?.addEventListener('submit', (event) => {
     event.preventDefault();
     document.querySelector('.contact-notice').textContent = '문의 접수는 서버 연결 후 이용할 수 있습니다.';
   });
+}
+
+function getAssistantHistory() {
+  return sentTextMessages
+    .filter((message) => ['explain', 'practice'].includes(message.intent) && message.response)
+    .slice(-4)
+    .flatMap((message) => [
+      { role: 'user', text: message.message },
+      { role: 'model', text: message.response }
+    ]);
+}
+
+async function sendTextMessage(message) {
+  const entry = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    message,
+    response: '',
+    intent: '',
+    status: '요청 내용을 확인하고 있어요.'
+  };
+  sentTextMessages.push(entry);
+  if (currentPage === 'text') {
+    render();
+    const dialogue = document.querySelector('.text-dialogue');
+    if (dialogue) dialogue.scrollTop = dialogue.scrollHeight;
+  }
+
+  try {
+    const routeResponse = await fetch('/api/assistant/reply', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        message,
+        routeContext: activeRouteContext,
+        history: getAssistantHistory()
+      })
+    });
+    const routeResult = await routeResponse.json().catch(() => ({}));
+    if (!routeResponse.ok) throw new Error(routeResult.error || '응답을 불러오지 못했어요.');
+
+    entry.intent = routeResult.intent || '';
+    if (routeResult.useTranslationApi) {
+      entry.status = 'Google Translation으로 번역하고 있어요.';
+      if (currentPage === 'text') render();
+      const translationResponse = await fetch('/api/translation/translate', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: message })
+      });
+      const translationResult = await translationResponse.json().catch(() => ({}));
+      if (!translationResponse.ok) throw new Error(translationResult.error || '번역 결과를 불러오지 못했어요.');
+      entry.intent = translationResult.intent;
+      entry.response = translationResult.text;
+    } else {
+      entry.response = routeResult.text || '';
+    }
+    entry.status = '';
+  } catch (error) {
+    entry.status = error instanceof Error ? error.message : '응답을 불러오지 못했어요.';
+  }
+
+  if (currentPage === 'text') {
+    render();
+    const dialogue = document.querySelector('.text-dialogue');
+    if (dialogue) dialogue.scrollTop = dialogue.scrollHeight;
+  }
 }
 
 function loadNaverMaps() {
@@ -2501,6 +2570,15 @@ function walkPreviewRouteSummary(context, choice) {
   return text;
 }
 
+function describeRouteLeg(leg) {
+  const mode = leg?.mode || leg?.travelMode || leg?.transitDetails?.transitLine?.vehicle?.type || '';
+  const line = leg?.routeName || (typeof leg?.route === 'string' ? leg.route : leg?.route?.name)
+    || leg?.transitDetails?.transitLine?.nameShort || leg?.transitDetails?.transitLine?.name || '';
+  const departure = leg?.start?.name || leg?.transitDetails?.stopDetails?.departureStop?.name || '';
+  const arrival = leg?.end?.name || leg?.transitDetails?.stopDetails?.arrivalStop?.name || '';
+  return [mode, line, departure && arrival ? `${departure} → ${arrival}` : departure || arrival].filter(Boolean).join(' · ').slice(0, 180);
+}
+
 function selectGuideTransport(mode, userInitiated = false) {
   const choice = guideTransportRoutes[mode];
   const context = guideTransportContext;
@@ -2546,6 +2624,12 @@ function selectGuideTransport(mode, userInitiated = false) {
     drawTransitItinerary(maps, map, choice.itinerary, start, end);
     summary = `${english ? { BUS: 'Bus', SUBWAY: 'Subway' }[mode] : { BUS: '버스', SUBWAY: '지하철' }[mode]} · ${transportText(mode, choice.itinerary, english)}`;
   }
+  const routeLegs = Array.isArray(choice.itinerary?.legs) ? choice.itinerary.legs : [];
+  activeRouteContext = {
+    destination: destination.trim(),
+    summary: mode === 'WALK' ? walkPreviewRouteSummary(context, choice) : summary,
+    steps: routeLegs.map(describeRouteLeg).filter(Boolean).slice(0, 12)
+  };
   setGuideAnswer(mode === 'WALK' ? walkPreviewRouteSummary(context, choice) : english
     ? `Route from ${mode === 'WALK' ? (start.landmark?.label || routeOrigin || 'your location') : (routeOrigin || 'your location')} to ${mode === 'WALK' ? (end.landmark?.label || destination) : destination}: ${summary}.`
     : `${mode === 'WALK' ? (start.landmark?.label || routeOrigin || '현재 위치') : (routeOrigin || '현재 위치')}에서 ${mode === 'WALK' ? (end.landmark?.label || destination) : destination}까지 ${summary} 경로를 확인했어요.`);
@@ -2734,6 +2818,11 @@ async function requestGoogleTransitRoute(maps, map, start, end, isCurrent, instr
   const minutes = Math.max(1, Math.round(durationMillis / 60000));
   const english = routeLanguage === 'en';
   const summary = english ? `Transit · about ${minutes} min` : `대중교통 · 약 ${minutes}분`;
+  activeRouteContext = {
+    destination: destination.trim(),
+    summary,
+    steps: (Array.isArray(route.legs) ? route.legs : []).map(describeRouteLeg).filter(Boolean).slice(0, 12)
+  };
   if (instruction) instruction.textContent = summary;
   setGuideAnswer(english
     ? `Showing a route from ${routeOrigin || 'your location'} to ${destination} on the map. ${summary}.`
@@ -2742,6 +2831,7 @@ async function requestGoogleTransitRoute(maps, map, start, end, isCurrent, instr
 
 async function requestGuideRoute(naverMaps, container, scene, requestId) {
   const instruction = document.querySelector('.route-instruction span');
+  activeRouteContext = null;
   const isCurrent = () => requestId === routeRequestToken
     && currentPage === 'guide'
     && routeMapContainer === container
