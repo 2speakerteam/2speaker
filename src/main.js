@@ -6,7 +6,25 @@ let routeLanguage = 'ko';
 let nearbyStopRequest = null;
 let selectedAppLanguage = '한국어';
 let selectedUserLanguage = '한국어';
+let selectedUserLanguageCode = 'ko';
+let activeCounterpartLanguageCode = '';
+let supportedUserLanguages = [
+  { code: 'ko', name: '한국어' },
+  { code: 'en', name: '영어' },
+  { code: 'ja', name: '일본어' },
+  { code: 'zh-CN', name: '중국어(간체)' },
+  { code: 'zh-TW', name: '중국어(번체)' },
+  { code: 'es', name: '스페인어' },
+  { code: 'fr', name: '프랑스어' },
+  { code: 'de', name: '독일어' }
+];
+let supportedUserLanguagesLoaded = false;
+let supportedUserLanguagesLoading = false;
 let voicePaused = false;
+let voiceConversationState = 'idle';
+let voiceConversationError = '';
+let voiceListenLanguageCode = '';
+let activeVoiceRecognition = null;
 let voiceSearchOpen = false;
 let voiceSearchState = 'idle';
 let voiceSearchMessage = '';
@@ -353,14 +371,21 @@ function translationScreen() {
 }
 
 function voiceScreen() {
-  return `<main class="screen content-screen conversation-screen">
+  const messages = sentTextMessages.map((message) => {
+    const userSide = !message.sourceLanguageCode || message.sourceLanguageCode.toLowerCase() === selectedUserLanguageCode.toLowerCase();
+    const pending = message.status ? `<small class="translation-pending">${escapeHtml(message.status)}</small>` : '';
+    return `<article class="speech-block ${userSide ? 'mine' : ''}"><span>${userSide ? '나' : '상대방'}</span><p>${escapeHtml(message.message)}</p>${message.response ? `<strong>${escapeHtml(message.response)}</strong>` : ''}${pending}</article>`;
+  }).join('');
+  const stateLabel = voiceConversationState === 'listening' ? '듣고 있어요' : voiceConversationState === 'processing' ? '내용을 이해하고 있어요' : voiceConversationState === 'speaking' ? '응답을 말하고 있어요' : voiceConversationState === 'error' ? voiceConversationError : voicePaused ? '일시정지' : '통역 준비 중';
+  const controlLabel = voiceConversationState === 'error' ? '다시 듣기' : voicePaused ? '계속하기' : '일시정지';
+  return `<main class="screen content-screen conversation-screen voice-screen">
     ${conversationHeader('음성으로 대화')}
     <section class="conversation-body">
-      <p class="translating">${voicePaused ? '일시정지' : '통역 중'}</p>
-      <article class="speech-block"><span>상대방</span><p>Where is the station?</p><strong>역이 어디예요?</strong></article>
-      <article class="speech-block mine"><span>나</span><p>이쪽으로 가세요.</p><strong>Go this way.</strong></article>
+      <p class="translating" role="status" aria-live="polite">${escapeHtml(stateLabel)}</p>
+      ${messages || '<p class="voice-empty">말씀하시면 언어를 감지해 통역할게요.</p>'}
     </section>
-    <button class="pause-button" data-action="voice-toggle" aria-pressed="${voicePaused}">${icon(voicePaused ? 'play' : 'pause', 30)}<span>${voicePaused ? '계속하기' : '일시정지'}</span></button>
+    ${voiceConversationState === 'error' ? '<button class="voice-text-fallback" data-page="text">문자로 대화</button>' : ''}
+    <button class="pause-button" data-action="voice-toggle" aria-pressed="${voicePaused}">${icon(voicePaused ? 'play' : 'pause', 30)}<span>${controlLabel}</span></button>
   </main>`;
 }
 
@@ -439,10 +464,26 @@ function languageListScreen() {
 }
 
 function userLanguageListScreen() {
-  const languages = ['한국어', 'English', '日本語', '中文', 'Español', 'Français', 'Deutsch'];
+  const languageOptions = supportedUserLanguages.map((language) => `<button data-user-language="${escapeHtml(language.code)}" data-user-language-name="${escapeHtml(language.name)}" aria-pressed="${language.code === selectedUserLanguageCode}"><span>${escapeHtml(language.name)}</span>${language.code === selectedUserLanguageCode ? icon('check', 30) : ''}</button>`).join('');
   return `<main class="screen content-screen">${header('내 언어 선택')}
-    <section class="page-body language-list">${languages.map((language) => `<button data-user-language="${language}" aria-pressed="${language === selectedUserLanguage}"><span>${language}</span>${language === selectedUserLanguage ? icon('check', 30) : ''}</button>`).join('')}</section>
+    <section class="page-body language-picker-body">
+      <label class="language-search"><span class="sr-only">언어 검색</span><input id="language-search" type="search" placeholder="언어 검색" autocomplete="off"></label>
+      <p class="language-loading" data-language-status role="status" aria-live="polite">${supportedUserLanguagesLoaded ? '' : '전체 번역 지원 언어를 불러오는 중이에요.'}</p>
+      <div class="language-list" id="user-language-options">${languageOptions}</div>
+    </section>
   </main>`;
+}
+
+function renderUserLanguageOptions(filter = '') {
+  const container = document.querySelector('#user-language-options');
+  if (!container) return;
+  const query = filter.trim().toLocaleLowerCase();
+  const matches = supportedUserLanguages.filter((language) =>
+    !query || language.name.toLocaleLowerCase().includes(query) || language.code.toLocaleLowerCase().includes(query)
+  );
+  container.innerHTML = matches.length
+    ? matches.map((language) => `<button data-user-language="${escapeHtml(language.code)}" data-user-language-name="${escapeHtml(language.name)}" aria-pressed="${language.code === selectedUserLanguageCode}"><span>${escapeHtml(language.name)}</span>${language.code === selectedUserLanguageCode ? icon('check', 30) : ''}</button>`).join('')
+    : '<p class="language-empty">검색 결과가 없어요.</p>';
 }
 
 function helpScreen() {
@@ -578,8 +619,23 @@ function render() {
     button.addEventListener('click', goBack);
   });
   document.querySelector('[data-action="voice-toggle"]')?.addEventListener('click', () => {
+    if (voiceConversationState === 'error') {
+      voicePaused = false;
+      voiceConversationError = '';
+      voiceConversationState = 'idle';
+      startVoiceConversation();
+      return;
+    }
     voicePaused = !voicePaused;
-    render();
+    if (voicePaused) {
+      stopVoiceConversation();
+      voiceConversationState = 'paused';
+      render();
+    } else {
+      voiceConversationState = 'idle';
+      render();
+      startVoiceConversation();
+    }
   });
   document.querySelectorAll('[data-faq-index]').forEach((button) => {
     button.addEventListener('click', () => {
@@ -596,19 +652,35 @@ function render() {
       render();
     });
   });
-  document.querySelectorAll('[data-user-language]').forEach((button) => {
-    button.addEventListener('click', () => {
-      selectedUserLanguage = button.dataset.userLanguage;
-      pageHistory.pop();
-      currentPage = 'translation';
-      render();
-    });
+  document.querySelector('#user-language-options')?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-user-language]');
+    if (button) selectUserLanguage(button.dataset.userLanguage, button.dataset.userLanguageName);
   });
+  document.querySelector('#language-search')?.addEventListener('input', (event) => renderUserLanguageOptions(event.target.value));
   document.querySelectorAll('[data-account-action]').forEach((button) => {
     button.addEventListener('click', () => {
       document.querySelector('.account-notice').textContent = `${button.dataset.accountAction} 기능은 인증 서버 연결 후 이용할 수 있습니다.`;
     });
   });
+
+if (currentPage === 'user-language-list' && !supportedUserLanguagesLoaded && !supportedUserLanguagesLoading) {
+    supportedUserLanguagesLoading = true;
+    fetch('/api/translation/languages')
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !Array.isArray(payload.languages)) throw new Error(payload.error || '전체 언어 목록을 불러오지 못했어요.');
+        supportedUserLanguages = payload.languages;
+        supportedUserLanguagesLoaded = true;
+        const status = document.querySelector('[data-language-status]');
+        if (status) status.textContent = '';
+        renderUserLanguageOptions(document.querySelector('#language-search')?.value || '');
+      })
+      .catch((error) => {
+        const status = document.querySelector('[data-language-status]');
+        if (status) status.textContent = error instanceof Error ? error.message : '전체 언어 목록을 불러오지 못했어요.';
+      })
+      .finally(() => { supportedUserLanguagesLoading = false; });
+  }
 
   const routeInput = document.querySelector('#route-destination');
   document.querySelector('[data-action="route-voice"]')?.addEventListener('click', startVoiceDestination);
@@ -669,14 +741,32 @@ function render() {
   });
 }
 
+function selectUserLanguage(code, name) {
+  if (!code || !name) return;
+  selectedUserLanguageCode = code;
+  selectedUserLanguage = name;
+  activeCounterpartLanguageCode = '';
+  voiceListenLanguageCode = code;
+  pageHistory.pop();
+  currentPage = 'translation';
+  render();
+}
+
 function getAssistantHistory() {
   return sentTextMessages
-    .filter((message) => ['explain', 'practice'].includes(message.intent) && message.response)
+    .filter((message) => message.response)
     .slice(-4)
     .flatMap((message) => [
-      { role: 'user', text: message.message },
-      { role: 'model', text: message.response }
+      { role: 'user', text: message.message, intent: message.intent },
+      { role: 'model', text: message.response, intent: message.intent }
     ]);
+}
+
+function refreshConversationView() {
+  if (!['text', 'voice'].includes(currentPage)) return;
+  render();
+  const dialogue = document.querySelector('.text-dialogue');
+  if (dialogue) dialogue.scrollTop = dialogue.scrollHeight;
 }
 
 async function sendTextMessage(message) {
@@ -688,11 +778,7 @@ async function sendTextMessage(message) {
     status: '요청 내용을 확인하고 있어요.'
   };
   sentTextMessages.push(entry);
-  if (currentPage === 'text') {
-    render();
-    const dialogue = document.querySelector('.text-dialogue');
-    if (dialogue) dialogue.scrollTop = dialogue.scrollHeight;
-  }
+  refreshConversationView();
 
   try {
     const routeResponse = await fetch('/api/assistant/reply', {
@@ -700,6 +786,8 @@ async function sendTextMessage(message) {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({
         message,
+        userLanguage: selectedUserLanguageCode,
+        counterpartLanguage: activeCounterpartLanguageCode,
         routeContext: activeRouteContext,
         history: getAssistantHistory()
       })
@@ -710,29 +798,156 @@ async function sendTextMessage(message) {
     entry.intent = routeResult.intent || '';
     if (routeResult.useTranslationApi) {
       entry.status = 'Google Translation으로 번역하고 있어요.';
-      if (currentPage === 'text') render();
+      refreshConversationView();
       const translationResponse = await fetch('/api/translation/translate', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ text: message })
+        body: JSON.stringify({
+          text: message,
+          userLanguage: selectedUserLanguageCode,
+          counterpartLanguage: activeCounterpartLanguageCode,
+          sourceLanguage: routeResult.sourceLanguage,
+          englishText: routeResult.englishText
+        })
       });
       const translationResult = await translationResponse.json().catch(() => ({}));
       if (!translationResponse.ok) throw new Error(translationResult.error || '번역 결과를 불러오지 못했어요.');
       entry.intent = translationResult.intent;
       entry.response = translationResult.text;
+      entry.sourceLanguageCode = translationResult.sourceLanguage || '';
+      entry.targetLanguageCode = translationResult.targetLanguage || '';
+      if (translationResult.sourceLanguage && translationResult.sourceLanguage.toLowerCase() !== selectedUserLanguageCode.toLowerCase()) {
+        activeCounterpartLanguageCode = translationResult.sourceLanguage;
+      } else if (translationResult.targetLanguage && translationResult.targetLanguage.toLowerCase() !== selectedUserLanguageCode.toLowerCase()) {
+        activeCounterpartLanguageCode = translationResult.targetLanguage;
+      }
     } else {
       entry.response = routeResult.text || '';
+      entry.sourceLanguageCode = routeResult.sourceLanguage || '';
+      entry.targetLanguageCode = entry.sourceLanguageCode;
+      if (routeResult.sourceLanguage && routeResult.sourceLanguage.toLowerCase() !== selectedUserLanguageCode.toLowerCase()) {
+        activeCounterpartLanguageCode = routeResult.sourceLanguage;
+      }
     }
     entry.status = '';
   } catch (error) {
     entry.status = error instanceof Error ? error.message : '응답을 불러오지 못했어요.';
   }
 
-  if (currentPage === 'text') {
+  refreshConversationView();
+  return entry;
+}
+
+function stopVoiceConversation() {
+  const recognition = activeVoiceRecognition;
+  activeVoiceRecognition = null;
+  if (recognition) recognition.abort();
+  window.speechSynthesis?.cancel();
+}
+
+function startVoiceConversation() {
+  if (voicePaused || currentPage !== 'voice' || activeVoiceRecognition) return;
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    voiceConversationState = 'error';
+    voiceConversationError = '이 브라우저에서 음성 인식을 지원하지 않아요.';
     render();
-    const dialogue = document.querySelector('.text-dialogue');
-    if (dialogue) dialogue.scrollTop = dialogue.scrollHeight;
+    return;
   }
+
+  voiceListenLanguageCode ||= selectedUserLanguageCode;
+  const recognition = new SpeechRecognition();
+  activeVoiceRecognition = recognition;
+  recognition.lang = voiceListenLanguageCode;
+  recognition.interimResults = false;
+  recognition.continuous = false;
+  recognition.maxAlternatives = 1;
+  recognition.onstart = () => {
+    if (activeVoiceRecognition !== recognition) return;
+    voiceConversationState = 'listening';
+    voiceConversationError = '';
+    render();
+  };
+  recognition.onresult = (event) => {
+    if (activeVoiceRecognition !== recognition) return;
+    const message = event.results[0]?.[0]?.transcript?.trim();
+    if (!message) return;
+    activeVoiceRecognition = null;
+    recognition.stop();
+    voiceConversationState = 'processing';
+    render();
+    processVoiceTurn(message);
+  };
+  recognition.onerror = (event) => {
+    if (activeVoiceRecognition !== recognition || event.error === 'aborted') return;
+    activeVoiceRecognition = null;
+    voiceConversationState = 'error';
+    voiceConversationError = event.error === 'not-allowed' || event.error === 'service-not-allowed'
+      ? '마이크 권한을 허용하면 음성 통역을 시작할 수 있어요.'
+      : event.error === 'language-not-supported'
+        ? '이 브라우저의 음성 인식에서 선택한 언어를 지원하지 않아요.'
+        : '음성을 듣지 못했어요. 다시 듣기를 눌러주세요.';
+    render();
+  };
+  recognition.onend = () => {
+    if (activeVoiceRecognition !== recognition) return;
+    activeVoiceRecognition = null;
+    if (!voicePaused && currentPage === 'voice' && voiceConversationState === 'listening') {
+      voiceConversationState = 'error';
+      voiceConversationError = '음성이 들리지 않았어요. 다시 듣기를 눌러주세요.';
+      render();
+    }
+  };
+  try {
+    recognition.start();
+  } catch {
+    activeVoiceRecognition = null;
+    voiceConversationState = 'error';
+    voiceConversationError = '음성 인식을 시작하지 못했어요. 마이크 설정을 확인해 주세요.';
+    render();
+  }
+}
+
+async function processVoiceTurn(message) {
+  const entry = await sendTextMessage(message);
+  if (currentPage !== 'voice' || voicePaused) return;
+  if (entry.status || !entry.response) {
+    voiceConversationState = 'error';
+    voiceConversationError = entry.status || '응답을 만들지 못했어요.';
+    render();
+    return;
+  }
+
+  voiceListenLanguageCode = entry.targetLanguageCode || entry.sourceLanguageCode || selectedUserLanguageCode;
+  const SpeechUtterance = window.SpeechSynthesisUtterance;
+  if (!SpeechUtterance || !window.speechSynthesis) {
+    voiceConversationState = 'error';
+    voiceConversationError = '이 브라우저에서 음성 출력을 지원하지 않아요.';
+    render();
+    return;
+  }
+
+  const utterance = new SpeechUtterance(entry.response);
+  utterance.lang = voiceListenLanguageCode;
+  utterance.onstart = () => {
+    if (currentPage !== 'voice' || voicePaused) return;
+    voiceConversationState = 'speaking';
+    render();
+  };
+  utterance.onend = () => {
+    if (currentPage !== 'voice' || voicePaused) return;
+    voiceConversationState = 'idle';
+    render();
+    startVoiceConversation();
+  };
+  utterance.onerror = () => {
+    if (currentPage !== 'voice' || voicePaused) return;
+    voiceConversationState = 'error';
+    voiceConversationError = '음성으로 답하지 못했어요. 다시 듣기를 눌러주세요.';
+    render();
+  };
+  window.speechSynthesis.cancel();
+  window.speechSynthesis.speak(utterance);
 }
 
 function loadNaverMaps() {
@@ -2984,18 +3199,29 @@ function startVoiceDestination() {
 }
 
 function navigate(page) {
+  if (currentPage === 'voice' && page !== 'voice') stopVoiceConversation();
   if (page !== currentPage) pageHistory.push(currentPage);
   currentPage = page;
+  if (page === 'voice') {
+    voicePaused = false;
+    voiceConversationError = '';
+    voiceConversationState = 'idle';
+    voiceListenLanguageCode ||= selectedUserLanguageCode;
+  }
   render();
+  if (page === 'voice') startVoiceConversation();
   window.scrollTo({ top: 0, behavior: 'instant' });
 }
 
 function goBack() {
+  if (currentPage === 'voice') stopVoiceConversation();
   currentPage = pageHistory.pop() || 'home';
   render();
   window.scrollTo({ top: 0, behavior: 'instant' });
 }
 
 render();
+
+
 
 
