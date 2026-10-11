@@ -1,9 +1,9 @@
-const { cloudProjectId, getAccessToken } = require('../lib/google-cloud');
+const { requestTranslation } = require('../lib/google-translation');
 
-function detectKorean(text) {
-  const koreanCharacters = (text.match(/[\uac00-\ud7a3]/g) || []).length;
-  const latinCharacters = (text.match(/[a-z]/gi) || []).length;
-  return koreanCharacters > 0 && koreanCharacters >= latinCharacters;
+function languageCode(value) {
+  return typeof value === 'string' && /^[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})*$/.test(value.trim())
+    ? value.trim()
+    : '';
 }
 
 module.exports = async function handler(req, res) {
@@ -18,33 +18,38 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: '번역할 내용을 확인해 주세요. 한 번에 2,000자까지 입력할 수 있어요.' });
   }
 
-  const sourceLanguage = detectKorean(text) ? 'ko' : 'en';
-  const targetLanguage = sourceLanguage === 'ko' ? 'en' : 'ko';
+  const userLanguage = languageCode(req.body?.userLanguage) || 'ko';
+  const counterpartLanguage = languageCode(req.body?.counterpartLanguage);
+  let sourceLanguage = languageCode(req.body?.sourceLanguage);
+  let englishText = typeof req.body?.englishText === 'string' ? req.body.englishText.trim().slice(0, 4000) : '';
+
   try {
-    const token = await getAccessToken(req);
-    const endpoint = `https://translation.googleapis.com/v3/projects/${encodeURIComponent(cloudProjectId())}/locations/global:translateText`;
-    const response = await fetch(endpoint, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${token}`,
-        'content-type': 'application/json'
-      },
-      body: JSON.stringify({
-        contents: [text],
-        mimeType: 'text/plain',
-        sourceLanguageCode: sourceLanguage,
-        targetLanguageCode: targetLanguage
-      })
-    });
-    const payload = await response.json().catch(() => ({}));
-    const translatedText = payload.translations?.[0]?.translatedText?.trim();
-    if (!response.ok || !translatedText) {
-      const error = new Error(response.status === 403
-        ? 'Cloud Translation API가 켜져 있고 서비스 계정에 번역 권한이 있는지 확인해 주세요.'
-        : 'Google Translation API에서 번역 결과를 받지 못했어요.');
-      error.statusCode = response.status >= 500 ? 502 : response.status || 502;
-      throw error;
+    if (!sourceLanguage) {
+      const normalized = await requestTranslation(req, { text, targetLanguageCode: 'en' });
+      sourceLanguage = languageCode(normalized.sourceLanguageCode);
+      englishText = normalized.text;
     }
+
+    // If the speaker uses their selected language, translate toward the detected conversation partner.
+    // Otherwise translate the partner's message back into the user's selected language.
+    const targetLanguage = sourceLanguage.toLowerCase() === userLanguage.toLowerCase()
+      ? counterpartLanguage || (userLanguage.toLowerCase() === 'en' ? 'ko' : 'en')
+      : userLanguage;
+
+    let translatedText;
+    if (sourceLanguage.toLowerCase() === targetLanguage.toLowerCase()) {
+      translatedText = text;
+    } else if (targetLanguage.toLowerCase() === 'en' && englishText) {
+      translatedText = englishText;
+    } else {
+      const translated = await requestTranslation(req, {
+        text,
+        targetLanguageCode: targetLanguage,
+        sourceLanguageCode: sourceLanguage
+      });
+      translatedText = translated.text;
+    }
+
     return res.status(200).json({
       intent: 'translation',
       text: translatedText,
