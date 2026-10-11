@@ -25,7 +25,8 @@ async function main() {
   const placesScreen = mainSource.slice(placesScreenStart, placesScreenEnd);
   assert.ok(placesScreenStart >= 0 && placesScreenEnd > placesScreenStart, 'nearby place screen source is present');
   assert.doesNotMatch(placesScreen, /places-summary|<span class="places-kicker">요청<\/span>/, 'the searched request is not repeated on the results screen');
-  assert.match(placesScreen, /\$\{escapeHtml\(originName\)\} 주변 \$\{places\.length\}개의 \$\{escapeHtml\(categoryLabel\)\}를 찾았습니다\./, 'the result count and place category are dynamic');
+  assert.match(placesScreen, /\$\{escapeHtml\(originName\)\} 주변 \$\{places\.length\}개의 \$\{escapeHtml\(categoryLabel\)\}\$\{categoryParticle\} 찾았습니다\./, 'the result count, place category, and Korean particle are dynamic');
+  assert.match(mainSource, /function koreanObjectParticle\(word\)/, 'the result sentence uses a Korean object particle appropriate to the category');
   assert.ok(placesScreen.indexOf('class="places-map"') < placesScreen.indexOf('class="places-result-summary"'), 'the result summary is directly under the map');
   assert.ok(placesScreen.indexOf('class="places-result-summary"') < placesScreen.indexOf('class="place-results"'), 'the map summary is shown before the place list');
   assert.match(placesScreen, /id="places-roadview"[\s\S]*data-action="place-roadview-map"[\s\S]*data-action="place-roadview-route"/, 'the place roadview has map and route actions');
