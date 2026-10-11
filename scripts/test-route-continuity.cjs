@@ -137,6 +137,23 @@ assert.ok(sandbox.walkPreviewTurnArrow(rightBendFrame,origin,{...arrowPhoto,mete
   'nearby route-aligned panorama retains the upcoming corner cue');
 assert.ok(sandbox.walkPreviewTurnArrow({...arrowFrame,focusMeters:30},origin,{...arrowPhoto,offset:24,nearby:true},arrowPov,600,300),
   'route-aligned panorama retains the cue while entering the turn');
+// When the current panorama is ~57 m before a straight-through junction, keep
+// an arrow on the visible walking path instead of hiding it until the corner.
+const farNorthRoute = [[origin,[127,37+130/111320]]];
+const farJunctionPoint = [127,37+80/111320];
+const farJunctionFrames = sandbox.walkPreviewFrames(farNorthRoute,[{
+  position:farJunctionPoint,description:'갈림길에서 직진'
+}]);
+const farJunctionApproach = farJunctionFrames.find(frame=>frame.phase==='approach');
+assert.ok(farJunctionApproach && farJunctionApproach.direction==='straight');
+const farJunctionPhoto = sandbox.walkPreviewPhotoContext([127,37+13/111320],farJunctionApproach,farNorthRoute);
+assert.ok(farJunctionPhoto && Math.round(farJunctionPhoto.offset)===57);
+assert.ok(farJunctionPhoto.routeTrace.length>=8,'photo context retains the route ahead of the camera');
+const farJunctionArrow = sandbox.walkPreviewTurnArrow(farJunctionApproach,[127,37+13/111320],
+  farJunctionPhoto,{pan:0,tilt:0,fov:75},600,300);
+assert.ok(farJunctionArrow,'57 m ahead instruction still shows a forward cue on the visible walking path');
+assert.equal(sandbox.walkPreviewTurnArrow(farJunctionApproach,[127,37+13/111320],
+  farJunctionPhoto,{pan:180,tilt:0,fov:75},600,300),null,'route cue stays hidden when the camera faces away from the path');
 // Desktop zoom / a short browser window can make the panorama wider and shorter.
 // A shaft touching the bottom safe margin must not hide its visible arrowhead.
 for (const [width,height] of [[478,198],[747,311],[338,198],[600,300]]) {
