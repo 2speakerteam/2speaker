@@ -24,7 +24,9 @@ async function main() {
   const placesScreenEnd = mainSource.indexOf('\nfunction guideScreen()', placesScreenStart);
   const placesScreen = mainSource.slice(placesScreenStart, placesScreenEnd);
   assert.ok(placesScreenStart >= 0 && placesScreenEnd > placesScreenStart, 'nearby place screen source is present');
-  assert.doesNotMatch(placesScreen, /places-summary|<span class="places-kicker">요청<\/span>/, 'the searched request is not repeated on the results screen');
+  assert.ok(placesScreen.includes('class="bubble question">${escapeHtml(query || \'\')}</p>'), 'the original place-search request appears in a conversation bubble');
+  assert.ok(placesScreen.includes('class="bubble answer">${escapeHtml(originName)} 주변 ${places.length}개의 ${escapeHtml(categoryLabel)}${categoryParticle} 찾았습니다.</p>'), 'the conversation reply reports the dynamic result count and category');
+  assert.ok(placesScreen.indexOf('class="place-results"') < placesScreen.indexOf('class="guide-dialogue places-dialogue"'), 'the conversation bubbles follow the place cards at the bottom');
   assert.match(placesScreen, /\$\{escapeHtml\(originName\)\} 주변 \$\{places\.length\}개의 \$\{escapeHtml\(categoryLabel\)\}\$\{categoryParticle\} 찾았습니다\./, 'the result count, place category, and Korean particle are dynamic');
   assert.match(mainSource, /function koreanObjectParticle\(word\)/, 'the result sentence uses a Korean object particle appropriate to the category');
   assert.ok(placesScreen.indexOf('class="places-map"') < placesScreen.indexOf('class="places-result-summary"'), 'the result summary is directly under the map');
