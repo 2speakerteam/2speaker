@@ -48,6 +48,9 @@ const placeInterpretCache = new Map();
 let placesMap = null;
 let placesMapContainer = null;
 let placesMapOverlays = [];
+let placesPanorama = null;
+let placesPanoramaMaps = null;
+let placesPanoramaRequestId = 0;
 let guideTransportRoutes = {};
 let guideTransportContext = null;
 let walkPreviewState = null;
@@ -292,12 +295,85 @@ function initializePlacesMap() {
     placeSearchState.places.forEach((place, index) => {
       const point = new maps.LatLng(place.latitude, place.longitude);
       bounds.extend(point);
-      placesMapOverlays.push(new maps.Marker({ map, position: point, title: `${index + 1}. ${place.name}` }));
+      const marker = new maps.Marker({ map, position: point, title: `${index + 1}. ${place.name}` });
+      maps.Event.addListener(marker, 'click', () => showPlaceRoadview(index));
+      placesMapOverlays.push(marker);
     });
     map.fitBounds(bounds, 42);
   }).catch(() => {
     if (document.querySelector('#places-map') === container) container.setAttribute('aria-label', '네이버 지도를 불러오지 못했어요. 아래 장소 목록을 확인해 주세요.');
   });
+}
+
+
+function disposePlacesPanorama() {
+  placesPanoramaRequestId += 1;
+  if (placesPanorama && placesPanoramaMaps) {
+    try {
+      placesPanoramaMaps.Event.clearInstanceListeners(placesPanorama);
+      placesPanorama.setVisible(false);
+    } catch { /* The panorama may already be detached. */ }
+  }
+  placesPanorama = null;
+  placesPanoramaMaps = null;
+}
+
+async function showPlaceRoadview(index) {
+  const place = placeSearchState.places[index];
+  const origin = placeSearchState.origin;
+  const panel = document.querySelector('#places-roadview');
+  const viewer = document.querySelector('#places-roadview-view');
+  const title = document.querySelector('#places-roadview-title');
+  const status = document.querySelector('#places-roadview-status');
+  if (!place || !origin || !panel || !viewer || !title || !status) return;
+
+  disposePlacesPanorama();
+  const requestId = placesPanoramaRequestId;
+  const point = { latitude: Number(place.latitude), longitude: Number(place.longitude) };
+  panel.dataset.placeIndex = String(index);
+  title.textContent = place.name;
+  status.textContent = '선택한 장소 주변의 네이버 로드뷰를 불러오는 중이에요.';
+  viewer.style.visibility = 'hidden';
+  panel.hidden = false;
+  panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  try {
+    const maps = await loadNaverMaps();
+    if (requestId !== placesPanoramaRequestId || currentPage !== 'places'
+      || document.querySelector('#places-roadview') !== panel || panel.hidden) return;
+    if (placesMap) {
+      placesMap.setCenter(new maps.LatLng(point.latitude, point.longitude));
+      placesMap.setZoom(17);
+    }
+    if (!maps.Panorama) {
+      status.textContent = '로드뷰 연결을 확인해 주세요. 위치는 위 지도에서 볼 수 있어요.';
+      return;
+    }
+    const latLng = new maps.LatLng(point.latitude, point.longitude);
+    const panorama = new maps.Panorama(viewer, {
+      position: latLng,
+      zoomControl: true,
+      aroundControl: true
+    });
+    placesPanorama = panorama;
+    placesPanoramaMaps = maps;
+    maps.Event.addListener(panorama, 'pano_status', (panoStatus) => {
+      if (requestId !== placesPanoramaRequestId || currentPage !== 'places' || panel.hidden) return;
+      if (panoStatus !== 'OK') {
+        viewer.style.visibility = 'hidden';
+        status.textContent = '이 장소 주변에는 로드뷰가 제공되지 않아요. 위치는 위 지도에서 볼 수 있어요.';
+        return;
+      }
+      viewer.style.visibility = 'visible';
+      const photoDate = panorama.getLocation()?.photodate;
+      status.textContent = photoDate
+        ? \`선택한 장소 주변의 로드뷰예요 · 촬영: \${photoDate}\`
+        : '선택한 장소 주변의 로드뷰예요. 화면을 움직여 둘러보세요.';
+    });
+  } catch {
+    if (requestId !== placesPanoramaRequestId || panel.hidden) return;
+    viewer.style.visibility = 'hidden';
+    status.textContent = '로드뷰를 열지 못했어요. 위치는 위 지도에서 볼 수 있어요.';
+  }
 }
 
 function selectNearbyPlace(index) {
@@ -397,7 +473,7 @@ function routeScreen() {
 }
 
 function nearbyPlacesScreen() {
-  const { status, criteria, places, error } = placeSearchState;
+  const { status, criteria, origin, places, error } = placeSearchState;
   const statusCopy = status === 'loading'
     ? '주변 장소를 찾고 있어요.'
     : status === 'error'
@@ -407,11 +483,22 @@ function nearbyPlacesScreen() {
     <span class="place-result-main"><strong>${escapeHtml(place.name)}</strong><small>${escapeHtml(place.category || criteria?.categoryLabel || '')}</small><span>${escapeHtml(place.address || '주소 정보 없음')}</span></span>
     <span class="place-result-distance"><strong>${place.walkingMinutes}분</strong><small>${Number(place.walkingDistanceMeters || 0).toLocaleString()}m</small></span>
   </button>`).join('');
+  const originName = origin?.name || criteria?.originName || '주변';
+  const categoryLabel = criteria?.categoryLabel || criteria?.category || '장소';
   return `<main class="screen content-screen places-screen">
     ${header('주변 장소 찾기')}
     <section class="page-body places-body">
       ${status === 'loading' || status === 'error' ? `<p class="places-status" role="status" aria-live="polite">${statusCopy}</p>` : ''}
-      ${status === 'done' && places.length ? `<div class="places-map" id="places-map" aria-label="네이버 장소 지도"></div><div class="place-results" aria-label="장소 검색 결과">${placeCards}</div>` : ''}
+      \${status === 'done' && places.length ? \`<div class="places-map" id="places-map" aria-label="네이버 장소 지도"></div>
+        <p class="places-result-summary" role="status">\${escapeHtml(originName)} 주변 \${places.length}개의 \${escapeHtml(categoryLabel)}를 찾았습니다.</p>
+        <section class="places-roadview" id="places-roadview" aria-label="선택한 장소 로드뷰" hidden>
+          <div class="places-roadview-view" id="places-roadview-view" aria-label="선택한 장소 주변의 실제 거리 모습"></div>
+          <div class="places-roadview-controls">
+            <p class="places-roadview-heading"><strong id="places-roadview-title"></strong><span id="places-roadview-status" role="status" aria-live="polite"></span></p>
+            <div><button type="button" data-action="place-roadview-map">지도보기</button><button type="button" data-action="place-roadview-route">길찾기</button></div>
+          </div>
+        </section>
+        <div class="place-results" aria-label="장소 검색 결과">\${placeCards}</div>\` : ''}
       ${status === 'done' && !places.length ? '<div class="places-empty">다른 기준 장소나 더 긴 도보시간으로 다시 검색해 보세요.</div>' : ''}
       ${status === 'error' ? '<button class="places-retry" type="button" data-action="places-retry">다시 검색</button>' : ''}
     </section>
@@ -432,7 +519,7 @@ function guideScreen() {
   const loading = english ? 'Finding a route...' : '경로를 확인하고 있어요.';
   return `<main class="screen guide-screen">
     <header class="guide-header">
-      <button class="guide-control" data-page="more" aria-label="더보기">${icon('menu', 30)}</button>
+      <button class="guide-control" data-action="back" aria-label="검색 결과로 돌아가기">${icon('back', 34)}</button>
       <strong>2SPEAKER</strong>
       <button class="guide-control" data-page="language" aria-label="설정">${icon('settings', 30)}</button>
     </header>
@@ -722,6 +809,7 @@ function legalScreen(title, sections) {
 
 function render() {
   stopWalkPreview(true);
+  disposePlacesPanorama();
   const screens = {
     home: homeScreen, route: routeScreen, guide: guideScreen, nearby: nearbyScreen, places: nearbyPlacesScreen, translation: translationScreen,
     voice: voiceScreen, text: textScreen, more: moreScreen, login: loginScreen,
@@ -893,7 +981,17 @@ if (currentPage === 'user-language-list' && !supportedUserLanguagesLoaded && !su
     else routeInput.focus();
   });
   document.querySelectorAll('[data-place-index]').forEach((button) => {
-    button.addEventListener('click', () => selectNearbyPlace(Number(button.dataset.placeIndex)));
+    button.addEventListener('click', () => showPlaceRoadview(Number(button.dataset.placeIndex)));
+  });
+  document.querySelector('[data-action="place-roadview-map"]')?.addEventListener('click', () => {
+    const panel = document.querySelector('#places-roadview');
+    if (panel) panel.hidden = true;
+    disposePlacesPanorama();
+    document.querySelector('#places-map')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  });
+  document.querySelector('[data-action="place-roadview-route"]')?.addEventListener('click', () => {
+    const index = Number(document.querySelector('#places-roadview')?.dataset.placeIndex);
+    selectNearbyPlace(index);
   });
   document.querySelector('[data-action="places-retry"]')?.addEventListener('click', () => openNearbyPlaceSearch(placeSearchState.query));
   document.querySelector('.message-composer')?.addEventListener('submit', (event) => {
