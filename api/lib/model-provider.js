@@ -19,7 +19,7 @@ async function generateWithVertex({ req, systemInstruction, contents }) {
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: systemInstruction }] },
       contents,
-      generationConfig: { maxOutputTokens: 360 }
+      generationConfig: { maxOutputTokens: 512, thinkingConfig: { thinkingLevel: 'LOW' } }
     })
   });
   const payload = await response.json().catch(() => ({}));
