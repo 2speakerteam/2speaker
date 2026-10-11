@@ -111,6 +111,20 @@ assert.ok(sandbox.walkPreviewTurnArrow(approachArrow,origin,arrowPhoto,arrowPov,
 const compactArrow=sandbox.walkPreviewTurnArrow(approachArrow,origin,arrowPhoto,arrowPov,600,300).split(' ').map(p=>p.split(',').map(Number));
 assert.ok(compactArrow.length>15,'turn shaft has a rounded bend');
 assert.ok(Math.max(...compactArrow.map(p=>p[0]))-Math.min(...compactArrow.map(p=>p[0]))<=96.1,'turn cue width capped at 16 percent');
+const rightBendFrame={...approachArrow,focusMeters:50,turnAhead:[127+14/88804,junctionPoint[1]]};
+const leftBendFrame={...rightBendFrame,turnAhead:[127-14/88804,junctionPoint[1]]};
+const rightBend=sandbox.walkPreviewTurnArrow(rightBendFrame,origin,{...arrowPhoto,meters:42,offset:24,nearby:true},arrowPov,600,300)
+  .split(' ').map(p=>p.split(',').map(Number));
+const leftBend=sandbox.walkPreviewTurnArrow(leftBendFrame,origin,arrowPhoto,arrowPov,600,300)
+  .split(' ').map(p=>p.split(',').map(Number));
+assert.ok(rightBend[10][0]>300 && leftBend[10][0]<300,'right and left cues bend toward their respective turns');
+assert.ok(Math.abs((rightBend[4][0]+rightBend[16][0])/2-300)<8
+  && Math.abs((rightBend[4][1]+rightBend[16][1])/2-(150+391*2.4/10))<3,
+  'asymmetric arrow scaling keeps the bend pinned to the projected route corner');
+assert.ok(sandbox.walkPreviewTurnArrow(rightBendFrame,origin,{...arrowPhoto,meters:42,offset:24,nearby:true},arrowPov,600,300),
+  'nearby route-aligned panorama retains the upcoming corner cue');
+assert.ok(sandbox.walkPreviewTurnArrow({...arrowFrame,focusMeters:30},origin,{...arrowPhoto,offset:24,nearby:true},arrowPov,600,300),
+  'route-aligned panorama retains the cue while entering the turn');
 // Desktop zoom / a short browser window can make the panorama wider and shorter.
 // A shaft touching the bottom safe margin must not hide its visible arrowhead.
 for (const [width,height] of [[478,198],[747,311],[338,198],[600,300]]) {

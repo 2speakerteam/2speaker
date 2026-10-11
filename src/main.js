@@ -2262,9 +2262,18 @@ function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
   // Only confirmed junction windows may opt into a straight-through cue.
   const connecting = frame?.phase === 'straight' && frame.junctionCue === true;
   const junction = frame?.important && /교차로|사거리|삼거리|갈림길|갈래길|분기|횡단보도/.test(frame.description || '');
+  const focusMeters = Number.isFinite(frame?.focusMeters) ? frame.focusMeters : frame?.meters;
+  const photoBeforeTurn = Number.isFinite(photo?.meters) && Number.isFinite(focusMeters)
+    ? focusMeters - photo.meters : Infinity;
+  // A panorama can be more than 20 m from the sampled frame while still being
+  // on the correct route and looking at the upcoming corner. Judge that photo
+  // by its route projection and distance to the turn, not its sample offset.
+  const routeAlignedTurnPhoto = Boolean((approach || frame?.phase === 'turn') && Number.isFinite(photoBeforeTurn)
+    && photoBeforeTurn >= -3 && photoBeforeTurn <= 35 && photo.lateral <= 18);
   if ((!approach && !connecting && frame?.phase !== 'turn') || (!connecting && frame.turnAngle < 35 && !junction) || frame.landmark || !capture
-      || !photo || photo.nearby || photo.offset > (connecting ? 20 : 18) || photo.lateral > 12
-      || (!connecting && photo.meters > frame.meters + 5) || !(width > 0 && height > 0)
+      || !photo || (photo.nearby && !routeAlignedTurnPhoto)
+      || (!routeAlignedTurnPhoto && (photo.offset > (connecting ? 20 : 18) || photo.lateral > 12
+        || (!connecting && photo.meters > frame.meters + 5))) || !(width > 0 && height > 0)
       || ![pov?.pan, pov?.tilt, pov?.fov].every(Number.isFinite)) return null;
   const radians = Math.PI / 180;
   // Straight scene photographs can be snapped ahead of the requested sample.
@@ -2278,7 +2287,8 @@ function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
   // Actual corner cues retain their geographic anchor.
   const east = connecting ? 0 : (anchor[0] - capture[0]) * Math.cos(capture[1] * radians) * 111320;
   const north = connecting ? 0 : (anchor[1] - capture[1]) * 111320;
-  if (Math.hypot(east, north) > 25 || walkPreviewDistance(anchor, target) < (approach ? 4 : 13)) return null;
+  if (Math.hypot(east, north) > (routeAlignedTurnPhoto ? 38 : 25)
+      || walkPreviewDistance(anchor, target) < (approach ? 4 : 13)) return null;
   const pan = pov.pan * radians, tilt = pov.tilt * radians;
   const focal = width / (2 * Math.tan(Math.max(20, Math.min(100, pov.fov)) * radians / 2));
   // Approximate flat pavement at camera height 2.4 m. This is a directional cue,
@@ -2311,41 +2321,50 @@ function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
     polygon = [...right,at(.65,1.5),at(0,2.7),at(-.65,1.5),...left.reverse()];
     tipIndex = right.length + 1;
   }
-  const projected = polygon.map(([e, n]) => {
+  const projectGround = (e, n) => {
     const right = e * Math.cos(pan) - n * Math.sin(pan);
     const ahead = e * Math.sin(pan) + n * Math.cos(pan);
     const depth = ahead * Math.cos(tilt) - 2.4 * Math.sin(tilt);
     const up = -2.4 * Math.cos(tilt) - ahead * Math.sin(tilt);
     if (depth < 3) return null;
     return [width / 2 + focal * right / depth, height / 2 - focal * up / depth];
-  });
+  };
+  const projected = polygon.map(([e, n]) => projectGround(e, n));
   if (projected.some(p => !p || !p.every(Number.isFinite))) return null;
+  let anchorPixel = null;
   if (approach) {
-    // Preserve aspect ratio while limiting a close-up turn's visual footprint.
+    // Keep the bend pinned to the actual route corner while fitting its legs.
+    // Scaling around the polygon's bounding-box center moved the arrow away
+    // from the turn, especially for asymmetric left/right bends.
+    anchorPixel = projectGround(east, north);
+    if (!anchorPixel) return null;
     const xs=projected.map(p=>p[0]),ys=projected.map(p=>p[1]);
     const minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);
     const scale=Math.min(1,width*.16/(maxX-minX),height*.2/(maxY-minY));
-    const cx=(minX+maxX)/2,cy=(minY+maxY)/2;
-    for (const p of projected) { p[0]=cx+(p[0]-cx)*scale; p[1]=cy+(p[1]-cy)*scale; }
+    for (const p of projected) {
+      p[0]=anchorPixel[0]+(p[0]-anchorPixel[0])*scale;
+      p[1]=anchorPixel[1]+(p[1]-anchorPixel[1])*scale;
+    }
   }
   // A short panorama (including browser zoom) used to discard the entire cue
   // when only its tail crossed the bottom margin. Keep its directional tip at
   // the projected road position and uniformly fit the shaft around that tip.
-  // Never move an off-screen direction into view or change junction eligibility.
+  // Keep the turn bend fixed and shrink its arrowhead/shaft only when needed.
   const tip = projected[tipIndex];
-  if (tip[0] < 14 || tip[0] > width-14 || tip[1] < 18 || tip[1] > height-6) return null;
+  const fitOrigin = anchorPixel || tip;
+  if (fitOrigin[0] < 14 || fitOrigin[0] > width-14 || fitOrigin[1] < 18 || fitOrigin[1] > height-6) return null;
   let fit = 1;
   for (const p of projected) {
     for (let axis=0;axis<2;axis+=1) {
-      const delta=p[axis]-tip[axis], min=axis===0?14:18, max=axis===0?width-14:height-6;
-      if (delta>0) fit=Math.min(fit,(max-tip[axis])/delta);
-      else if (delta<0) fit=Math.min(fit,(min-tip[axis])/delta);
+      const delta=p[axis]-fitOrigin[axis], min=axis===0?14:18, max=axis===0?width-14:height-6;
+      if (delta>0) fit=Math.min(fit,(max-fitOrigin[axis])/delta);
+      else if (delta<0) fit=Math.min(fit,(min-fitOrigin[axis])/delta);
     }
   }
-  if (fit < .35) return null; // The direction is too close to the edge to read.
+  if (fit < .12) return null; // Keep a readable cue when the corner is near an edge.
   if (fit < 1) for (const p of projected) {
-    p[0]=tip[0]+(p[0]-tip[0])*fit;
-    p[1]=tip[1]+(p[1]-tip[1])*fit;
+    p[0]=fitOrigin[0]+(p[0]-fitOrigin[0])*fit;
+    p[1]=fitOrigin[1]+(p[1]-fitOrigin[1])*fit;
   }
   return projected.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ');
 }
