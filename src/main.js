@@ -41,6 +41,13 @@ let routeMapOverlays = [];
 let nearbyInfoWindow = null;
 let nearbyPanorama = null;
 let routeRequestToken = 0;
+let activePlaceSelection = null;
+let placeSearchState = { status: 'idle', query: '', criteria: null, origin: null, places: [], error: '' };
+const placeSearchCache = new Map();
+const placeInterpretCache = new Map();
+let placesMap = null;
+let placesMapContainer = null;
+let placesMapOverlays = [];
 let guideTransportRoutes = {};
 let guideTransportContext = null;
 let walkPreviewState = null;
@@ -173,6 +180,136 @@ function parseRouteRequest(raw) {
   return { origin: normalizeEntranceQuery(origin), destination: normalizeEntranceQuery(phrase || input), language };
 }
 
+function isPlaceSearchRequest(text) {
+  const query = String(text || '').trim();
+  if (/(숙소|호텔|모텔|게스트하우스|카페|식당|맛집|음식점|약국|병원|편의점|관광지|명소|주차장|화장실|공원|지하철역|기차역|accommodation|hotel|motel|cafe|coffee|restaurant|pharmacy|hospital|convenience store|attraction|parking|restroom|park)/i.test(query)) return true;
+  const asksToSearch = /(찾아|검색|추천|알려\s*줘|보여\s*줘|있(?:을까요?|나요?|어요?|습니까\??)|find|search|recommend|show\s+me|is\s+there)/i.test(query);
+  const mentionsNearbyPlace = /(근처|주변|가까운|장소|공간|어디|어떤\s*곳|조용한\s*곳|현재\s*위치|nearby|near\s+me|around|place)/i.test(query);
+  return asksToSearch && mentionsNearbyPlace;
+}
+
+function openNearbyPlaceSearch(query) {
+  const normalizedQuery = String(query || '').trim();
+  if (!normalizedQuery) return;
+  destination = normalizedQuery;
+  activePlaceSelection = null;
+  placeSearchState = { status: 'loading', query: normalizedQuery, criteria: null, origin: null, places: [], error: '' };
+  navigate('places');
+  void runNearbyPlaceSearch(normalizedQuery);
+}
+
+async function reverseGeocodeArea(point) {
+  try {
+    const maps = await loadNaverMaps();
+    return await new Promise((resolve) => {
+      maps.Service.reverseGeocode({ coords: new maps.LatLng(point.latitude, point.longitude) }, (status, response) => {
+        if (status !== maps.Service.Status.OK) return resolve('');
+        const region = response?.v2?.results?.[0]?.region;
+        resolve([region?.area1?.name, region?.area2?.name, region?.area3?.name].filter(Boolean).join(' ').slice(0, 100));
+      });
+    });
+  } catch {
+    return '';
+  }
+}
+
+async function runNearbyPlaceSearch(query) {
+  try {
+    let criteria = placeInterpretCache.get(query);
+    if (!criteria) {
+      const interpretResponse = await fetch('/api/places/search', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ action: 'interpret', query })
+      });
+      const interpretation = await interpretResponse.json().catch(() => ({}));
+      if (!interpretResponse.ok || !interpretation.criteria) throw new Error(interpretation.error || '검색 조건을 이해하지 못했어요.');
+      criteria = interpretation.criteria;
+      if (placeInterpretCache.size >= 64) placeInterpretCache.delete(placeInterpretCache.keys().next().value);
+      placeInterpretCache.set(query, criteria);
+    }
+    if (placeSearchState.query !== query) return;
+    placeSearchState.criteria = criteria;
+    render();
+
+    let currentLocation = null;
+    let regionName = '';
+    if (criteria.useCurrentLocation) {
+      currentLocation = await getCurrentPosition();
+      if (placeSearchState.query !== query) return;
+      regionName = await reverseGeocodeArea(currentLocation);
+      if (!regionName) throw new Error('현재 위치 주변 지역을 확인하지 못했어요. 역이나 동네 이름을 함께 입력해 주세요.');
+    }
+    const cacheKey = `${query.toLocaleLowerCase()}|${criteria.originName || `${Number(currentLocation?.latitude || 0).toFixed(5)},${Number(currentLocation?.longitude || 0).toFixed(5)}`}`;
+    const cached = placeSearchCache.get(cacheKey);
+    if (cached && Date.now() - cached.savedAt < 5 * 60 * 1000) {
+      placeSearchState = { status: 'done', query, ...cached.response, error: '' };
+      render();
+      return;
+    }
+
+    const response = await fetch('/api/places/search', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ criteria, currentLocation, regionName })
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || '주변 장소를 찾지 못했어요.');
+    if (placeSearchState.query !== query) return;
+    const result = { criteria: payload.criteria, origin: payload.origin, places: payload.places || [] };
+    if (placeSearchCache.size >= 32) placeSearchCache.delete(placeSearchCache.keys().next().value);
+    placeSearchCache.set(cacheKey, { savedAt: Date.now(), response: result });
+    placeSearchState = { status: 'done', query, ...result, error: '' };
+    render();
+  } catch (error) {
+    if (placeSearchState.query !== query) return;
+    placeSearchState = { ...placeSearchState, status: 'error', error: error instanceof Error ? error.message : '주변 장소를 찾지 못했어요.' };
+    render();
+  }
+}
+
+function initializePlacesMap() {
+  const container = document.querySelector('#places-map');
+  const origin = placeSearchState.origin;
+  if (!container || !origin) return;
+  if (placesMapContainer === container && placesMap) return;
+
+  placesMapContainer = container;
+  placesMap = null;
+  placesMapOverlays.forEach((overlay) => overlay.setMap(null));
+  placesMapOverlays = [];
+  void loadNaverMaps().then((maps) => {
+    if (currentPage !== 'places' || document.querySelector('#places-map') !== container) return;
+    const map = new maps.Map(container, {
+      center: new maps.LatLng(origin.latitude, origin.longitude), zoom: 15, minZoom: 3, maxZoom: 20,
+      mapTypeControl: false, zoomControl: true, scaleControl: false, logoControl: true, mapDataControl: false
+    });
+    placesMap = map;
+    const bounds = new maps.LatLngBounds();
+    const originPoint = new maps.LatLng(origin.latitude, origin.longitude);
+    bounds.extend(originPoint);
+    placesMapOverlays.push(new maps.Marker({ map, position: originPoint, title: origin.name || '기준 위치' }));
+    placeSearchState.places.forEach((place, index) => {
+      const point = new maps.LatLng(place.latitude, place.longitude);
+      bounds.extend(point);
+      placesMapOverlays.push(new maps.Marker({ map, position: point, title: `${index + 1}. ${place.name}` }));
+    });
+    map.fitBounds(bounds, 42);
+  }).catch(() => {
+    if (document.querySelector('#places-map') === container) container.setAttribute('aria-label', '네이버 지도를 불러오지 못했어요. 아래 장소 목록을 확인해 주세요.');
+  });
+}
+
+function selectNearbyPlace(index) {
+  const place = placeSearchState.places[index];
+  if (!place?.route || !placeSearchState.origin) return;
+  activePlaceSelection = { origin: placeSearchState.origin, place, route: place.route };
+  destination = place.name;
+  routeOrigin = placeSearchState.origin.name || '';
+  routeLanguage = 'ko';
+  navigate('guide');
+}
+
 function bottomNav() {
   return `<nav class="bottom-nav" aria-label="하단 메뉴">
     <button class="nav-item ${currentPage === 'home' ? 'active' : ''}" data-page="home">${icon('homeActive')}<span>홈</span></button>
@@ -256,6 +393,33 @@ function routeScreen() {
       </div></form>
     </section>
     ${bottomNav()}
+  </main>`;
+}
+
+function nearbyPlacesScreen() {
+  const { status, query, criteria, origin, places, error } = placeSearchState;
+  const statusCopy = status === 'loading'
+    ? 'Gemini가 요청을 이해하고 네이버·TMAP 결과를 확인하고 있어요.'
+    : status === 'error'
+      ? escapeHtml(error || '주변 장소를 찾지 못했어요.')
+      : places.length
+        ? `${escapeHtml(origin?.name || criteria?.originName || '출발지')} 기준 실제 도보 경로가 확인된 장소예요.`
+        : '요청한 도보 시간 안에 확인된 장소가 없어요. 시간을 늘리거나 기준 장소를 바꿔보세요.';
+  const placeCards = places.map((place, index) => `<button class="place-result" type="button" data-place-index="${index}">
+    <span class="place-result-main"><strong>${escapeHtml(place.name)}</strong><small>${escapeHtml(place.category || criteria?.categoryLabel || '')}</small><span>${escapeHtml(place.address || '주소 정보 없음')}</span></span>
+    <span class="place-result-distance"><strong>${place.walkingMinutes}분</strong><small>${Number(place.walkingDistanceMeters || 0).toLocaleString()}m</small></span>
+  </button>`).join('');
+  return `<main class="screen content-screen places-screen">
+    ${header('주변 장소 찾기')}
+    <section class="page-body places-body">
+      <article class="places-summary"><span class="places-kicker">요청</span><p>${escapeHtml(query)}</p>
+        ${criteria ? `<div class="places-tags"><span>${escapeHtml(criteria.categoryLabel || criteria.category)}</span>${criteria.preference ? `<span>${escapeHtml(criteria.preference)}</span>` : ''}${criteria.walkingLimitMinutes ? `<span>도보 ${criteria.walkingLimitMinutes}분 이내</span>` : '<span>도보시간순 확인</span>'}</div>` : ''}
+      </article>
+      <p class="places-status" role="status" aria-live="polite">${statusCopy}</p>
+      ${status === 'done' && places.length ? `<div class="places-map" id="places-map" aria-label="네이버 장소 지도"></div><p class="places-meter-note">검색 후보 최대 5곳의 도보시간을 TMAP으로 확인했어요.</p><div class="place-results" aria-label="장소 검색 결과">${placeCards}</div>` : ''}
+      ${status === 'done' && !places.length ? '<div class="places-empty">다른 기준 장소나 더 긴 도보시간으로 다시 검색해 보세요.</div>' : ''}
+      ${status === 'error' ? '<button class="places-retry" type="button" data-action="places-retry">다시 검색</button>' : ''}
+    </section>
   </main>`;
 }
 
@@ -416,7 +580,7 @@ function textScreen() {
 function moreScreen() {
   const previousPage = pageHistory[pageHistory.length - 1] || 'home';
   const backgroundScreens = {
-    home: homeScreen, route: routeScreen, guide: guideScreen, nearby: nearbyScreen, translation: translationScreen,
+    home: homeScreen, route: routeScreen, guide: guideScreen, nearby: nearbyScreen, places: nearbyPlacesScreen, translation: translationScreen,
     voice: voiceScreen, text: textScreen
   };
   const background = (backgroundScreens[previousPage] || homeScreen)();
@@ -564,7 +728,7 @@ function legalScreen(title, sections) {
 function render() {
   stopWalkPreview(true);
   const screens = {
-    home: homeScreen, route: routeScreen, guide: guideScreen, nearby: nearbyScreen, translation: translationScreen,
+    home: homeScreen, route: routeScreen, guide: guideScreen, nearby: nearbyScreen, places: nearbyPlacesScreen, translation: translationScreen,
     voice: voiceScreen, text: textScreen, more: moreScreen, login: loginScreen,
     language: languageScreen, 'language-list': languageListScreen,
     'user-language-list': userLanguageListScreen, help: helpScreen,
@@ -595,6 +759,7 @@ function render() {
 
   if (currentPage === 'guide') initializeNaverMap();
   if (currentPage === 'nearby') initializeNearbyMap();
+  if (currentPage === 'places' && placeSearchState.status === 'done' && placeSearchState.places.length) initializePlacesMap();
 
   if (currentPage === 'text') {
     const dialogue = document.querySelector('.text-dialogue');
@@ -720,13 +885,22 @@ if (currentPage === 'user-language-list' && !supportedUserLanguagesLoaded && !su
       navigate('nearby');
       return;
     }
+    if (isPlaceSearchRequest(routeInput.value)) {
+      openNearbyPlaceSearch(routeInput.value);
+      return;
+    }
     const parsed = parseRouteRequest(routeInput.value);
     destination = parsed.destination;
     routeOrigin = parsed.origin;
     routeLanguage = parsed.language;
+    activePlaceSelection = null;
     if (destination) navigate('guide');
     else routeInput.focus();
   });
+  document.querySelectorAll('[data-place-index]').forEach((button) => {
+    button.addEventListener('click', () => selectNearbyPlace(Number(button.dataset.placeIndex)));
+  });
+  document.querySelector('[data-action="places-retry"]')?.addEventListener('click', () => openNearbyPlaceSearch(placeSearchState.query));
   document.querySelector('.message-composer')?.addEventListener('submit', (event) => {
     event.preventDefault();
     const input = event.currentTarget.querySelector('input');
@@ -3060,6 +3234,16 @@ async function requestGuideRoute(naverMaps, container, scene, requestId) {
     const query = destination.trim() || '경복궁';
     let end = null;
 
+    if (activePlaceSelection?.place?.name === query) {
+      if (!naverMaps) throw new Error('국내 장소 지도에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.');
+      const { origin, place, route } = activePlaceSelection;
+      const start = { ...origin, walkingRoute: route };
+      end = place;
+      const map = createNaverMap(naverMaps, container, scene, end);
+      await requestNaverTransitRoute(naverMaps, map, start, end, isCurrent, instruction);
+      return;
+    }
+
     if (naverMaps && (automaticEntranceQuery(query) || (routeOrigin && (automaticEntranceQuery(routeOrigin)
       || entranceDescriptor(routeOrigin)?.kind === 'station-exit')))) {
       if (instruction) instruction.textContent = '출구별 실제 도보 거리와 경로를 비교하고 있어요.';
@@ -3156,12 +3340,22 @@ function startVoiceDestination() {
     const spokenDestination = event.results[0]?.[0]?.transcript?.trim();
     if (!spokenDestination) return;
     const nearby = parseNearbyStopRequest(spokenDestination);
-    if (nearby) nearbyStopRequest = nearby;
-    else {
+    if (nearby) {
+      nearbyStopRequest = nearby;
+      activePlaceSelection = null;
+    } else if (isPlaceSearchRequest(spokenDestination)) {
+      activeDestinationRecognition = null;
+      recognition.stop();
+      voiceSearchOpen = false;
+      voiceSearchState = 'idle';
+      openNearbyPlaceSearch(spokenDestination);
+      return;
+    } else {
       const parsed = parseRouteRequest(spokenDestination);
       destination = parsed.destination;
       routeOrigin = parsed.origin;
       routeLanguage = parsed.language;
+      activePlaceSelection = null;
     }
     activeDestinationRecognition = null;
     recognition.stop();
@@ -3221,6 +3415,7 @@ function goBack() {
 }
 
 render();
+
 
 
 
