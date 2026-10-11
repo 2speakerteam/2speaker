@@ -526,7 +526,7 @@ function guideScreen() {
   const loading = english ? 'Finding a route...' : '경로를 확인하고 있어요.';
   return `<main class="screen guide-screen">
     <header class="guide-header">
-      <button class="guide-control" data-action="back" aria-label="검색 결과로 돌아가기">${icon('back', 34)}</button>
+      <button class="guide-control" data-action="back" aria-label="뒤로 가기">${icon('back', 34)}</button>
       <strong>2SPEAKER</strong>
       <button class="guide-control" data-page="language" aria-label="설정">${icon('settings', 30)}</button>
     </header>
