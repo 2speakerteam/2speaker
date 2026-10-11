@@ -35,7 +35,7 @@ async function main() {
   const guideScreenStart = mainSource.indexOf('function guideScreen()');
   const guideScreenEnd = mainSource.indexOf('\nfunction nearbyScreen()', guideScreenStart);
   const guideScreen = mainSource.slice(guideScreenStart, guideScreenEnd);
-  assert.match(guideScreen, /data-action="back" aria-label="검색 결과로 돌아가기"/, 'the guide screen has a back button');
+  assert.match(guideScreen, /data-action="back" aria-label="뒤로 가기"/, 'the guide screen has a back button');
 
   const modelProviderPath = require.resolve('../api/lib/model-provider');
   const modelProvider = require(modelProviderPath);
