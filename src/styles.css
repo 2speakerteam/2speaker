@@ -215,6 +215,10 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .bubble { width: min(84%, 460px); margin: 0; padding: 14px 19px; border: 1px solid; border-radius: 25px; font-size: clamp(16px, 3.8vw, 20px); line-height: 1.4; }
 .bubble.question { justify-self: start; border-color: #168cff; background: linear-gradient(135deg, rgba(14, 89, 177, .82), rgba(17, 70, 134, .6)); border-bottom-left-radius: 5px; }
 .bubble.answer { justify-self: end; border-color: #14f4dd; background: linear-gradient(135deg, rgba(0, 139, 145, .88), rgba(0, 84, 92, .7)); border-bottom-right-radius: 5px; }
+.places-dialogue { margin-top: 24px; gap: 18px; }
+.places-dialogue .bubble { width: min(92%, 540px); padding: 18px 24px; border-radius: 30px; font-size: clamp(19px, 4.4vw, 23px); line-height: 1.45; }
+.places-dialogue .bubble.question { border-bottom-left-radius: 6px; }
+.places-dialogue .bubble.answer { border-bottom-right-radius: 6px; }
 
 .nearby-panorama { max-width: 620px; margin: 16px auto 0; overflow: hidden; border: 1px solid rgba(49, 206, 255, .55); border-radius: 20px; background: rgba(2, 39, 61, .96); scroll-margin-top: 12px; }
 .nearby-panorama[hidden] { display: none; }
