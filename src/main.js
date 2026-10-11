@@ -217,14 +217,14 @@ async function runNearbyPlaceSearch(query) {
   try {
     let criteria = placeInterpretCache.get(query);
     if (!criteria) {
-      const interpretResponse = await fetch('/api/places/search', {
+      const parseResponse = await fetch('/api/places/search', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ action: 'interpret', query })
       });
-      const interpretation = await interpretResponse.json().catch(() => ({}));
-      if (!interpretResponse.ok || !interpretation.criteria) throw new Error(interpretation.error || '검색 조건을 이해하지 못했어요.');
-      criteria = interpretation.criteria;
+      const parsed = await parseResponse.json().catch(() => ({}));
+      if (!parseResponse.ok || !parsed.criteria) throw new Error(parsed.error || '검색 조건을 이해하지 못했어요.');
+      criteria = parsed.criteria;
       if (placeInterpretCache.size >= 64) placeInterpretCache.delete(placeInterpretCache.keys().next().value);
       placeInterpretCache.set(query, criteria);
     }
@@ -397,14 +397,12 @@ function routeScreen() {
 }
 
 function nearbyPlacesScreen() {
-  const { status, query, criteria, origin, places, error } = placeSearchState;
+  const { status, query, criteria, places, error } = placeSearchState;
   const statusCopy = status === 'loading'
-    ? 'Gemini가 요청을 이해하고 네이버·TMAP 결과를 확인하고 있어요.'
+    ? '주변 장소를 찾고 있어요.'
     : status === 'error'
       ? escapeHtml(error || '주변 장소를 찾지 못했어요.')
-      : places.length
-        ? `${escapeHtml(origin?.name || criteria?.originName || '출발지')} 기준 실제 도보 경로가 확인된 장소예요.`
-        : '요청한 도보 시간 안에 확인된 장소가 없어요. 시간을 늘리거나 기준 장소를 바꿔보세요.';
+      : '';
   const placeCards = places.map((place, index) => `<button class="place-result" type="button" data-place-index="${index}">
     <span class="place-result-main"><strong>${escapeHtml(place.name)}</strong><small>${escapeHtml(place.category || criteria?.categoryLabel || '')}</small><span>${escapeHtml(place.address || '주소 정보 없음')}</span></span>
     <span class="place-result-distance"><strong>${place.walkingMinutes}분</strong><small>${Number(place.walkingDistanceMeters || 0).toLocaleString()}m</small></span>
@@ -415,8 +413,8 @@ function nearbyPlacesScreen() {
       <article class="places-summary"><span class="places-kicker">요청</span><p>${escapeHtml(query)}</p>
         ${criteria ? `<div class="places-tags"><span>${escapeHtml(criteria.categoryLabel || criteria.category)}</span>${criteria.preference ? `<span>${escapeHtml(criteria.preference)}</span>` : ''}${criteria.walkingLimitMinutes ? `<span>도보 ${criteria.walkingLimitMinutes}분 이내</span>` : '<span>도보시간순 확인</span>'}</div>` : ''}
       </article>
-      <p class="places-status" role="status" aria-live="polite">${statusCopy}</p>
-      ${status === 'done' && places.length ? `<div class="places-map" id="places-map" aria-label="네이버 장소 지도"></div><p class="places-meter-note">검색 후보 최대 5곳의 도보시간을 TMAP으로 확인했어요.</p><div class="place-results" aria-label="장소 검색 결과">${placeCards}</div>` : ''}
+      ${status === 'loading' || status === 'error' ? `<p class="places-status" role="status" aria-live="polite">${statusCopy}</p>` : ''}
+      ${status === 'done' && places.length ? `<div class="places-map" id="places-map" aria-label="네이버 장소 지도"></div><div class="place-results" aria-label="장소 검색 결과">${placeCards}</div>` : ''}
       ${status === 'done' && !places.length ? '<div class="places-empty">다른 기준 장소나 더 긴 도보시간으로 다시 검색해 보세요.</div>' : ''}
       ${status === 'error' ? '<button class="places-retry" type="button" data-action="places-retry">다시 검색</button>' : ''}
     </section>
@@ -3415,7 +3413,6 @@ function goBack() {
 }
 
 render();
-
 
 
 

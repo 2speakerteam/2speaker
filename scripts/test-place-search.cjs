@@ -21,27 +21,31 @@ async function main() {
   const modelProviderPath = require.resolve('../api/lib/model-provider');
   const modelProvider = require(modelProviderPath);
   const originalGenerate = modelProvider.generateAssistantText;
-  let interpretedPrompt = '';
-  modelProvider.generateAssistantText = async ({ contents }) => {
-    interpretedPrompt = contents[0].parts[0].text;
-    return {
-      text: JSON.stringify({
-        category: 'lodging', originName: '안국역', useCurrentLocation: false,
-        walkingLimitMinutes: 10, preference: '조용한', sortBy: 'walking_time'
-      }),
-      provider: 'test', model: 'test-model'
-    };
-  };
+  let modelCalls = 0;
+  modelProvider.generateAssistantText = async () => { modelCalls += 1; throw new Error('place search must not call Gemini'); };
   const search = require('../api/places/search');
-  modelProvider.generateAssistantText = originalGenerate;
 
   const interpretation = await call(search, { action: 'interpret', query: '안국역에서 조용하고 도보 10분 안쪽 숙소 찾아줘' });
   assert.equal(interpretation.statusCode, 200);
-  assert.equal(interpretedPrompt, '안국역에서 조용하고 도보 10분 안쪽 숙소 찾아줘');
   assert.deepEqual(interpretation.body.criteria, {
     category: 'lodging', originName: '안국역', useCurrentLocation: false,
-    walkingLimitMinutes: 10, preference: '조용한', sortBy: 'walking_time'
+    walkingLimitMinutes: 10, preference: '조용한', sortBy: 'relevance'
   });
+  const simpleSearch = await call(search, { action: 'interpret', query: '안국역 근처 숙소 찾아줘' });
+  assert.equal(simpleSearch.statusCode, 200);
+  assert.deepEqual(simpleSearch.body.criteria, {
+    category: 'lodging', originName: '안국역', useCurrentLocation: false,
+    walkingLimitMinutes: null, preference: '', sortBy: 'relevance'
+  });
+  const nearbyCafe = await call(search, { action: 'interpret', query: '현재 위치 근처 카페 찾아줘' });
+  assert.equal(nearbyCafe.statusCode, 200);
+  assert.equal(nearbyCafe.body.criteria.category, 'cafe');
+  assert.equal(nearbyCafe.body.criteria.useCurrentLocation, true);
+  const closestCafe = await call(search, { action: 'interpret', query: '안국역 근처 가장 가까운 카페 찾아줘' });
+  assert.equal(closestCafe.body.criteria.originName, '안국역');
+  assert.equal(closestCafe.body.criteria.sortBy, 'walking_time');
+  assert.equal(modelCalls, 0, 'place-query interpretation must not call the AI provider');
+  modelProvider.generateAssistantText = originalGenerate;
   assert.equal((await call(search, { action: 'interpret', query: '' })).statusCode, 400);
   assert.equal((await call(search, {}, 'GET')).statusCode, 405);
 
@@ -127,11 +131,10 @@ async function main() {
     else process.env[key] = value;
   }
 
-  console.log('PASS: Gemini intent parsing (mocked), NAVER local search (mocked), TMAP walking-time filtering (mocked), route payload, caching, and validation');
+  console.log('PASS: rule-based place parsing (no Gemini), NAVER local search (mocked), TMAP walking-time filtering (mocked), route payload, caching, and validation');
 }
 
 main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
-
