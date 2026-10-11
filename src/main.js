@@ -2340,17 +2340,37 @@ function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
   // not a surveyed ground anchor; uncertain/off-screen placements are suppressed.
   const at = (side, forward) => [east + Math.sin(heading) * forward + Math.cos(heading) * side,
     north + Math.cos(heading) * forward - Math.sin(heading) * side];
+  const projectGround = (e, n) => {
+    const right = e * Math.cos(pan) - n * Math.sin(pan);
+    const ahead = e * Math.sin(pan) + n * Math.cos(pan);
+    const depth = ahead * Math.cos(tilt) - 2.4 * Math.sin(tilt);
+    const up = -2.4 * Math.cos(tilt) - ahead * Math.sin(tilt);
+    if (depth < 3) return null;
+    return [width / 2 + focal * right / depth, height / 2 - focal * up / depth];
+  };
   let polygon = [[-.32,8],[.32,8],[.32,11],[.95,11],[0,13],[-.95,11],[-.32,11]].map(p=>at(...p));
   let tipIndex = 4;
   let usesRoutePath = false;
   if (approach || routeAheadCue) {
     const sourcePath = routeAheadCue ? photo.routeTrace : frame.turnPath;
-    const routePath = Array.isArray(sourcePath) && sourcePath.length >= 5
+    let routePath = Array.isArray(sourcePath) && sourcePath.length >= 5
       ? sourcePath.map(point => [
         (point[0] - capture[0]) * Math.cos(capture[1] * radians) * 111320,
         (point[1] - capture[1]) * 111320
       ]) : null;
     if (routePath?.every(point => point.every(Number.isFinite))) {
+      // A correct route can start behind the camera, or its path ribbon can
+      // touch the panorama edge. Keep the contiguous route segment that is in
+      // front of the camera; the SVG will clip/fit the remaining visible cue.
+      let bestStart = -1, bestEnd = -1, runStart = -1;
+      routePath.forEach((point, i) => {
+        if (projectGround(...point)) {
+          if (runStart < 0) runStart = i;
+          if (i - runStart > bestEnd - bestStart) { bestStart = runStart; bestEnd = i; }
+        } else runStart = -1;
+      });
+      if (bestStart < 0 || bestEnd - bestStart + 1 < 5) return null;
+      routePath = routePath.slice(bestStart, bestEnd + 1);
       // Lay the arrow directly over geographic walking-route coordinates so its
       // shaft follows the sidewalk bend instead of a guessed right-angle elbow.
       const right = [], left = [];
@@ -2405,20 +2425,28 @@ function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
       tipIndex = right.length + 1;
     }
   }
-  const projectGround = (e, n) => {
-    const right = e * Math.cos(pan) - n * Math.sin(pan);
-    const ahead = e * Math.sin(pan) + n * Math.cos(pan);
-    const depth = ahead * Math.cos(tilt) - 2.4 * Math.sin(tilt);
-    const up = -2.4 * Math.cos(tilt) - ahead * Math.sin(tilt);
-    if (depth < 3) return null;
-    return [width / 2 + focal * right / depth, height / 2 - focal * up / depth];
-  };
   const projected = polygon.map(([e, n]) => projectGround(e, n));
   if (projected.some(p => !p || !p.every(Number.isFinite))) return null;
   if (usesRoutePath) {
-    // Keep the cue on the actual path; fitting a bent arrow to screen margins
-    // would distort the turn and move it away from the sidewalk.
-    if (projected.some(([x, y]) => x < 0 || x > width || y < 0 || y > height)) return null;
+    // Keep the bend fixed to the route corner (or the route-ahead arrowhead)
+    // while shrinking only enough to keep the visible path inside the image.
+    const fitOrigin = routeAheadCue ? projected[tipIndex] : projectGround(east, north);
+    if (!fitOrigin || fitOrigin[0] < 14 || fitOrigin[0] > width - 14
+        || fitOrigin[1] < 18 || fitOrigin[1] > height - 6) return null;
+    let fit = 1;
+    for (const point of projected) {
+      for (let axis = 0; axis < 2; axis += 1) {
+        const delta = point[axis] - fitOrigin[axis];
+        const min = axis === 0 ? 14 : 18, max = axis === 0 ? width - 14 : height - 6;
+        if (delta > 0) fit = Math.min(fit, (max - fitOrigin[axis]) / delta);
+        else if (delta < 0) fit = Math.min(fit, (min - fitOrigin[axis]) / delta);
+      }
+    }
+    if (fit < .12) return null;
+    if (fit < 1) for (const point of projected) {
+      point[0] = fitOrigin[0] + (point[0] - fitOrigin[0]) * fit;
+      point[1] = fitOrigin[1] + (point[1] - fitOrigin[1]) * fit;
+    }
     return projected.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ');
   }
   let anchorPixel = null;
