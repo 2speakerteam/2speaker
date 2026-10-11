@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 
 function responseRecorder() {
   return {
@@ -18,6 +19,14 @@ async function call(handler, body, method = 'POST') {
 }
 
 async function main() {
+  const mainSource = fs.readFileSync(require.resolve('../src/main.js'), 'utf8');
+  const placesScreenStart = mainSource.indexOf('function nearbyPlacesScreen()');
+  const placesScreenEnd = mainSource.indexOf('\nfunction guideScreen()', placesScreenStart);
+  const placesScreen = mainSource.slice(placesScreenStart, placesScreenEnd);
+  assert.ok(placesScreenStart >= 0 && placesScreenEnd > placesScreenStart, 'nearby place screen source is present');
+  assert.doesNotMatch(placesScreen, /places-summary|<span class="places-kicker">요청<\/span>/, 'the searched request is not repeated on the results screen');
+  assert.ok(placesScreen.indexOf('class="places-map"') < placesScreen.indexOf('class="place-results"'), 'the map is shown before the place list');
+
   const modelProviderPath = require.resolve('../api/lib/model-provider');
   const modelProvider = require(modelProviderPath);
   const originalGenerate = modelProvider.generateAssistantText;

@@ -78,11 +78,6 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .route-submit { color: white; background: linear-gradient(135deg, #08a6ce, #0b7fa8); }
 .route-submit[hidden] { display: none; }
 .places-body { margin-top: 22px; padding-bottom: 112px; }
-.places-summary { padding: 20px 20px 18px; border: 1px solid rgba(31, 168, 219, .5); border-radius: 20px; background: rgba(4, 48, 78, .48); }
-.places-kicker { color: var(--cyan); font-size: 14px; }
-.places-summary p { margin: 8px 0 0; color: white; font-size: clamp(18px, 4.8vw, 23px); line-height: 1.45; overflow-wrap: anywhere; }
-.places-tags { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 14px; }
-.places-tags span { padding: 6px 10px; border: 1px solid rgba(31, 168, 219, .45); border-radius: 999px; color: #c7e7f6; background: rgba(0, 38, 66, .6); font-size: 13px; }
 .places-status { min-height: 44px; margin: 15px 4px 12px; color: #c7e7f6; font-size: 15px; line-height: 1.5; }
 .places-map { width: 100%; height: clamp(210px, 32vh, 310px); overflow: hidden; border: 1px solid rgba(31, 168, 219, .55); border-radius: 20px; background: rgba(4, 48, 78, .6); }
 .places-meter-note { margin: 10px 4px 8px; color: var(--muted); font-size: 12px; }

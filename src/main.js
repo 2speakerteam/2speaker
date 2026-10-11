@@ -397,7 +397,7 @@ function routeScreen() {
 }
 
 function nearbyPlacesScreen() {
-  const { status, query, criteria, places, error } = placeSearchState;
+  const { status, criteria, places, error } = placeSearchState;
   const statusCopy = status === 'loading'
     ? '주변 장소를 찾고 있어요.'
     : status === 'error'
@@ -410,9 +410,6 @@ function nearbyPlacesScreen() {
   return `<main class="screen content-screen places-screen">
     ${header('주변 장소 찾기')}
     <section class="page-body places-body">
-      <article class="places-summary"><span class="places-kicker">요청</span><p>${escapeHtml(query)}</p>
-        ${criteria ? `<div class="places-tags"><span>${escapeHtml(criteria.categoryLabel || criteria.category)}</span>${criteria.preference ? `<span>${escapeHtml(criteria.preference)}</span>` : ''}${criteria.walkingLimitMinutes ? `<span>도보 ${criteria.walkingLimitMinutes}분 이내</span>` : '<span>도보시간순 확인</span>'}</div>` : ''}
-      </article>
       ${status === 'loading' || status === 'error' ? `<p class="places-status" role="status" aria-live="polite">${statusCopy}</p>` : ''}
       ${status === 'done' && places.length ? `<div class="places-map" id="places-map" aria-label="네이버 장소 지도"></div><div class="place-results" aria-label="장소 검색 결과">${placeCards}</div>` : ''}
       ${status === 'done' && !places.length ? '<div class="places-empty">다른 기준 장소나 더 긴 도보시간으로 다시 검색해 보세요.</div>' : ''}
