@@ -20,6 +20,7 @@ async function call(handler, body, method = 'POST') {
 
 async function main() {
   const mainSource = fs.readFileSync(require.resolve('../src/main.js'), 'utf8');
+  const styleSource = fs.readFileSync(require.resolve('../src/styles.css'), 'utf8');
   const placesScreenStart = mainSource.indexOf('function nearbyPlacesScreen()');
   const placesScreenEnd = mainSource.indexOf('\nfunction guideScreen()', placesScreenStart);
   const placesScreen = mainSource.slice(placesScreenStart, placesScreenEnd);
@@ -27,6 +28,7 @@ async function main() {
   assert.ok(placesScreen.includes('class="bubble question">${escapeHtml(query || \'\')}</p>'), 'the original place-search request appears in a conversation bubble');
   assert.ok(placesScreen.includes('class="bubble answer">${escapeHtml(originName)} 주변 ${places.length}개의 ${escapeHtml(categoryLabel)}${categoryParticle} 찾았습니다.</p>'), 'the conversation reply reports the dynamic result count and category');
   assert.ok(placesScreen.indexOf('class="place-results"') < placesScreen.indexOf('class="guide-dialogue places-dialogue"'), 'the conversation bubbles follow the place cards at the bottom');
+  assert.ok(styleSource.includes('.places-dialogue .bubble { width: min(92%, 540px); padding: 18px 24px; border-radius: 30px; font-size: clamp(19px, 4.4vw, 23px); line-height: 1.45; }'), 'place-search bubbles are larger and more prominent than regular guide bubbles');
   assert.match(placesScreen, /\$\{escapeHtml\(originName\)\} 주변 \$\{places\.length\}개의 \$\{escapeHtml\(categoryLabel\)\}\$\{categoryParticle\} 찾았습니다\./, 'the result count, place category, and Korean particle are dynamic');
   assert.match(mainSource, /function koreanObjectParticle\(word\)/, 'the result sentence uses a Korean object particle appropriate to the category');
   assert.ok(placesScreen.indexOf('class="places-map"') < placesScreen.indexOf('class="places-result-summary"'), 'the result summary is directly under the map');
