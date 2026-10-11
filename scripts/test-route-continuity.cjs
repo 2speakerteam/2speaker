@@ -154,6 +154,17 @@ const farJunctionArrow = sandbox.walkPreviewTurnArrow(farJunctionApproach,[127,3
 assert.ok(farJunctionArrow,'57 m ahead instruction still shows a forward cue on the visible walking path');
 assert.equal(sandbox.walkPreviewTurnArrow(farJunctionApproach,[127,37+13/111320],
   farJunctionPhoto,{pan:180,tilt:0,fov:75},600,300),null,'route cue stays hidden when the camera faces away from the path');
+// The screenshot's wording is produced by an ordinary straight scene with a
+// nextDecision, so cover that path as well as the explicit approach frame.
+const currentStraightPoint = [127,37+23/111320];
+const distantStraightFrame = {phase:'straight',position:currentStraightPoint,ahead:[127,37+25/111320],
+  meters:23,total:130,focusMeters:null,nextDecision:{meters:80,direction:'straight'},
+  junctionCue:false,important:false,turnAngle:0,description:''};
+assert.equal(sandbox.walkPreviewStepInstruction(distantStraightFrame),'약 57m 앞 갈림길에서도 직진하세요.');
+const currentStraightPhoto = sandbox.walkPreviewPhotoContext(currentStraightPoint,distantStraightFrame,farNorthRoute);
+assert.ok(currentStraightPhoto && currentStraightPhoto.offset<1 && currentStraightPhoto.routeTrace.length>=8);
+assert.ok(sandbox.walkPreviewTurnArrow(distantStraightFrame,currentStraightPoint,currentStraightPhoto,
+  {pan:0,tilt:0,fov:75},600,300),'the screenshot-style 57 m instruction keeps its arrow on the current path');
 // Desktop zoom / a short browser window can make the panorama wider and shorter.
 // A shaft touching the bottom safe margin must not hide its visible arrowhead.
 for (const [width,height] of [[478,198],[747,311],[338,198],[600,300]]) {
