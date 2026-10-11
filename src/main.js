@@ -217,14 +217,14 @@ async function runNearbyPlaceSearch(query) {
   try {
     let criteria = placeInterpretCache.get(query);
     if (!criteria) {
-      const response = await fetch('/api/places/interpret', {
+      const interpretResponse = await fetch('/api/places/search', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ query })
+        body: JSON.stringify({ action: 'interpret', query })
       });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok || !payload.criteria) throw new Error(payload.error || '검색 조건을 이해하지 못했어요.');
-      criteria = payload.criteria;
+      const interpretation = await interpretResponse.json().catch(() => ({}));
+      if (!interpretResponse.ok || !interpretation.criteria) throw new Error(interpretation.error || '검색 조건을 이해하지 못했어요.');
+      criteria = interpretation.criteria;
       if (placeInterpretCache.size >= 64) placeInterpretCache.delete(placeInterpretCache.keys().next().value);
       placeInterpretCache.set(query, criteria);
     }
@@ -3415,6 +3415,7 @@ function goBack() {
 }
 
 render();
+
 
 
 

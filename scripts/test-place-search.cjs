@@ -32,18 +32,18 @@ async function main() {
       provider: 'test', model: 'test-model'
     };
   };
-  const interpret = require('../api/places/interpret');
+  const search = require('../api/places/search');
   modelProvider.generateAssistantText = originalGenerate;
 
-  const interpretation = await call(interpret, { query: '안국역에서 조용하고 도보 10분 안쪽 숙소 찾아줘' });
+  const interpretation = await call(search, { action: 'interpret', query: '안국역에서 조용하고 도보 10분 안쪽 숙소 찾아줘' });
   assert.equal(interpretation.statusCode, 200);
   assert.equal(interpretedPrompt, '안국역에서 조용하고 도보 10분 안쪽 숙소 찾아줘');
   assert.deepEqual(interpretation.body.criteria, {
     category: 'lodging', originName: '안국역', useCurrentLocation: false,
     walkingLimitMinutes: 10, preference: '조용한', sortBy: 'walking_time'
   });
-  assert.equal((await call(interpret, { query: '' })).statusCode, 400);
-  assert.equal((await call(interpret, {}, 'GET')).statusCode, 405);
+  assert.equal((await call(search, { action: 'interpret', query: '' })).statusCode, 400);
+  assert.equal((await call(search, {}, 'GET')).statusCode, 405);
 
   const previousEnv = {
     clientId: process.env.NAVER_API_HUB_CLIENT_ID,
@@ -53,7 +53,6 @@ async function main() {
   process.env.NAVER_API_HUB_CLIENT_ID = 'mock-client-id';
   process.env.NAVER_API_HUB_API_KEY = 'mock-api-key';
   process.env.TMAP_TRANSIT_API_KEY = 'mock-tmap-key';
-  const search = require('../api/places/search');
   const requests = [];
   global.fetch = async (input, init = {}) => {
     const url = new URL(String(input));
@@ -135,3 +134,4 @@ main().catch((error) => {
   console.error(error);
   process.exitCode = 1;
 });
+
