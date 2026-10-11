@@ -25,7 +25,17 @@ async function main() {
   const placesScreen = mainSource.slice(placesScreenStart, placesScreenEnd);
   assert.ok(placesScreenStart >= 0 && placesScreenEnd > placesScreenStart, 'nearby place screen source is present');
   assert.doesNotMatch(placesScreen, /places-summary|<span class="places-kicker">요청<\/span>/, 'the searched request is not repeated on the results screen');
-  assert.ok(placesScreen.indexOf('class="places-map"') < placesScreen.indexOf('class="place-results"'), 'the map is shown before the place list');
+  assert.match(placesScreen, /\$\{escapeHtml\(originName\)\} 주변 \$\{places\.length\}개의 \$\{escapeHtml\(categoryLabel\)\}\$\{categoryParticle\} 찾았습니다\./, 'the result count, place category, and Korean particle are dynamic');
+  assert.match(mainSource, /function koreanObjectParticle\(word\)/, 'the result sentence uses a Korean object particle appropriate to the category');
+  assert.ok(placesScreen.indexOf('class="places-map"') < placesScreen.indexOf('class="places-result-summary"'), 'the result summary is directly under the map');
+  assert.ok(placesScreen.indexOf('class="places-result-summary"') < placesScreen.indexOf('class="place-results"'), 'the map summary is shown before the place list');
+  assert.match(placesScreen, /id="places-roadview"[\s\S]*data-action="place-roadview-map"[\s\S]*data-action="place-roadview-route"/, 'the place roadview has map and route actions');
+  assert.match(mainSource, /maps\.Event\.addListener\(marker, 'click', \(\) => showPlaceRoadview\(index\)\)/, 'map markers open the matching place roadview');
+  assert.match(mainSource, /button\.addEventListener\('click', \(\) => showPlaceRoadview\(Number\(button\.dataset\.placeIndex\)\)\)/, 'place cards open the matching place roadview');
+  const guideScreenStart = mainSource.indexOf('function guideScreen()');
+  const guideScreenEnd = mainSource.indexOf('\nfunction nearbyScreen()', guideScreenStart);
+  const guideScreen = mainSource.slice(guideScreenStart, guideScreenEnd);
+  assert.match(guideScreen, /data-action="back" aria-label="뒤로 가기"/, 'the guide screen has a back button');
 
   const modelProviderPath = require.resolve('../api/lib/model-provider');
   const modelProvider = require(modelProviderPath);
