@@ -107,6 +107,18 @@ assert.equal(sandbox.walkPreviewTurnArrow(arrowFrame,origin,arrowPhoto,arrowPov,
 console.log('PASS: road-plane turn and connecting cues, snapped-camera anchoring, endpoint/uncertain/offscreen suppression');
 const junctionPoint=[127,37+10/111320];
 const approachArrow={...arrowFrame,phase:'approach',position:origin,turnPosition:junctionPoint,turnAhead:[127+14/88804,junctionPoint[1]]};
+const routeTurnPath=side=>Array.from({length:11},(_,i)=>{
+  const offset=i-5;
+  return offset<=0
+    ? [junctionPoint[0],junctionPoint[1]+offset/111320]
+    : [junctionPoint[0]+(side==='right'?1:-1)*offset/88804,junctionPoint[1]];
+});
+const rightWalkingArrow=sandbox.walkPreviewTurnArrow({...approachArrow,turnPath:routeTurnPath('right')},
+  origin,arrowPhoto,arrowPov,600,300).split(' ').map(p=>p.split(',').map(Number));
+const leftWalkingArrow=sandbox.walkPreviewTurnArrow({...approachArrow,turnPath:routeTurnPath('left')},
+  origin,arrowPhoto,arrowPov,600,300).split(' ').map(p=>p.split(',').map(Number));
+assert.ok(rightWalkingArrow[10][0]>300 && leftWalkingArrow[10][0]<300,
+  'walking arrowhead follows the exact route polyline for right/left turns');
 assert.ok(sandbox.walkPreviewTurnArrow(approachArrow,origin,arrowPhoto,arrowPov,600,300),'intersection approach shows a bent directional cue before turning');
 const compactArrow=sandbox.walkPreviewTurnArrow(approachArrow,origin,arrowPhoto,arrowPov,600,300).split(' ').map(p=>p.split(',').map(Number));
 assert.ok(compactArrow.length>15,'turn shaft has a rounded bend');
