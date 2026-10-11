@@ -104,6 +104,12 @@ function escapeHtml(value) {
   })[character]);
 }
 
+function koreanObjectParticle(word) {
+  const lastCode = String(word || '').trim().slice(-1).charCodeAt(0);
+  const hasFinalConsonant = lastCode >= 0xac00 && lastCode <= 0xd7a3 && (lastCode - 0xac00) % 28 !== 0;
+  return hasFinalConsonant ? '을' : '를';
+}
+
 function parseNearbyStopRequest(raw) {
   const input = String(raw ?? '').trim().replace(/\s+/g, ' ');
   const taxi = /택시\s*(?:승강장|정류장|타는\s*곳)|taxi\s*(?:stand|rank)/i.test(input);
@@ -366,7 +372,7 @@ async function showPlaceRoadview(index) {
       viewer.style.visibility = 'visible';
       const photoDate = panorama.getLocation()?.photodate;
       status.textContent = photoDate
-        ? \`선택한 장소 주변의 로드뷰예요 · 촬영: \${photoDate}\`
+        ? `선택한 장소 주변의 로드뷰예요 · 촬영: ${photoDate}`
         : '선택한 장소 주변의 로드뷰예요. 화면을 움직여 둘러보세요.';
     });
   } catch {
@@ -485,12 +491,13 @@ function nearbyPlacesScreen() {
   </button>`).join('');
   const originName = origin?.name || criteria?.originName || '주변';
   const categoryLabel = criteria?.categoryLabel || criteria?.category || '장소';
+  const categoryParticle = koreanObjectParticle(categoryLabel);
   return `<main class="screen content-screen places-screen">
     ${header('주변 장소 찾기')}
     <section class="page-body places-body">
       ${status === 'loading' || status === 'error' ? `<p class="places-status" role="status" aria-live="polite">${statusCopy}</p>` : ''}
-      \${status === 'done' && places.length ? \`<div class="places-map" id="places-map" aria-label="네이버 장소 지도"></div>
-        <p class="places-result-summary" role="status">\${escapeHtml(originName)} 주변 \${places.length}개의 \${escapeHtml(categoryLabel)}를 찾았습니다.</p>
+      ${status === 'done' && places.length ? `<div class="places-map" id="places-map" aria-label="네이버 장소 지도"></div>
+        <p class="places-result-summary" role="status">${escapeHtml(originName)} 주변 ${places.length}개의 ${escapeHtml(categoryLabel)}${categoryParticle} 찾았습니다.</p>
         <section class="places-roadview" id="places-roadview" aria-label="선택한 장소 로드뷰" hidden>
           <div class="places-roadview-view" id="places-roadview-view" aria-label="선택한 장소 주변의 실제 거리 모습"></div>
           <div class="places-roadview-controls">
@@ -498,7 +505,7 @@ function nearbyPlacesScreen() {
             <div><button type="button" data-action="place-roadview-map">지도보기</button><button type="button" data-action="place-roadview-route">길찾기</button></div>
           </div>
         </section>
-        <div class="place-results" aria-label="장소 검색 결과">\${placeCards}</div>\` : ''}
+        <div class="place-results" aria-label="장소 검색 결과">${placeCards}</div>` : ''}
       ${status === 'done' && !places.length ? '<div class="places-empty">다른 기준 장소나 더 긴 도보시간으로 다시 검색해 보세요.</div>' : ''}
       ${status === 'error' ? '<button class="places-retry" type="button" data-action="places-retry">다시 검색</button>' : ''}
     </section>
