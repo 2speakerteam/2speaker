@@ -2034,6 +2034,13 @@ function walkPreviewFrames(paths, maneuvers = []) {
       cueAhead: phase === 'straight' ? pointAt(Math.min(total, unique.find(item => item.meters > meters)?.meters ?? total, meters + 35)) : null,
       turnPosition: event ? pointAt(event.meters) : null,
       turnAhead: event ? pointAt(Math.min(total, event.nextMeters ?? total, event.meters + 14)) : null,
+      // Preserve the actual walking path through this bend; a generic elbow can
+      // point across a block when the footpath curves instead of making a sharp turn.
+      turnPath: event ? Array.from({ length: 11 }, (_, i) => {
+        const start = Math.max(0, event.meters - 5);
+        const end = Math.min(total, event.meters + 5);
+        return pointAt(start + (end - start) * i / 10);
+      }) : null,
       direction: event?.direction || 'straight', description: event?.description || '',
       important: Boolean(event) || junctionCue, focusMeters: event?.meters ?? null, turnAngle: Math.abs(event?.delta || 0),
       holdMs: event ? (phase === 'turn' ? 1600 : 850) : junctionCue ? 750 : (phase === 'start' || phase === 'arrival' ? 1800 : 400) });
@@ -2269,7 +2276,9 @@ function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
   // on the correct route and looking at the upcoming corner. Judge that photo
   // by its route projection and distance to the turn, not its sample offset.
   const routeAlignedTurnPhoto = Boolean((approach || frame?.phase === 'turn') && Number.isFinite(photoBeforeTurn)
-    && photoBeforeTurn >= -3 && photoBeforeTurn <= 35 && photo.lateral <= 18);
+    && photoBeforeTurn >= -3 && photoBeforeTurn <= 35
+    // On foot, do not trust a panorama across another block or far from the path.
+    && photo.offset > 20 && photo.offset <= 30 && photo.lateral <= 12);
   if ((!approach && !connecting && frame?.phase !== 'turn') || (!connecting && frame.turnAngle < 35 && !junction) || frame.landmark || !capture
       || !photo || (photo.nearby && !routeAlignedTurnPhoto)
       || (!routeAlignedTurnPhoto && (photo.offset > (connecting ? 20 : 18) || photo.lateral > 12
@@ -2287,7 +2296,7 @@ function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
   // Actual corner cues retain their geographic anchor.
   const east = connecting ? 0 : (anchor[0] - capture[0]) * Math.cos(capture[1] * radians) * 111320;
   const north = connecting ? 0 : (anchor[1] - capture[1]) * 111320;
-  if (Math.hypot(east, north) > (routeAlignedTurnPhoto ? 38 : 25)
+  if (Math.hypot(east, north) > (routeAlignedTurnPhoto ? 30 : 25)
       || walkPreviewDistance(anchor, target) < (approach ? 4 : 13)) return null;
   const pan = pov.pan * radians, tilt = pov.tilt * radians;
   const focal = width / (2 * Math.tan(Math.max(20, Math.min(100, pov.fov)) * radians / 2));
@@ -2297,29 +2306,67 @@ function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
     north + Math.cos(heading) * forward - Math.sin(heading) * side];
   let polygon = [[-.32,8],[.32,8],[.32,11],[.95,11],[0,13],[-.95,11],[-.32,11]].map(p=>at(...p));
   let tipIndex = 4;
+  let usesRoutePath = false;
   if (approach) {
-    const incoming = walkPreviewBearing(frame.position, anchor) * radians;
-    const vi = [Math.sin(incoming),Math.cos(incoming)], vo = [Math.sin(heading),Math.cos(heading)];
-    if (1 + vi[0]*vo[0] + vi[1]*vo[1] < .25) return null;
-    // Compact rounded elbow: equal-length legs, no long miter or stretched tip.
-    const center = [east,north], curveStart = center.map((v,i)=>v-vi[i]*.9);
-    const curveEnd = center.map((v,i)=>v+vo[i]*.9);
-    const left = [], right = [];
-    const edge = (p,tangent) => {
-      const length = Math.hypot(...tangent);
-      const normal = [tangent[1]/length,-tangent[0]/length];
-      left.push(p.map((v,i)=>v-normal[i]*.25));
-      right.push(p.map((v,i)=>v+normal[i]*.25));
-    };
-    edge(center.map((v,i)=>v-vi[i]*2.4),vi);
-    for (let step=0;step<=6;step+=1) {
-      const t=step/6;
-      edge(center.map((_,i)=>(1-t)**2*curveStart[i]+2*(1-t)*t*center[i]+t*t*curveEnd[i]),
-        center.map((_,i)=>(1-t)*(center[i]-curveStart[i])+t*(curveEnd[i]-center[i])));
+    const routePath = Array.isArray(frame.turnPath) && frame.turnPath.length >= 5
+      ? frame.turnPath.map(point => [
+        (point[0] - capture[0]) * Math.cos(capture[1] * radians) * 111320,
+        (point[1] - capture[1]) * 111320
+      ]) : null;
+    if (routePath?.every(point => point.every(Number.isFinite))) {
+      // Lay the arrow directly over geographic walking-route coordinates so its
+      // shaft follows the sidewalk bend instead of a guessed right-angle elbow.
+      const right = [], left = [];
+      const tangents = routePath.map((point, i) => {
+        const before = routePath[Math.max(0, i - 1)];
+        const after = routePath[Math.min(routePath.length - 1, i + 1)];
+        const dx = after[0] - before[0], dy = after[1] - before[1];
+        const length = Math.hypot(dx, dy);
+        return length > 0 ? [dx / length, dy / length] : null;
+      });
+      if (tangents.some(tangent => !tangent)) return null;
+      const arrowBase = routePath.length - 3;
+      for (let i = 0; i <= arrowBase; i += 1) {
+        const [dx, dy] = tangents[i], halfWidth = .42;
+        const normal = [-dy, dx];
+        right.push([routePath[i][0] - normal[0] * halfWidth, routePath[i][1] - normal[1] * halfWidth]);
+        left.push([routePath[i][0] + normal[0] * halfWidth, routePath[i][1] + normal[1] * halfWidth]);
+      }
+      const [dx, dy] = tangents[arrowBase], normal = [-dy, dx];
+      const base = routePath[arrowBase], tip = routePath.at(-1), headWidth = 1.25;
+      polygon = [
+        ...right,
+        [base[0] - normal[0] * headWidth, base[1] - normal[1] * headWidth],
+        tip,
+        [base[0] + normal[0] * headWidth, base[1] + normal[1] * headWidth],
+        ...left.reverse()
+      ];
+      tipIndex = polygon.indexOf(tip);
+      usesRoutePath = true;
+    } else {
+      const incoming = walkPreviewBearing(frame.position, anchor) * radians;
+      const vi = [Math.sin(incoming),Math.cos(incoming)], vo = [Math.sin(heading),Math.cos(heading)];
+      if (1 + vi[0]*vo[0] + vi[1]*vo[1] < .25) return null;
+      // Fallback for older frames without an explicit walking-route trace.
+      const center = [east,north], curveStart = center.map((v,i)=>v-vi[i]*.9);
+      const curveEnd = center.map((v,i)=>v+vo[i]*.9);
+      const left = [], right = [];
+      const edge = (p,tangent) => {
+        const length = Math.hypot(...tangent);
+        const normal = [tangent[1]/length,-tangent[0]/length];
+        left.push(p.map((v,i)=>v-normal[i]*.25));
+        right.push(p.map((v,i)=>v+normal[i]*.25));
+      };
+      edge(center.map((v,i)=>v-vi[i]*2.4),vi);
+      for (let step=0;step<=6;step+=1) {
+        const t=step/6;
+        edge(center.map((_,i)=>(1-t)**2*curveStart[i]+2*(1-t)*t*center[i]+t*t*curveEnd[i]),
+          center.map((_,i)=>(1-t)*(center[i]-curveStart[i])+t*(curveEnd[i]-center[i])));
+      }
+      edge(at(0,1.5),vo);
+      polygon = [...right,at(.65,1.5),at(0,2.7),at(-.65,1.5),...left.reverse()];
+      tipIndex = right.length + 1;
     }
-    edge(at(0,1.5),vo);
-    polygon = [...right,at(.65,1.5),at(0,2.7),at(-.65,1.5),...left.reverse()];
-    tipIndex = right.length + 1;
   }
   const projectGround = (e, n) => {
     const right = e * Math.cos(pan) - n * Math.sin(pan);
@@ -2331,6 +2378,12 @@ function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
   };
   const projected = polygon.map(([e, n]) => projectGround(e, n));
   if (projected.some(p => !p || !p.every(Number.isFinite))) return null;
+  if (usesRoutePath) {
+    // Keep the cue on the actual path; fitting a bent arrow to screen margins
+    // would distort the turn and move it away from the sidewalk.
+    if (projected.some(([x, y]) => x < 0 || x > width || y < 0 || y > height)) return null;
+    return projected.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ');
+  }
   let anchorPixel = null;
   if (approach) {
     // Keep the bend pinned to the actual route corner while fitting its legs.
