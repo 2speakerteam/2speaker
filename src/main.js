@@ -2288,8 +2288,12 @@ function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
   const connecting = frame?.phase === 'straight' && frame.junctionCue === true;
   const junction = frame?.important && /교차로|사거리|삼거리|갈림길|갈래길|분기|횡단보도/.test(frame.description || '');
   const focusMeters = Number.isFinite(frame?.focusMeters) ? frame.focusMeters : frame?.meters;
-  const photoBeforeTurn = Number.isFinite(photo?.meters) && Number.isFinite(focusMeters)
-    ? focusMeters - photo.meters : Infinity;
+  // A normal connecting scene can describe the next instruction before it
+  // becomes an explicit approach frame. Use that decision's route measure too.
+  const decisionMeters = approach && Number.isFinite(frame.focusMeters) ? frame.focusMeters
+    : Number.isFinite(frame?.nextDecision?.meters) ? frame.nextDecision.meters : focusMeters;
+  const photoBeforeTurn = Number.isFinite(photo?.meters) && Number.isFinite(decisionMeters)
+    ? decisionMeters - photo.meters : Infinity;
   // A panorama can be more than 20 m from the sampled frame while still being
   // on the correct route and looking at the upcoming corner. Judge that photo
   // by its route projection and distance to the turn, not its sample offset.
@@ -2301,12 +2305,14 @@ function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
   // over this panorama's own route trace. The trace is grounded in the selected
   // walking path and the camera must be close to that path, so the cue remains
   // useful without pretending the distant junction is already under the camera.
-  const routeAheadCue = Boolean(approach && frame?.important && Number.isFinite(photoBeforeTurn)
+  const routeAheadInstruction = Boolean((approach && frame?.important)
+    || (frame?.phase === 'straight' && Number.isFinite(frame?.nextDecision?.meters)));
+  const routeAheadCue = Boolean(routeAheadInstruction && Number.isFinite(photoBeforeTurn)
     && photoBeforeTurn > 35 && photoBeforeTurn <= 120
-    && Number.isFinite(photo?.meters) && photo.offset > 20 && photo.offset <= 80
-    && photo.lateral <= 12 && Array.isArray(photo.routeTrace) && photo.routeTrace.length >= 8);
+    && Number.isFinite(photo?.meters) && photo.offset <= 80 && photo.lateral <= 12
+    && Array.isArray(photo?.point) && Array.isArray(photo.routeTrace) && photo.routeTrace.length >= 8);
   const trustedRoutePhoto = routeAlignedTurnPhoto || routeAheadCue;
-  if ((!approach && !connecting && frame?.phase !== 'turn')
+  if ((!approach && !connecting && frame?.phase !== 'turn' && !routeAheadCue)
       || (!connecting && !routeAheadCue && frame.turnAngle < 35 && !junction)
       || frame.landmark || !capture || !photo || (photo.nearby && !trustedRoutePhoto)
       || (!trustedRoutePhoto && (photo.offset > (connecting ? 20 : 18) || photo.lateral > 12
@@ -2337,7 +2343,7 @@ function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
   let polygon = [[-.32,8],[.32,8],[.32,11],[.95,11],[0,13],[-.95,11],[-.32,11]].map(p=>at(...p));
   let tipIndex = 4;
   let usesRoutePath = false;
-  if (approach) {
+  if (approach || routeAheadCue) {
     const sourcePath = routeAheadCue ? photo.routeTrace : frame.turnPath;
     const routePath = Array.isArray(sourcePath) && sourcePath.length >= 5
       ? sourcePath.map(point => [
