@@ -312,10 +312,46 @@ async function routeToLodgingFront(start, place, isCurrent) {
   return route;
 }
 
+function trimWalkingRouteAtFront(route, place) {
+  if (!route?.paths?.length || !place?.arrivalView) return null;
+  const preview = walkPreviewFrames(route.paths,route.maneuvers);
+  const front = walkPreviewLodgingFrontFrames(preview,place,route.paths).at(-1);
+  const routeTotal = preview.at(-1)?.meters;
+  if (!front?.lodgingFront || !(front.meters >= 2) || !(front.meters < routeTotal - 5)
+      || walkPreviewDistance(front.position,place.arrivalView.position) > 45) return null;
+  let traveled = 0;
+  const paths = [];
+  for (const path of route.paths) {
+    const kept = [path[0]];
+    for (let i = 1; i < path.length; i += 1) {
+      const length = walkPreviewDistance(path[i-1],path[i]);
+      if (traveled + length >= front.meters) {
+        const fraction = length ? Math.max(0,Math.min(1,(front.meters-traveled)/length)) : 0;
+        const point = path[i-1].map((value,axis) => value + (path[i][axis]-value)*fraction);
+        if (walkPreviewDistance(kept.at(-1),point) > 0.2) kept.push(point);
+        if (kept.length > 1) paths.push(kept);
+        const trimmed = {...route,paths,totalDistance:Math.round(front.meters),
+          totalTime:Math.max(1,Math.round(Number(route.totalTime)*front.meters/routeTotal))};
+        return walkPreviewFrames(trimmed.paths,trimmed.maneuvers).length ? trimmed : null;
+      }
+      kept.push(path[i]);
+      traveled += length;
+    }
+    if (kept.length > 1) paths.push(kept);
+  }
+  return null;
+}
+
 async function prepareLodgingArrival(maps, start, place, isCurrent) {
   if (!isLodgingPlace(place)) return;
   await ensureLodgingArrivalView(maps, place);
   if (!isCurrent()) return;
+  const existingFrontRoute = trimWalkingRouteAtFront(start.walkingRoute,place);
+  if (existingFrontRoute) {
+    start.walkingRoute = existingFrontRoute;
+    place.arrivalAtFront = true;
+    return;
+  }
   const frontRoute = await routeToLodgingFront(start, place, isCurrent);
   if (frontRoute && isCurrent()) {
     start.walkingRoute = frontRoute;
@@ -3551,7 +3587,10 @@ function selectGuideTransport(mode, userInitiated = false) {
     clearRouteOverlays();
     const bounds = new maps.LatLngBounds();
     const startPoint = new maps.LatLng(start.latitude, start.longitude);
-    const endPoint = new maps.LatLng(end.latitude, end.longitude);
+    const walkingEnd = end.arrivalAtFront ? choice.paths.at(-1)?.at(-1) : null;
+    const endPoint = walkingEnd
+      ? new maps.LatLng(walkingEnd[1],walkingEnd[0])
+      : new maps.LatLng(end.latitude, end.longitude);
     bounds.extend(startPoint);
     bounds.extend(endPoint);
     for (const coordinates of choice.paths) {
@@ -3635,7 +3674,9 @@ async function requestNaverTransitRoute(maps, map, start, end, isCurrent, instru
       if (endpointLabel) {
         endpointLabel.hidden = false;
         endpointLabel.textContent = walkPreviewRouteSummary(guideTransportContext, guideTransportRoutes.WALK);
-        if (!end.landmark) endpointLabel.textContent += english
+        if (end.arrivalAtFront) endpointLabel.textContent += english
+          ? ' · Stops at the lodging frontage' : ' · 숙소 앞 도로변에서 종료';
+        else if (!end.landmark) endpointLabel.textContent += english
           ? ' · Destination representative point; entrance not confirmed'
           : ' · 목적지 대표 위치 기준, 입구 미확인';
         endpointLabel.textContent += english ? ' · Signal waits may add time' : ' · 신호 대기 시간은 달라질 수 있어요';

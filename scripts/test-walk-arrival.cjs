@@ -62,6 +62,10 @@ vm.createContext(sandbox);
 vm.runInContext(source.slice(source.indexOf('function isLodgingPlace'),
   source.indexOf('async function ensureLodgingArrivalView')),sandbox);
 vm.runInContext(previewSource,sandbox);
+vm.runInContext(source.slice(source.indexOf('function trimWalkingRouteAtFront'),
+  source.indexOf('async function prepareLodgingArrival')),sandbox);
+vm.runInContext(source.slice(source.indexOf('async function prepareLodgingArrival'),
+  source.indexOf('async function findNamedLodging')),sandbox);
 
 const frames=sandbox.walkPreviewFrames(route,[]);
 const place={name:'테스트 호텔',longitude:point(100)[0],latitude:37};
@@ -94,6 +98,16 @@ assert.equal(sandbox.walkPreviewLodgingFrontFrames(frames,{...lodging,category:'
   'non-lodging routes retain the provider endpoint');
 assert.equal(sandbox.walkPreviewLodgingFrontFrames(frames,{...lodging,arrivalView:{panoId:'far',position:point(300)}},route),frames,
   'an unrelated lodging photo cannot cut the route');
+const trimmed=sandbox.trimWalkingRouteAtFront({paths:route,maneuvers:[],totalDistance:100,totalTime:600},lodging);
+assert.ok(trimmed,'the original walking path is reused when it passes the verified hotel front');
+assert.ok(Math.abs(sandbox.walkPreviewDistance(trimmed.paths.at(-1).at(-1),point(60)))<1);
+assert.ok(Math.abs(trimmed.totalDistance-60)<1);
+assert.ok(Math.abs(trimmed.totalTime-360)<10);
+assert.equal(sandbox.walkPreviewFrames(trimmed.paths,trimmed.maneuvers).at(-1).meters<65,true,
+  'route geometry ends at the lodging frontage, with no indoor tail');
+assert.equal(sandbox.trimWalkingRouteAtFront({paths:route,maneuvers:[],totalTime:600},
+  {...lodging,arrivalView:{panoId:'far',position:point(300)}}),null,
+  'a distant photograph must not shorten the route');
 const endpointPhoto={...lodging,arrivalView:{panoId:'terminal-front',position:point(98)}};
 assert.equal(sandbox.walkPreviewLodgingFrontFrames(frames,endpointPhoto,route).at(-1).verifiedView.panoId,
   'terminal-front','a verified hotel photo near the route end is not discarded');
@@ -190,4 +204,16 @@ for (const finalPhoto of ['street-front','changed']) {
   assert.equal(preview.message.textContent,'','extra guidance does not return');
   sandbox.stopWalkPreview(true);
 }
-console.log('PASS: verified lodging-front stop, origin context, final-photo and no-photo arrival, synchronized progress, no post-arrival regression');
+sandbox.ensureLodgingArrivalView=async()=>{};
+let reroutes=0;
+sandbox.routeToLodgingFront=async()=>{reroutes+=1;return null;};
+(async()=>{
+  const start={walkingRoute:{paths:route,maneuvers:[],totalDistance:100,totalTime:600}};
+  const selected={...lodging};
+  await sandbox.prepareLodgingArrival(maps,start,selected,()=>true);
+  assert.equal(reroutes,0,'a route already passing the hotel frontage is not recalculated');
+  assert.equal(selected.arrivalAtFront,true);
+  assert.ok(Math.abs(start.walkingRoute.totalDistance-60)<1);
+  assert.ok(Math.abs(sandbox.walkPreviewDistance(start.walkingRoute.paths.at(-1).at(-1),point(60)))<1);
+  console.log('PASS: verified lodging-front stop, origin context, reused walking route, synchronized progress, no post-arrival regression');
+})().catch(error=>{console.error(error);process.exitCode=1;});
