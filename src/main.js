@@ -3207,8 +3207,8 @@ function startWalkPreview(context, choice) {
     state.consecutiveTimeouts = timedOut && autoScanning ? state.consecutiveTimeouts + 1 : 0;
     if (autoScanning && state.consecutiveTimeouts >= 2) {
       state.finishMessage = state.english
-        ? 'Street-view responses timed out repeatedly. The preview stopped here; the destination is not confirmed. Select "Map view" for the remaining route.'
-        : '거리뷰 응답이 연속으로 지연되어 미리보기를 여기서 마쳤어요. 목적지 도착은 확인되지 않았어요. 남은 경로는 지도보기로 확인해 주세요.';
+        ? 'Street-view responses kept timing out, so the remaining sections were skipped. The preview has ended; the destination is not confirmed. Select "Map view" to check the remaining route.'
+        : '거리뷰 응답이 계속 늦어 남은 구간을 건너뛰고 미리보기를 마쳤어요. 목적지 도착은 확인되지 않았어요. 남은 경로는 지도보기로 확인해 주세요.';
       finishScan();
       return;
     }
@@ -3336,7 +3336,7 @@ function startWalkPreview(context, choice) {
     state.timer = setTimeout(() => {
       if (!valid() || !state.loading) return;
       unavailable(state.english ? 'Street view took too long. Check the map.' : '거리뷰 응답이 늦어요. 지도를 확인해 주세요.', true);
-    }, 9000);
+    }, 2500);
     try {
       {
         state.disposeLayer(state.pendingLayer);
