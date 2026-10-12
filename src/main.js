@@ -1694,6 +1694,15 @@ function automaticEntranceQuery(query) {
   return !entranceDescriptor(query) && (/(?:역|공원)$/.test(name) || /^(?:서울)?아차산$/.test(name));
 }
 
+function explicitBusStopLandmark(query) {
+  const label = String(query || '').trim();
+  // A generic place name is not evidence of a bus platform. Only preserve an
+  // explicitly named bus stop; never invent one from a nearby search origin.
+  if (!label || /택시\s*(?:승강장|정류장|타는\s*곳)/.test(label)) return null;
+  return /버스\s*(?:정류장|정류소|승강장|타는\s*곳)|(?:정류장|정류소)(?:\s*\([^)]*\))?$/i.test(label)
+    ? { kind:'bus-stop',label } : null;
+}
+
 async function pedestrianCandidates(query, maps, nearby) {
   if (!automaticEntranceQuery(query)) {
     const landmark = await resolvePedestrianLandmark(query);
