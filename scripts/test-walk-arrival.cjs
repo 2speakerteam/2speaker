@@ -218,6 +218,17 @@ sandbox.routeToLodgingFront=async()=>{reroutes+=1;return null;};
   assert.equal(selected.arrivalAtFront,true);
   assert.ok(Math.abs(start.walkingRoute.totalDistance-60)<1);
   assert.ok(Math.abs(sandbox.walkPreviewDistance(start.walkingRoute.paths.at(-1).at(-1),point(60)))<1);
+  const distantPhotoLodging={...place,category:'숙박>호텔',
+    arrivalView:{panoId:'side-street',position:[point(100)[0],37.0007]}};
+  const originalRoute={paths:route,maneuvers:[],totalDistance:100,totalTime:600};
+  const originalStart={walkingRoute:originalRoute};
+  await sandbox.prepareLodgingArrival(maps,originalStart,distantPhotoLodging,()=>true);
+  assert.equal(originalStart.walkingRoute,originalRoute,
+    'nearby lodging arrival keeps the original walking route when the photo is on another road');
+  assert.equal(distantPhotoLodging.arrivalAtFront,true);
+  assert.equal(reroutes,0,'a distant panorama cannot force a detour past a valid route endpoint');
+  assert.equal(sandbox.walkPreviewArrivalEndpoint(frames.at(-1),
+    {end:distantPhotoLodging},route),true,'the original endpoint remains a terminal arrival');
   sandbox.ensureLodgingArrivalView=realEnsureLodgingArrivalView;
   const endpointLodging={...place,category:'숙박>호텔',arrivalView:{panoId:'old-photo',position:point(20)}};
   fixtures=[{id:'route-end-photo',point:point(98)}];
