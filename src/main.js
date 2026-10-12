@@ -1,4 +1,5 @@
 const root = document.querySelector('#root');
+// Fail-safe for a panorama request that emits neither init nor an error status.
 const WALK_PANORAMA_TIMEOUT_MS = 2500;
 let currentPage = 'home';
 let destination = '';
@@ -2743,15 +2744,18 @@ function walkPreviewCameraPov(frame, photoContext, photoDate) {
 // Physical duplicate photographs are removed during playback, not by dropping connecting roads.
 function walkPreviewSceneFrames(frames) {
   const showArrow = new Set();
+  const approachMeters = [];
   const turnMeters = [];
   frames.forEach((frame, index) => {
+    const turnApproach = frame.phase === 'approach' && frame.turnAngle >= 35;
     const verifiedTurn = frame.phase === 'turn' && frame.turnAngle >= 35;
     const straightDecision = frame.phase === 'turn' && frame.direction === 'straight' && frame.important;
-    if ((!verifiedTurn && !straightDecision) || !Number.isFinite(frame.focusMeters)) return;
-    // One instruction can yield several nearby panorama samples. Bind its cue
-    // to the single actual decision frame instead of repeating it on approach.
-    if (turnMeters.some(meters => Math.abs(meters - frame.focusMeters) < 1)) return;
-    turnMeters.push(frame.focusMeters);
+    if ((!turnApproach && !verifiedTurn && !straightDecision) || !Number.isFinite(frame.focusMeters)) return;
+    // Show one forward pavement cue for the approach instruction and one
+    // turning cue at the decision itself. Dense samples must not repeat either.
+    const seenMeters = turnApproach ? approachMeters : turnMeters;
+    if (seenMeters.some(meters => Math.abs(meters - frame.focusMeters) < 1)) return;
+    seenMeters.push(frame.focusMeters);
     showArrow.add(index);
   });
   let junctionGroup = [];
@@ -2777,31 +2781,29 @@ function walkPreviewHoldBeforeNext(frame, nextFrame) {
   return departure || nextFrame?.important ? 1000 : frame.holdMs;
 }
 
-// A small ground-plane cue, not a screen-fixed direction icon. Use the actual
-// camera position and POV, so dragging/zooming cannot leave it pointing elsewhere.
+// Project a compact cue onto the photographed pavement, aligned to the route
+// direction visible in that same panorama instead of pinning it to screen center.
 // POV contract: navermaps.github.io/maps.js.ncp/docs/naver.maps.Panorama.html
-// A deliberately screen-sized guidance cue, not a surveyed line on the road.
-// Ground projection made the arrow shrink to a few pixels or disappear as the
-// camera/image changed; it also turned a left/right instruction into a tiny
-// straight arrow. The same photographed frame drives the text and this cue.
 function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
   const viewedFrame = walkPreviewPhotoFrame(frame, photo);
+  const turnApproach = viewedFrame?.phase === 'approach' && viewedFrame.turnAngle >= 35;
   const verifiedTurn = viewedFrame?.phase === 'turn' && viewedFrame.turnAngle >= 35;
   const straightDecision = viewedFrame?.phase === 'turn' && viewedFrame.direction === 'straight' && viewedFrame.important;
   const straightJunction = viewedFrame?.junctionCue && viewedFrame.direction === 'straight';
-  if ((!verifiedTurn && !straightDecision && !straightJunction) || viewedFrame.landmark || !capture
-      || !photo || photo.nearby || photo.offset > 18 || photo.lateral > 12
-      || photo.meters > frame.meters + 5 || !(width > 0 && height > 0)
+  if ((!turnApproach && !verifiedTurn && !straightDecision && !straightJunction)
+      || viewedFrame.landmark || !capture || !photo || photo.lateral > 12
+      || !(width > 0 && height > 0)
       || ![pov?.pan, pov?.tilt, pov?.fov].every(Number.isFinite)) return null;
   const radians = Math.PI / 180;
-  const heading = walkPreviewBearing(viewedFrame.position, viewedFrame.ahead) * radians;
-  const east = (viewedFrame.position[0] - capture[0]) * Math.cos(capture[1] * radians) * 111320;
-  const north = (viewedFrame.position[1] - capture[1]) * 111320;
-  if (Math.hypot(east, north) > 20 || walkPreviewDistance(viewedFrame.position, viewedFrame.ahead) < 13) return null;
+  const heading = (Number.isFinite(photo.heading)
+    ? photo.heading : walkPreviewBearing(viewedFrame.position, viewedFrame.ahead)) * radians;
+  // Anchor on the actual camera capture, not a route sample it may be tens of
+  // metres away from along the same street. This keeps the arrow on the visible road.
+  const east = 0, north = 0;
+  if (!turnApproach && walkPreviewDistance(viewedFrame.position, viewedFrame.ahead) < 13) return null;
   const pan = pov.pan * radians, tilt = pov.tilt * radians;
   const focal = width / (2 * Math.tan(Math.max(20, Math.min(100, pov.fov)) * radians / 2));
-  // Approximate flat pavement at camera height 2.4 m. This is a directional cue,
-  // not a surveyed ground anchor; uncertain/off-screen placements are suppressed.
+  // Approximate flat pavement at camera height 2.4 m; reject only genuinely offscreen projections.
   const polygon = [[-.32,8],[.32,8],[.32,11],[.95,11],[0,13],[-.95,11],[-.32,11]];
   const projected = polygon.map(([side, forward]) => {
     const e = east + Math.sin(heading) * forward + Math.cos(heading) * side;
@@ -2964,7 +2966,8 @@ function startWalkPreview(context, choice) {
   };
   const attachTurnArrow = (layer, frame, capture, photo, panoId) => {
     if (!frame.showTurnArrow
-        || !((frame.phase === 'turn' && (frame.turnAngle >= 35
+        || !((frame.phase === 'approach' && frame.turnAngle >= 35)
+          || (frame.phase === 'turn' && (frame.turnAngle >= 35
             || (frame.direction === 'straight' && frame.important)))
           || (frame.junctionCue && frame.direction === 'straight'))) {
       layer.arrowContext = null;

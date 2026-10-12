@@ -36,6 +36,7 @@ class Panorama {
       : (currentFixture.shift() || {id:'photo-'+instances.length, point:[options.position.lng(),options.position.lat()]});
     instances.push(this);
     timer(()=>this.emit('pano_changed'),1);
+    if (this.fixture.status) timer(()=>this.emit('pano_status',this.fixture.status),1);
     if (!this.fixture.hang) timer(()=>this.emit('init'),50);
   }
   emit(name,value) { for(const fn of this.listeners[name]||[]) fn(value); }
@@ -57,7 +58,8 @@ assert.equal(sandbox.walkPreviewHoldBeforeNext({phase:'approach',holdMs:850},{ph
 assert.equal(sandbox.walkPreviewHoldBeforeNext({phase:'turn',holdMs:1600},{phase:'straight'}),1600,'post-turn hold is unchanged when no further orientation follows');
 assert.equal(sandbox.walkPreviewHoldBeforeNext({phase:'straight',holdMs:400},{phase:'straight'}),400,'ordinary slide pacing unchanged');
 assert.equal(sandbox.walkPreviewHoldBeforeNext({phase:'straight',holdMs:750},{phase:'straight'}),750,'straight junction reading time unchanged');
-// Keep the original compact route-aligned arrow and show it once at the actual instruction.
+// Keep the compact route-aligned arrow on the pavement for both the approach
+// cue and the actual turn instruction.
 const arrowFrame={phase:'turn',direction:'left',turnAngle:90,position:origin,
   ahead:[127,37.00013],meters:81,focusMeters:81,total:601,
   nextDecision:{meters:81,direction:'left'}};
@@ -84,15 +86,15 @@ for(const direction of ['left','right']) {
   assert.ok(box.minX>=0&&box.maxX<=747&&box.minY>=0&&box.maxY<=311,
     'arrow stays inside the panorama');
 }
-assert.equal(sandbox.walkPreviewTurnArrow({...arrowFrame,phase:'approach'},origin,arrowPhoto,arrowPov,747,311),
-  null,'approach does not repeat the actual turn cue');
+assert.ok(sandbox.walkPreviewTurnArrow({...arrowFrame,phase:'approach'},origin,arrowPhoto,arrowPov,747,311),
+  'upcoming turn instructions show one forward arrow on the pavement');
 assert.equal(sandbox.walkPreviewTurnArrow({...arrowFrame,phase:'straight',direction:'straight',turnAngle:0},
   origin,arrowPhoto,arrowPov,747,311),null,'ordinary straight frames do not invent extra arrows');
 const straightJunction={...arrowFrame,phase:'straight',direction:'straight',turnAngle:0,junctionCue:true};
 assert.ok(sandbox.walkPreviewTurnArrow(straightJunction,origin,arrowPhoto,arrowPov,747,311),
   'one verified straight-through junction can show its forward cue');
-assert.equal(sandbox.walkPreviewTurnArrow(arrowFrame,origin,{...arrowPhoto,nearby:true},arrowPov,600,300),
-  null,'unverified nearby photographs do not carry a route arrow');
+assert.ok(sandbox.walkPreviewTurnArrow(arrowFrame,origin,{...arrowPhoto,nearby:true},arrowPov,600,300),
+  'route-aligned nearby photographs keep the pavement cue anchored to their actual camera position');
 assert.equal(sandbox.walkPreviewTurnArrow(arrowFrame,origin,arrowPhoto,{...arrowPov,pan:180},600,300),
   null,'arrow is hidden when the view faces away from the route');
 assert.equal(sandbox.walkPreviewTurnArrow(arrowFrame,origin,arrowPhoto,arrowPov,0,0),null);
@@ -101,8 +103,8 @@ const beforeTurnPhoto={...arrowPhoto,meters:76};
 const atTurnPhoto={...arrowPhoto,meters:81};
 const afterTurnPhoto={...arrowPhoto,meters:86};
 assert.match(sandbox.walkPreviewStepInstructionForPhoto(synchronizedTurn,beforeTurnPhoto),/약 5m 직진 후 좌회전/);
-assert.equal(sandbox.walkPreviewTurnArrow(synchronizedTurn,origin,beforeTurnPhoto,arrowPov,747,311),null,
-  'do not show the turn arrow while the same photo says to continue toward the turn');
+assert.ok(sandbox.walkPreviewTurnArrow(synchronizedTurn,origin,beforeTurnPhoto,arrowPov,747,311),
+  'show a forward pavement arrow while the same photo says to continue toward the turn');
 assert.match(sandbox.walkPreviewStepInstructionForPhoto(synchronizedTurn,atTurnPhoto),/여기서 좌회전/);
 assert.ok(sandbox.walkPreviewTurnArrow(synchronizedTurn,origin,atTurnPhoto,arrowPov,747,311),
   'show the route arrow when the visible photo and instruction reach the turn');
@@ -156,8 +158,8 @@ const exitApproach = exitApproachFrames.find(f=>f.phase==='approach' && Math.abs
 assert.ok(exitCorner.turnAngle>80 && Math.abs(exitCorner.meters-27.732)<.1,'early instruction must not erase real corner');
 assert.ok(exitApproach && exitApproach.direction==='left','preserve 12 m approach and show upcoming left turn');
 const exitPhoto = sandbox.walkPreviewPhotoContext(exitApproach.position,exitApproach,exitApproachPath);
-assert.equal(sandbox.walkPreviewTurnArrow(exitApproach,exitApproach.position,exitPhoto,
-  {pan:exitPhoto.heading,tilt:0,fov:75},600,300),null,'approach does not show the upcoming turn arrow early');
+assert.ok(sandbox.walkPreviewTurnArrow(exitApproach,exitApproach.position,exitPhoto,
+  {pan:exitPhoto.heading,tilt:0,fov:75},600,300),'approach shows a forward pavement arrow before the later corner');
 assert.equal(exitApproachFrames.filter(f=>f.phase==='turn').length,1,'no duplicate early turn');
 const oppositeInstruction = sandbox.walkPreviewFrames(exitApproachPath,[{
   position:exitApproachPath[0][1],description:'우회전 후 10m 이동',turnType:13
@@ -228,6 +230,20 @@ assert.equal(missing.loading,true);
 assert.equal(missing.instruction.textContent,'거리뷰가 없는 구간을 건너뛰는 중이에요.');
 sandbox.stopWalkPreview(true); while(tick()) {}
 assert.equal(missing.layers.size,0);
+
+// An explicit provider failure should advance immediately; the 2.5s watchdog
+// is only for a request that emits no status or initialization event at all.
+jobs.clear(); instances=[]; currentFixture=[
+  {id:'status-first',point:origin},
+  {id:'status-error',point:point(5),status:'ERROR'},
+  {id:'status-next',point:point(22)}
+]; now=0;
+const statusFailure=start(currentFixture);
+until(()=>statusFailure.history.length===1&&!statusFailure.loading);
+until(()=>statusFailure.skippedScenes===1);
+assert.ok(now<2500,'an explicit no-panorama response does not wait for the timeout watchdog');
+sandbox.stopWalkPreview(true); while(tick()) {}
+
 const closing = start([{id:'closing',point:point(0)}]);
 tick(); tick(); // Camera is settling, but the new scene has not been committed.
 assert.equal(closing.history.length,0);
@@ -429,10 +445,17 @@ sandbox.startWalkPreview({maps,map:{},english:false,requestId:1},{paths:corner,m
 const bend=sandbox.walkPreviewState;
 const turnIndex=bend.frames.findIndex(frame=>frame.phase==='turn');
 const departIndex=bend.frames.findIndex(frame=>frame.phase==='depart');
+const approachArrowIndex=bend.frames.findIndex(frame=>frame.phase==='approach'&&frame.showTurnArrow);
+assert.ok(approachArrowIndex>=0,'the upcoming maneuver selects exactly one approach photo for its forward arrow');
 bend.playing=false;
 clearTimeout(bend.timer);
 until(()=>!bend.loading);
-for(let target=1;target<turnIndex;target++) {
+for(let target=1;target<=approachArrowIndex;target++) {
+  bend.next.onclick();
+  until(()=>!bend.loading&&bend.index===target);
+}
+assert.equal(bend.activeLayer.turnArrow.hidden,false,'approach instruction displays the forward arrow on the road surface');
+for(let target=bend.index+1;target<turnIndex;target++) {
   bend.next.onclick();
   until(()=>!bend.loading&&bend.index===target);
 }
@@ -465,8 +488,10 @@ assert.deepEqual(Array.from(bend.history.filter(entry=>entry.panoId==='corner-ca
   ['approach','approach','turn','straight','depart'],'same-camera decision phases remain present');
 assert.equal(bend.frames.filter(frame=>frame.showTurnArrow&&frame.phase==='turn').length,1,
   'one turn instruction owns one arrow cue');
-assert.ok(bend.frames.filter(frame=>frame.phase==='approach').every(frame=>!frame.showTurnArrow),
-  'approach samples do not repeat the turn arrow');
+assert.equal(bend.frames.filter(frame=>frame.showTurnArrow&&frame.phase==='approach').length,1,
+  'one approach instruction owns one forward pavement cue');
+assert.ok(bend.frames.filter(frame=>frame.phase==='approach'&&!frame.showTurnArrow).length>0,
+  'other dense approach samples do not repeat the pavement cue');
 assert.ok(instances.some(instance=>instance.el.style.cssText.includes('450ms')),'gentle crossfade');
 sandbox.stopWalkPreview(true); while(tick()) {}
 // An unverified final roadview frame ends cleanly without an automatic map view or stale turn alert.
