@@ -1,4 +1,5 @@
 const root = document.querySelector('#root');
+const WALK_PANORAMA_TIMEOUT_MS = 2500;
 let currentPage = 'home';
 let destination = '';
 let routeOrigin = '';
@@ -311,7 +312,7 @@ async function ensureLodgingArrivalView(maps, place, routeEnd) {
       };
       maps.Event.addListener(panorama, 'init', capture);
       maps.Event.addListener(panorama, 'pano_status', status => status === 'OK' ? capture() : finish(null));
-      timeout = setTimeout(() => finish(null), 8000);
+      timeout = setTimeout(() => finish(null), WALK_PANORAMA_TIMEOUT_MS);
     });
   } catch { return previous; }
   finally { host.remove(); }
@@ -2784,18 +2785,19 @@ function walkPreviewHoldBeforeNext(frame, nextFrame) {
 // camera/image changed; it also turned a left/right instruction into a tiny
 // straight arrow. The same photographed frame drives the text and this cue.
 function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
-  const verifiedTurn = frame?.phase === 'turn' && frame.turnAngle >= 35;
-  const straightDecision = frame?.phase === 'turn' && frame.direction === 'straight' && frame.important;
-  const straightJunction = frame?.junctionCue && frame.direction === 'straight';
-  if ((!verifiedTurn && !straightDecision && !straightJunction) || frame.landmark || !capture
+  const viewedFrame = walkPreviewPhotoFrame(frame, photo);
+  const verifiedTurn = viewedFrame?.phase === 'turn' && viewedFrame.turnAngle >= 35;
+  const straightDecision = viewedFrame?.phase === 'turn' && viewedFrame.direction === 'straight' && viewedFrame.important;
+  const straightJunction = viewedFrame?.junctionCue && viewedFrame.direction === 'straight';
+  if ((!verifiedTurn && !straightDecision && !straightJunction) || viewedFrame.landmark || !capture
       || !photo || photo.nearby || photo.offset > 18 || photo.lateral > 12
       || photo.meters > frame.meters + 5 || !(width > 0 && height > 0)
       || ![pov?.pan, pov?.tilt, pov?.fov].every(Number.isFinite)) return null;
   const radians = Math.PI / 180;
-  const heading = walkPreviewBearing(frame.position, frame.ahead) * radians;
-  const east = (frame.position[0] - capture[0]) * Math.cos(capture[1] * radians) * 111320;
-  const north = (frame.position[1] - capture[1]) * 111320;
-  if (Math.hypot(east, north) > 20 || walkPreviewDistance(frame.position, frame.ahead) < 13) return null;
+  const heading = walkPreviewBearing(viewedFrame.position, viewedFrame.ahead) * radians;
+  const east = (viewedFrame.position[0] - capture[0]) * Math.cos(capture[1] * radians) * 111320;
+  const north = (viewedFrame.position[1] - capture[1]) * 111320;
+  if (Math.hypot(east, north) > 20 || walkPreviewDistance(viewedFrame.position, viewedFrame.ahead) < 13) return null;
   const pan = pov.pan * radians, tilt = pov.tilt * radians;
   const focal = width / (2 * Math.tan(Math.max(20, Math.min(100, pov.fov)) * radians / 2));
   // Approximate flat pavement at camera height 2.4 m. This is a directional cue,
@@ -3336,7 +3338,7 @@ function startWalkPreview(context, choice) {
     state.timer = setTimeout(() => {
       if (!valid() || !state.loading) return;
       unavailable(state.english ? 'Street view took too long. Check the map.' : '거리뷰 응답이 늦어요. 지도를 확인해 주세요.', true);
-    }, 2500);
+    }, WALK_PANORAMA_TIMEOUT_MS);
     try {
       {
         state.disposeLayer(state.pendingLayer);
