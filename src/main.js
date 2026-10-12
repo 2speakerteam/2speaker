@@ -2418,7 +2418,31 @@ function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
       direction === 'left' ? -side : side, forward
     ]);
   }
-  const projected = polygon.map(projectGround);
+  const centerForward = direction === 'straight' ? 10 : 9;
+  const size = .78;
+  const sized = polygon.map(([side, forward]) => [
+    side * size,
+    centerForward + (forward - centerForward) * size
+  ]);
+  const rounded = [];
+  for (let index = 0; index < sized.length; index += 1) {
+    const previous = sized[(index + sized.length - 1) % sized.length];
+    const current = sized[index];
+    const next = sized[(index + 1) % sized.length];
+    const previousLength = Math.hypot(previous[0] - current[0], previous[1] - current[1]);
+    const nextLength = Math.hypot(next[0] - current[0], next[1] - current[1]);
+    const radius = Math.min(.22, previousLength * .28, nextLength * .28);
+    const start = current.map((value, axis) => value + (previous[axis] - value) * radius / previousLength);
+    const finish = current.map((value, axis) => value + (next[axis] - value) * radius / nextLength);
+    rounded.push(start);
+    for (let step = 1; step < 4; step += 1) {
+      const t = step / 4;
+      rounded.push(start.map((value, axis) =>
+        (1 - t) ** 2 * value + 2 * (1 - t) * t * current[axis] + t ** 2 * finish[axis]));
+    }
+    rounded.push(finish);
+  }
+  const projected = rounded.map(projectGround);
   if (projected.some(point => !point || !point.every(Number.isFinite))) return null;
   return projected.map(point => point.map(value => value.toFixed(1)).join(',')).join(' ');
 }
