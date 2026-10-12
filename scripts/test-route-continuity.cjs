@@ -472,8 +472,9 @@ assert.equal(endedPreview.seek.value,endedPreview.seek.max,'fill the preview tim
 assert.match(endedPreview.progress.textContent,/로드뷰 미리보기 종료/,'show a terminal progress label, not a stale mid-route distance');
 sandbox.stopWalkPreview(true); while(tick()) {}
 
-// Two consecutive panorama timeouts should terminate the unresponsive tail,
-// clear the old instruction, and complete the slider without switching to map.
+// Two consecutive panorama timeouts should skip the remaining route and end
+// consistently, clear the old instruction, and complete the slider without
+// switching to map or pretending the destination was confirmed.
 jobs.clear(); instances=[]; currentFixture=[
   {id:'timeout-first',point:origin},
   {id:'timeout-a',point:point(5),hang:true},
@@ -484,7 +485,7 @@ const timeoutPreview=sandbox.walkPreviewState;
 until(()=>timeoutPreview.finished&&!timeoutPreview.playing&&!timeoutPreview.loading);
 assert.equal(timeoutPreview.history.length,1,'retain the last real street photograph');
 assert.equal(timeoutPreview.seek.value,timeoutPreview.seek.max,'finish the progress bar after repeated timeouts');
-assert.match(timeoutPreview.message.textContent,/거리뷰 응답이 연속으로 지연/,'explain timeout termination');
+assert.match(timeoutPreview.message.textContent,/남은 구간을 건너뛰고 미리보기를 마쳤어요/,'explain that the unavailable tail was skipped');
 assert.match(timeoutPreview.instruction.textContent,/목적지 도착은 확인되지 않았어요/,'remove the stale turn instruction after timeout');
 assert.notEqual(timeoutPreview.mapElement.style.visibility,'visible','timeout completion must not open map view');
 sandbox.stopWalkPreview(true); while(tick()) {}
