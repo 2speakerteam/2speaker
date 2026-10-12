@@ -2904,8 +2904,14 @@ function startWalkPreview(context, choice) {
   if (originLabel) {
     const start = context.start || {};
     const location = start.landmark?.label || frames[0]?.startLabel || start.name || '';
-    originLabel.hidden = !location;
-    originLabel.textContent = location ? (context.english ? `Start: ${location}` : `출발 위치 · ${location}`) : '';
+    const compactLocation = String(location)
+      .replace(/^(?:(?:출발 위치|입력한 출발지)\s*·\s*)+/, '')
+      .replace(/\s*\(\s*/g, '(')
+      .replace(/\s*\)/g, ')')
+      .replace(/\s+(앞|뒤|옆)$/, '$1')
+      .trim();
+    originLabel.hidden = !compactLocation;
+    originLabel.textContent = compactLocation ? (context.english ? `Start: ${compactLocation}` : compactLocation) : '';
   }
   state.close.hidden = false;
   state.originalInstruction = state.instruction ? { text:state.instruction.textContent,
@@ -3229,6 +3235,11 @@ function startWalkPreview(context, choice) {
           ? 'Skipping a section without a usable street view…'
           : '거리뷰가 없는 구간을 건너뛰는 중이에요.';
         state.message.style.display = '';
+        if (state.instruction) {
+          state.instruction.hidden = false;
+          state.instruction.style.minHeight = '3em';
+          state.instruction.textContent = state.message.textContent;
+        }
         updateProgress();
         updateButtons();
         state.timer = setTimeout(() => showFrame(state.index + 1), 80);

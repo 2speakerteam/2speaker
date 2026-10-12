@@ -154,6 +154,8 @@ console.log('PASS: early station-exit instruction retains approach cue and actua
 const css = fs.readFileSync(__dirname + '/../src/styles.css','utf8');
 assert.match(css,/\.walk-preview-panorama \{[^}]*z-index: 0;[^}]*isolation: isolate;/);
 assert.match(css,/\.walk-preview-map-button \{[^}]*z-index: 3;/);
+assert.match(css,/\.guide-screen \.route-visual > \.route-instruction \{[^}]*margin-top: 10px;/,
+  'route instruction stays below the map instead of covering it');
 // Nearby reverse-running parallel segment must not override the requested forward section.
 const loop = [[point(0),point(100),[point(100)[0],37.00004],[127,37.00004]]];
 const context = sandbox.walkPreviewPhotoContext([point(30)[0],37.000035],{position:point(30),meters:30,focusMeters:null,phase:'straight'},loop);
@@ -180,7 +182,7 @@ const firstInstruction = state.instruction.textContent;
 assert.equal(state.instruction.hidden,false);
 until(()=>state.duplicateScenes===1);
 assert.equal(state.message.textContent,firstMessage,'skip must not replace visible cue');
-assert.equal(state.instruction.textContent,firstInstruction,'pending or skipped image cannot change visible step instruction');
+assert.equal(state.instruction.textContent,firstInstruction,'a repeated panorama does not replace the cue for the visible photo');
 assert.equal(state.viewer.style.visibility,'visible');
 until(()=>state.finished && !state.playing && !state.loading);
 const ids = Array.from(state.history,x=>x.panoId);
@@ -210,6 +212,7 @@ const missing = start([{id:'a',point:point(0)},{id:'far',point:[128,38]},{id:'b'
 until(()=>missing.skippedScenes===1);
 assert.equal(missing.viewer.style.visibility,'visible');
 assert.equal(missing.loading,true);
+assert.equal(missing.instruction.textContent,'거리뷰가 없는 구간을 건너뛰는 중이에요.');
 sandbox.stopWalkPreview(true); while(tick()) {}
 assert.equal(missing.layers.size,0);
 const closing = start([{id:'closing',point:point(0)}]);
