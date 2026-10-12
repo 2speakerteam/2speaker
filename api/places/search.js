@@ -197,21 +197,6 @@ async function interpretRequest(req, res) {
   return res.status(200).json({ criteria: publicCriteria });
 }
 
-function lodgingNameKey(value) {
-  return cleanText(value, 150).toLocaleLowerCase().replace(/(?:찾아줘|찾아주세요|가는\s*길|길찾기|어떻게\s*가)/g, '')
-    .replace(/[^\p{L}\p{N}]/gu, '');
-}
-
-function resolveLodgingMatch(query, candidates) {
-  const target = lodgingNameKey(query);
-  if (target.length < 3) return null;
-  return candidates.find(place => {
-    if (!/숙박|호텔|호스텔|모텔|게스트하우스|펜션|리조트|민박|여관|hotel|hostel|motel/i.test(place.category)) return false;
-    const name = lodgingNameKey(place.name);
-    return name === target || (target.length >= 5 && (name.includes(target) || target.includes(name)));
-  }) || null;
-}
-
 module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') {
@@ -223,13 +208,6 @@ module.exports = async function handler(req, res) {
   const clientSecret = process.env.NAVER_API_HUB_API_KEY?.trim();
   const tmapAppKey = process.env.TMAP_CAR_API_KEY?.trim() || process.env.TMAP_TRANSIT_API_KEY?.trim();
   if (!clientId || !clientSecret) return res.status(503).json({ error: '네이버 API HUB 인증 정보(NAVER_API_HUB_CLIENT_ID/API_KEY)를 확인해 주세요.' });
-  if (req.body?.action === 'resolve-lodging') {
-    const query = typeof req.body.query === 'string' ? req.body.query.trim().slice(0, 120) : '';
-    if (!query) return res.status(400).json({ error: '숙소 이름을 확인해 주세요.' });
-    try {
-      return res.status(200).json({ place: resolveLodgingMatch(query, await searchNaver(query, clientId, clientSecret)) });
-    } catch (error) { return res.status(error.statusCode || 502).json({ error: error.message }); }
-  }
   if (!tmapAppKey) return res.status(503).json({ error: 'TMAP 도보 경로 키를 서버에서 찾지 못했어요.' });
 
   const criteria = validateCriteria(req.body?.criteria);
@@ -246,16 +224,13 @@ module.exports = async function handler(req, res) {
     const latitude = coordinate(currentLocation.latitude, 33, 39.5);
     const longitude = coordinate(currentLocation.longitude, 124, 132.5);
     if (latitude === null || longitude === null) return res.status(400).json({ error: '현재 위치를 확인할 수 없어요. 역이나 동네 이름을 함께 말해 주세요.' });
-    origin = { name: regionName || '현재 위치', originKind: 'gps', latitude, longitude };
+    origin = { name: regionName || '현재 위치', latitude, longitude };
   } else {
     if (!criteria.originName) return res.status(400).json({ error: '어디를 기준으로 찾을지 역이나 동네 이름을 말해 주세요.' });
     try {
       const anchors = await searchNaver(criteria.originName, clientId, clientSecret);
       if (!anchors.length) return res.status(404).json({ error: '출발 기준 장소를 네이버에서 찾지 못했어요. 역이나 동네 이름을 확인해 주세요.' });
-      // Keep the Naver match so a landmark is not later described as an
-      // unverified numbered subway exit.
-      origin = { name: criteria.originName, resolvedName: anchors[0].name, originKind: 'manual',
-        latitude: anchors[0].latitude, longitude: anchors[0].longitude };
+      origin = { name: criteria.originName, latitude: anchors[0].latitude, longitude: anchors[0].longitude };
     } catch (error) {
       return res.status(error.statusCode || 502).json({ error: error.message });
     }
