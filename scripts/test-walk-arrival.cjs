@@ -189,7 +189,8 @@ for(const frontPhoto of ['matching','changed']){
   assert.equal(preview.instruction.textContent,'테스트 호텔에 도착했어요.');
   assert.equal(preview.progress.textContent,'목적지 도착 완료');
   assert.equal(Number(preview.seek.value),Number(preview.seek.max));
-  assert.match(document.querySelector('#walk-preview-origin').textContent,/동대문 \(흥인지문\) 앞/);
+  assert.equal(document.querySelector('#walk-preview-origin').textContent,'동대문(흥인지문)앞',
+    'origin label shows only the place, without duplicate source prefix');
   assert.equal(preview.visual.classList.contains('walk-preview-map-fallback'),false);
   const index=preview.index;
   while(tick()){}
