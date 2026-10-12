@@ -124,6 +124,7 @@ async function main() {
   const result = await call(search, { criteria });
   assert.equal(result.statusCode, 200);
   assert.equal(result.body.origin.name, '안국역');
+  assert.equal(result.body.origin.resolvedName, '안국역', 'retain the actual Naver starting point');
   assert.equal(result.body.checkedCandidates, 2);
   assert.equal(result.body.places.length, 1, 'places over the requested walk-time limit are filtered out');
   assert.equal(result.body.places[0].name, '조용한 숙소 A', 'NAVER HTML markup is removed');
