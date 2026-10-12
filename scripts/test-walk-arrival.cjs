@@ -44,7 +44,7 @@ class Panorama {
     this.fixture=fixtures.shift() || {id:'photo-'+instances.length,
       point:[options.position.lng(),options.position.lat()]};
     instances.push(this);
-    timer(()=>this.emit('init'),50);
+    if(!this.fixture.hang) timer(()=>this.emit('init'),50);
   }
   emit(name,value){for(const listener of this.listeners[name]||[])listener(value);}
   getLocation(){return {coord:new LatLng(this.fixture.point[1],this.fixture.point[0]),photodate:'2026-06-01'};}
@@ -57,7 +57,7 @@ const maps={LatLng,Panorama,Event:{addListener(instance,name,listener){
   (instance.listeners[name] ||= []).push(listener);},clearInstanceListeners(instance){instance.listeners={};}}};
 const sandbox={document,window:{matchMedia:()=>({matches:true})},setTimeout:timer,
   clearTimeout:id=>jobs.delete(id),requestAnimationFrame:fn=>timer(fn,16),
-  currentPage:'guide',routeRequestToken:1,walkPreviewState:null,console};
+  currentPage:'guide',routeRequestToken:1,walkPreviewState:null,console,WALK_PANORAMA_TIMEOUT_MS:2500};
 vm.createContext(sandbox);
 vm.runInContext(source.slice(source.indexOf('function isLodgingPlace'),
   source.indexOf('async function ensureLodgingArrivalView')),sandbox);
@@ -189,7 +189,8 @@ for(const frontPhoto of ['matching','changed']){
   assert.equal(preview.instruction.textContent,'테스트 호텔에 도착했어요.');
   assert.equal(preview.progress.textContent,'목적지 도착 완료');
   assert.equal(Number(preview.seek.value),Number(preview.seek.max));
-  assert.match(document.querySelector('#walk-preview-origin').textContent,/동대문 \(흥인지문\) 앞/);
+  assert.equal(document.querySelector('#walk-preview-origin').textContent,'동대문(흥인지문)앞',
+    'origin label shows only the place, without duplicate source prefix');
   assert.equal(preview.visual.classList.contains('walk-preview-map-fallback'),false);
   const index=preview.index;
   while(tick()){}
@@ -304,6 +305,13 @@ sandbox.routeToLodgingFront=async()=>{reroutes+=1;return null;};
   assert.equal(endpointStart.walkingRoute.totalDistance,100,
     'the verified route endpoint needs no detour to an older panorama');
   assert.equal(reroutes,0);
+  jobs.clear();now=0;instances=[];
+  fixtures=[{id:'slow-hotel-photo',point:point(98),hang:true}];
+  const slowLodging={...place,category:'숙박>호텔'};
+  const lookupStart=now;
+  const slowLookup=sandbox.ensureLodgingArrivalView(maps,slowLodging,point(100));
+  while(tick()) await Promise.resolve();
+  assert.equal(now-lookupStart,2500,'an unavailable hotel panorama no longer holds route preparation for eight seconds');
+  assert.equal(await slowLookup,null,'a timed-out hotel panorama cleanly falls back without a stale arrival photo');
   console.log('PASS: verified lodging-front stop, origin context, reused walking route, early exterior arrival, missing-image skip, synchronized progress, no post-arrival regression');
 })().catch(error=>{console.error(error);process.exitCode=1;});
-
