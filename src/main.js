@@ -2301,9 +2301,51 @@ function walkPreviewCameraPov(frame, photoContext, photoDate) {
 // Dense route candidates, with slower approach/turn/departure frames.
 // Physical duplicate photographs are removed during playback, not by dropping connecting roads.
 function walkPreviewSceneFrames(frames) {
-  return frames.map((frame, sceneSlot) => ({ ...frame, sceneSlot }));
-}
+  const showArrow = new Set();
+  const maneuvers = frames.map((frame, index) => ({ frame, index }))
+    .filter(({ frame }) => frame.phase === 'turn' && Number.isFinite(frame.focusMeters));
+  let previousDecisionMeters = -Infinity;
+  for (const { frame: maneuver, index: turnIndex } of maneuvers) {
+    const decisionMeters = maneuver.focusMeters;
+    // Show the cue once when this instruction first becomes relevant, then
+    // once at the actual turn. Keep all the in-between panorama slides clean.
+    const earlyIndex = frames.findIndex((frame, index) => index < turnIndex
+      && frame.meters > previousDecisionMeters + 2
+      && frame.meters <= decisionMeters - 20
+      && !frame.landmark && ['straight', 'approach', 'depart'].includes(frame.phase)
+      && (Math.abs((frame.nextDecision?.meters ?? Infinity) - decisionMeters) < 2
+        || Math.abs((frame.focusMeters ?? Infinity) - decisionMeters) < 2));
+    if (earlyIndex >= 0) showArrow.add(earlyIndex);
+    showArrow.add(turnIndex);
+    previousDecisionMeters = decisionMeters;
+  }
 
+  // A confirmed straight-through junction has no turn frame; show its cue on
+  // the first and last panorama in that short junction window.
+  let junctionGroup = [];
+  const flushJunctionGroup = () => {
+    if (!junctionGroup.length) return;
+    showArrow.add(junctionGroup[0]);
+    if (junctionGroup.length > 1) showArrow.add(junctionGroup.at(-1));
+    junctionGroup = [];
+  };
+  frames.forEach((frame, index) => {
+    const nearTurn = maneuvers.some(({ frame: maneuver }) =>
+      Math.abs(frame.meters - maneuver.focusMeters) < 18);
+    if (frame.junctionCue && !nearTurn) junctionGroup.push(index);
+    else flushJunctionGroup();
+  });
+  flushJunctionGroup();
+
+  // On a route with no decision points, keep one forward cue at the start.
+  if (!showArrow.size) {
+    const firstStraight = frames.findIndex(frame => frame.phase === 'straight' && !frame.landmark);
+    if (firstStraight >= 0) showArrow.add(firstStraight);
+  }
+  return frames.map((frame, sceneSlot) => ({
+    ...frame, sceneSlot, showTurnArrow: showArrow.has(sceneSlot)
+  }));
+}
 function walkPreviewHoldBeforeNext(frame, nextFrame) {
   // Establish the exit/junction for one second before its next orientation.
   // Ordinary slides retain their original hold instead of advancing immediately.
@@ -2473,7 +2515,7 @@ function startWalkPreview(context, choice) {
     for (const layer of state.layers) if (layer.turnArrow) layer.turnArrow.hidden = true;
   };
   const attachTurnArrow = (layer, frame, capture, photo, panoId) => {
-    if (!['approach','turn','straight','depart'].includes(frame.phase)) {
+    if (!frame.showTurnArrow || !['approach','turn','straight','depart'].includes(frame.phase)) {
       layer.arrowContext = null;
       if (layer.turnArrow) layer.turnArrow.hidden = true;
       return;
