@@ -258,11 +258,15 @@ function isLodgingPlace(place) {
   return /숙박|호텔|호스텔|모텔|게스트하우스|펜션|리조트|민박|여관|hotel|hostel|motel/i.test(String(place?.category || ''));
 }
 
-async function ensureLodgingArrivalView(maps, place) {
+async function ensureLodgingArrivalView(maps, place, routeEnd) {
   if (!isLodgingPlace(place)) return null;
-  if (place.arrivalView?.panoId && Array.isArray(place.arrivalView.position)
-      && walkPreviewDistance(place.arrivalView.position,[place.longitude,place.latitude]) <= 120) return place.arrivalView;
-  if (!maps?.Panorama) return null;
+  const placePoint = [place.longitude,place.latitude];
+  const pathFront = Array.isArray(routeEnd) && routeEnd.every(Number.isFinite)
+    && walkPreviewDistance(routeEnd,placePoint) <= 60 ? routeEnd : null;
+  const previous = place.arrivalView?.panoId && Array.isArray(place.arrivalView.position)
+    && walkPreviewDistance(place.arrivalView.position,placePoint) <= 120 ? place.arrivalView : null;
+  if (previous && (!pathFront || walkPreviewDistance(previous.position,pathFront) <= 45)) return previous;
+  if (!maps?.Panorama) return previous;
   const host = document.createElement('div');
   host.style.cssText = 'position:fixed;left:-10000px;top:0;width:320px;height:180px;pointer-events:none';
   document.body.append(host);
@@ -277,15 +281,17 @@ async function ensureLodgingArrivalView(maps, place) {
         maps.Event.clearInstanceListeners(panorama);
         resolve(value);
       };
+      const target = pathFront || placePoint;
       const panorama = new maps.Panorama(host, {
-        position: new maps.LatLng(place.latitude, place.longitude), zoomControl: false, aroundControl: false
+        position: new maps.LatLng(target[1], target[0]), zoomControl: false, aroundControl: false
       });
       const capture = () => {
         const coord = panorama.getLocation()?.coord;
         const panoId = panorama.getPanoId?.();
         if (!panoId || !coord || !Number.isFinite(coord.lng()) || !Number.isFinite(coord.lat())) return;
         const position = [coord.lng(), coord.lat()];
-        if (walkPreviewDistance(position, [place.longitude, place.latitude]) > 120) return finish(null);
+        if (walkPreviewDistance(position,placePoint) > 120
+            || (pathFront && walkPreviewDistance(position,pathFront) > 55)) return finish(null);
         place.arrivalView = { panoId, position };
         finish(place.arrivalView);
       };
@@ -293,7 +299,7 @@ async function ensureLodgingArrivalView(maps, place) {
       maps.Event.addListener(panorama, 'pano_status', status => status === 'OK' ? capture() : finish(null));
       timeout = setTimeout(() => finish(null), 8000);
     });
-  } catch { return null; }
+  } catch { return previous; }
   finally { host.remove(); }
 }
 
@@ -344,11 +350,18 @@ function trimWalkingRouteAtFront(route, place) {
 
 async function prepareLodgingArrival(maps, start, place, isCurrent) {
   if (!isLodgingPlace(place)) return;
-  await ensureLodgingArrivalView(maps, place);
+  const originalEnd = start.walkingRoute?.paths?.at(-1)?.at(-1);
+  await ensureLodgingArrivalView(maps, place, originalEnd);
   if (!isCurrent()) return;
   const existingFrontRoute = trimWalkingRouteAtFront(start.walkingRoute,place);
   if (existingFrontRoute) {
     start.walkingRoute = existingFrontRoute;
+    place.arrivalAtFront = true;
+    return;
+  }
+  if (Array.isArray(originalEnd) && place.arrivalView?.position
+      && walkPreviewDistance(originalEnd,[place.longitude,place.latitude]) <= 45
+      && walkPreviewDistance(originalEnd,place.arrivalView.position) <= 45) {
     place.arrivalAtFront = true;
     return;
   }
