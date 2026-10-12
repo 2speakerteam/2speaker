@@ -190,8 +190,21 @@ function parseRouteRequest(raw) {
   return { origin: normalizeEntranceQuery(origin), destination: normalizeEntranceQuery(phrase || input), language };
 }
 
+function isExplicitRouteRequest(text) {
+  const query = String(text || '').trim();
+  if (/(길찾기|경로|가는\\s*(?:길|방법)|어떻게\\s*(?:가|찾아)|가려면|도보(?:로|시간)?|대중교통|(?:버스|지하철)\\s*타고|어디로\\s*가|\\b(?:directions?|route|how\\s+to\\s+get|walk(?:ing)?|by\\s+(?:bus|subway|transit))\\b)/i.test(query)) return true;
+  const parsed = parseRouteRequest(query);
+  const fromCurrentLocation = /^(?:여기서|이곳에서|현재\\s*위치에서|내\\s*위치에서|지금\\s*있는\\s*곳에서)\\s*/.test(query);
+  const englishFromTo = /\\bfrom\\s+.+?\\s+to\\s+.+|\\bto\\s+.+?\\s+from\\s+.+/i.test(query);
+  const placeSearchIntent = /(근처|주변|가까운|장소|공간|어디|어떤\\s*곳|조용한\\s*곳|찾아|검색|추천|알려\\s*줘|보여\\s*줘|있(?:을까요?|나요?|어요?|습니까\\??)|nearby|near\\s+me|around|place|find|search|recommend|show\\s+me|is\\s+there)/i;
+  // Place names can contain category words like "공원". A clear route must not
+  // be diverted into Naver's nearby-place search just because of that word.
+  return Boolean(parsed.origin || fromCurrentLocation || englishFromTo) && !placeSearchIntent.test(query);
+}
+
 function isPlaceSearchRequest(text) {
   const query = String(text || '').trim();
+  if (isExplicitRouteRequest(query)) return false;
   // A named hotel is a destination, not a request for nearby hotels.
   const genericLodgingRequest = /(?:근처|주변|가까운|추천|몇\s*곳|nearby|near\s+me|around)/i.test(query)
     || /역\s*(?:숙소|호텔|모텔|호스텔|게스트하우스)/.test(query)
@@ -3223,16 +3236,36 @@ function startWalkPreview(context, choice) {
     }
     // Keep the last confirmed scene while seeking, rather than flashing the map.
     const seeking = !state.revisiting && !state.directSeek && state.playing && state.index < frames.length - 1;
-    const lodgingFinal = frames.at(-1);
-    const nearLodgingFront = isLodgingPlace(state.end) && state.end.arrivalAtFront
-      && lodgingFinal && walkPreviewArrivalEndpoint(lodgingFinal,state,choice.paths)
-      && lodgingFinal.meters - frame.meters <= 35;
-    if (seeking && state.activeLayer && !missingLandmark
-        && (!frame.important || nearLodgingFront)) {
-      state.loading = true;
-      state.skippedScenes += 1;
+    if (seeking) {
+      // Keep playback on the last real panorama while skipping a missing scene.
+      // Map fallback is reserved for the route endpoint, never an autoplay gap.
+      state.visual.classList.remove('walk-preview-map-fallback');
+      state.mapElement.style.visibility = 'hidden';
+      state.mapElement.inert = true;
+      state.mapElement.setAttribute('aria-hidden', 'true');
+      state.fallbackMarker?.setMap(null);
+      state.fallbackMarker = null;
+      if (state.activeLayer && !missingLandmark) {
+        state.viewer.style.visibility = 'visible';
+        state.loading = true;
+        state.skippedScenes += 1;
+        updateButtons();
+        state.timer = setTimeout(() => showFrame(state.index + 1), 80);
+        return;
+      }
+      state.viewer.style.visibility = state.activeLayer ? 'visible' : 'hidden';
+      hideTurnArrows();
+      state.message.textContent = missingLandmark
+        ? `${missingLandmark.label} · ` + (state.english
+          ? 'Looking for the next available street view…'
+          : '다음 거리뷰가 있는 구간을 찾고 있어요.')
+        : (state.english ? 'Looking for the next available street view…' : '다음 거리뷰가 있는 구간을 찾고 있어요.');
+      state.message.style.display = '';
+      if (!state.activeLayer) updateInstruction(frame);
+      updateProgress();
       updateButtons();
-      state.timer = setTimeout(() => showFrame(state.index + 1), 80);
+      state.skippedScenes += 1;
+      state.timer = setTimeout(() => showFrame(state.index + 1), missingLandmark ? 3000 : frame.important ? 1400 : 350);
       return;
     }
     hideTurnArrows();
