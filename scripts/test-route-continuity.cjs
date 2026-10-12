@@ -67,8 +67,8 @@ assert.ok(arrowPoints.every(p=>p[1]>150 && p[1]<282),'ground cue is below horizo
 assert.ok(Math.max(...arrowPoints.map(p=>p[0]))-Math.min(...arrowPoints.map(p=>p[0]))<80,'small cue');
 assert.notEqual(sandbox.walkPreviewTurnArrow(arrowFrame,origin,arrowPhoto,{...arrowPov,pan:10},600,300),arrow,'cue follows view rotation');
 assert.equal(sandbox.walkPreviewTurnArrow(arrowFrame,origin,arrowPhoto,{...arrowPov,pan:180},600,300),null,'hide when target is behind camera');
-for(const phase of ['start','approach','depart','arrival']) assert.equal(sandbox.walkPreviewTurnArrow({...arrowFrame,phase},origin,arrowPhoto,arrowPov,600,300),null);
-assert.equal(sandbox.walkPreviewTurnArrow({...arrowFrame,phase:'straight',turnAngle:0},origin,arrowPhoto,arrowPov,600,300),null,'ordinary straight roads never show an arrow');
+for(const phase of ['start','approach','arrival']) assert.equal(sandbox.walkPreviewTurnArrow({...arrowFrame,phase},origin,arrowPhoto,arrowPov,600,300),null);
+assert.ok(sandbox.walkPreviewTurnArrow({...arrowFrame,phase:'straight',turnAngle:0},origin,arrowPhoto,arrowPov,600,300),'ordinary straight roads show a visible forward arrow');
 assert.equal(sandbox.walkPreviewTurnArrow({...arrowFrame,phase:'straight',junctionCue:true,turnAngle:0},origin,arrowPhoto,arrowPov,600,300),arrow,'confirmed straight-through junction gets the unchanged forward cue');
 const snappedPoint=[127,37+10/111320];
 const snappedStraight={...arrowFrame,phase:'straight',junctionCue:true,cueAhead:[127,37+30/111320]};
@@ -77,7 +77,7 @@ assert.ok(sandbox.walkPreviewTurnArrow(snappedStraight,snappedPoint,snappedPhoto
 assert.ok(sandbox.walkPreviewTurnArrow(snappedStraight,[snappedPoint[0]+10/88804,snappedPoint[1]],{...snappedPhoto,lateral:10,offset:15},arrowPov,600,300),'sidewalk offset does not push connecting direction cue off-screen');
 assert.equal(sandbox.walkPreviewTurnArrow({...snappedStraight,cueAhead:[127,37+15/111320]},snappedPoint,snappedPhoto,arrowPov,600,300),null,'snapped cue cannot extend across an upcoming corner');
 assert.equal(sandbox.walkPreviewTurnArrow({...arrowFrame,phase:'straight'},origin,{...arrowPhoto,nearby:true},arrowPov,600,300),null,'uncertain connecting scene never gets a guessed cue');
-assert.equal(sandbox.walkPreviewTurnArrow({...snappedStraight,phase:'depart'},snappedPoint,snappedPhoto,arrowPov,600,300),null,'cue disappears after leaving the junction even if its metadata remains');
+assert.ok(sandbox.walkPreviewTurnArrow({...snappedStraight,phase:'depart'},snappedPoint,snappedPhoto,arrowPov,600,300),'departure also shows a forward arrow');
 const verifiedCenter=[127.09204455377541,37.5516751937452];
 const junctionRoute=[[verifiedCenter.map((v,i)=>v+(i?-50/111320:0)),verifiedCenter.map((v,i)=>v+(i?50/111320:0))]];
 const junctionFrames=sandbox.walkPreviewFrames(junctionRoute,[]);
@@ -105,8 +105,32 @@ assert.equal(sandbox.walkPreviewTurnArrow(arrowFrame,origin,{...arrowPhoto,meter
 assert.equal(sandbox.walkPreviewTurnArrow({...arrowFrame,ahead:[127,37.00005]},origin,arrowPhoto,arrowPov,600,300),null,'do not project beyond next close junction');
 assert.equal(sandbox.walkPreviewTurnArrow(arrowFrame,origin,arrowPhoto,arrowPov,0,0),null);
 console.log('PASS: road-plane turn and connecting cues, snapped-camera anchoring, endpoint/uncertain/offscreen suppression');
+// A street-view camera can sit in a traffic lane while the walking route runs
+// along the sidewalk. The distant turn must not squeeze the arrow to an edge.
+const photoRoute = [[origin,[127,37+130/111320]]];
+const leftPhotoFrame = {phase:'approach',position:[127,37+70/111320],
+  ahead:[127,37+80/111320],turnPosition:[127,37+80/111320],
+  turnAhead:[127-14/88804,37+80/111320],direction:'left',turnAngle:90,
+  meters:70,focusMeters:80,total:130,important:true,description:'좌회전'};
+const farCapture=[127+10/88804,37+10/111320];
+const farPhoto=sandbox.walkPreviewPhotoContext(farCapture,leftPhotoFrame,photoRoute);
+assert.ok(farPhoto && farPhoto.lateral>6 && farPhoto.offset>50);
+const farCue=sandbox.walkPreviewTurnArrow(leftPhotoFrame,farCapture,farPhoto,arrowPov,600,300);
+assert.ok(farCue,'distant camera gets a forward cue instead of losing the arrow');
+const farXs=farCue.split(' ').map(point=>Number(point.split(',')[0]));
+assert.ok(Math.min(...farXs)>250 && Math.max(...farXs)<350,'forward cue stays in the road lane, not at the panorama edge');
+assert.equal(sandbox.walkPreviewStepInstructionForPhoto(leftPhotoFrame,farPhoto),
+  '약 70m 직진 후 좌회전하세요.','instruction distance reflects the photographed position');
+const nearCapture=[127+10/88804,37+70/111320];
+const nearPhoto=sandbox.walkPreviewPhotoContext(nearCapture,leftPhotoFrame,photoRoute);
+const nearCue=sandbox.walkPreviewTurnArrow(leftPhotoFrame,nearCapture,nearPhoto,arrowPov,600,300);
+assert.ok(nearCue,'nearby left corner keeps a visible bend');
+const nearPoints=nearCue.split(' ').map(point=>point.split(',').map(Number));
+assert.ok(nearPoints[5][0]<300,'left-turn arrowhead points left from the road lane');
+assert.equal(sandbox.walkPreviewStepInstructionForPhoto(leftPhotoFrame,nearPhoto),
+  '약 10m 직진 후 좌회전하세요.');
 const junctionPoint=[127,37+10/111320];
-const approachArrow={...arrowFrame,phase:'approach',position:origin,turnPosition:junctionPoint,turnAhead:[127+14/88804,junctionPoint[1]]};
+const approachArrow={...arrowFrame,phase:'approach',direction:'right',position:origin,turnPosition:junctionPoint,turnAhead:[127+14/88804,junctionPoint[1]]};
 const routeTurnPath=side=>Array.from({length:11},(_,i)=>{
   const offset=i-5;
   return offset<=0
@@ -117,14 +141,16 @@ const rightWalkingArrow=sandbox.walkPreviewTurnArrow({...approachArrow,turnPath:
   origin,arrowPhoto,arrowPov,600,300).split(' ').map(p=>p.split(',').map(Number));
 const leftWalkingArrow=sandbox.walkPreviewTurnArrow({...approachArrow,turnPath:routeTurnPath('left')},
   origin,arrowPhoto,arrowPov,600,300).split(' ').map(p=>p.split(',').map(Number));
-assert.ok(rightWalkingArrow[10][0]>300 && leftWalkingArrow[10][0]<300,
-  'walking arrowhead follows the exact route polyline for right/left turns');
+const leftCornerArrow=sandbox.walkPreviewTurnArrow({...approachArrow,direction:'left',turnAhead:[127-14/88804,junctionPoint[1]]},
+  origin,arrowPhoto,arrowPov,600,300).split(' ').map(p=>p.split(',').map(Number));
+assert.ok(rightWalkingArrow[10][0]>300 && leftCornerArrow[10][0]<300,
+  'compact arrowhead follows right/left turn direction');
 assert.ok(sandbox.walkPreviewTurnArrow(approachArrow,origin,arrowPhoto,arrowPov,600,300),'intersection approach shows a bent directional cue before turning');
 const compactArrow=sandbox.walkPreviewTurnArrow(approachArrow,origin,arrowPhoto,arrowPov,600,300).split(' ').map(p=>p.split(',').map(Number));
 assert.ok(compactArrow.length>15,'turn shaft has a rounded bend');
 assert.ok(Math.max(...compactArrow.map(p=>p[0]))-Math.min(...compactArrow.map(p=>p[0]))<=96.1,'turn cue width capped at 16 percent');
 const rightBendFrame={...approachArrow,focusMeters:50,turnAhead:[127+14/88804,junctionPoint[1]]};
-const leftBendFrame={...rightBendFrame,turnAhead:[127-14/88804,junctionPoint[1]]};
+const leftBendFrame={...rightBendFrame,direction:'left',turnAhead:[127-14/88804,junctionPoint[1]]};
 const rightBend=sandbox.walkPreviewTurnArrow(rightBendFrame,origin,{...arrowPhoto,meters:42,offset:24,nearby:true},arrowPov,600,300)
   .split(' ').map(p=>p.split(',').map(Number));
 const leftBend=sandbox.walkPreviewTurnArrow(leftBendFrame,origin,arrowPhoto,arrowPov,600,300)
@@ -616,3 +642,5 @@ console.log('PASS: green walking answer overview, dynamic exit/comparison, Engli
   assert.equal((await sandbox.pedestrianCandidates('아차산',{})).length,1,'reject distant namesake plaza');
   console.log('PASS: Achasan entrance routing, explicit summit preserved, current-location origin');
 })().catch(error=>{console.error(error);process.exitCode=1;});
+
+
