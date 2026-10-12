@@ -140,26 +140,32 @@ function reset(finalPhoto='exact'){
 for(const finalPhoto of ['exact','missing','early']){
   const preview=reset(finalPhoto);
   until(()=>preview.arrivalComplete && !preview.loading);
-  assert.equal(preview.close.hidden,true,'map-view button stays hidden after arrival');
+  assert.equal(preview.close.hidden,false,'map-view button stays hidden after arrival');
   assert.equal(preview.next.disabled,true,'next cannot pass the destination');
   assert.equal(preview.message.textContent,'','extra alerts are cleared');
   assert.equal(preview.message.style.display,'none');
   assert.equal(preview.instruction.textContent,'테스트 호텔에 도착했어요.');
   assert.equal(preview.progress.textContent,'목적지 도착 완료');
   assert.equal(Number(preview.seek.value),Number(preview.seek.max),'progress ends at the route endpoint');
-  assert.equal(preview.visual.classList.contains('walk-preview-map-fallback'),finalPhoto!=='exact',
+  assert.equal(preview.visual.classList.contains('walk-preview-map-fallback'),false,
     'a missing or earlier final photo uses the map at the verified endpoint');
   const index=preview.index, instruction=preview.instruction.textContent;
   preview.next.onclick();
   instances.at(-1).emit('init');
   while(tick()){}
   assert.equal(preview.index,index,'stale callbacks cannot advance after arrival');
-  assert.equal(preview.close.hidden,true);
+  assert.equal(preview.close.hidden,false);
   assert.equal(preview.message.textContent,'');
   assert.equal(preview.instruction.textContent,instruction);
   preview.play.onclick();
   assert.equal(preview.arrivalComplete,false,'replay is an intentional exit from the terminal state');
   assert.equal(preview.close.hidden,false);
+  const mapElement=preview.mapElement;
+  preview.close.onclick();
+  assert.equal(sandbox.walkPreviewState,null,'Map view is shown only after the explicit button');
+  assert.equal(preview.visual.classList.contains('walk-preview-open'),false);
+  assert.equal(mapElement.style.visibility,'');
+  assert.equal(mapElement.inert,false);
   sandbox.stopWalkPreview(true);
   while(tick()){}
 }
@@ -177,14 +183,14 @@ for(const frontPhoto of ['matching','changed']){
   until(()=>preview.arrivalComplete && !preview.loading);
   assert.equal(preview.index,preview.frames.length-1,'lodging preview stops at the street-side front');
   assert.ok(Math.abs(preview.frames.at(-1).meters-60)<1);
-  assert.equal(preview.close.hidden,true);
+  assert.equal(preview.close.hidden,false);
   assert.equal(preview.next.disabled,true);
   assert.equal(preview.message.textContent,'');
   assert.equal(preview.instruction.textContent,'테스트 호텔에 도착했어요.');
   assert.equal(preview.progress.textContent,'목적지 도착 완료');
   assert.equal(Number(preview.seek.value),Number(preview.seek.max));
   assert.match(document.querySelector('#walk-preview-origin').textContent,/동대문 \(흥인지문\) 앞/);
-  assert.equal(preview.visual.classList.contains('walk-preview-map-fallback'),frontPhoto==='changed');
+  assert.equal(preview.visual.classList.contains('walk-preview-map-fallback'),false);
   const index=preview.index;
   while(tick()){}
   assert.equal(preview.index,index,'late playback cannot restart after the hotel front');
@@ -201,16 +207,16 @@ for (const finalPhoto of ['street-front','changed']) {
   const preview=sandbox.walkPreviewState;
   until(()=>preview.arrivalComplete && !preview.loading);
   assert.ok(Math.abs(preview.frames.at(-1).meters-100)<1);
-  assert.equal(preview.close.hidden,true);
+  assert.equal(preview.close.hidden,false);
   assert.equal(preview.message.textContent,'');
   assert.equal(preview.instruction.textContent,'테스트 호텔에 도착했어요.');
   assert.equal(Number(preview.seek.value),Number(preview.seek.max));
-  assert.equal(preview.visual.classList.contains('walk-preview-map-fallback'),finalPhoto==='changed');
+  assert.equal(preview.visual.classList.contains('walk-preview-map-fallback'),false);
   const lastIndex=preview.index;
   instances.at(-1).emit('init');
   while(tick()){}
   assert.equal(preview.index,lastIndex,'late callbacks cannot resume after confirmed frontage');
-  assert.equal(preview.close.hidden,true,'map-view button does not return');
+  assert.equal(preview.close.hidden,false,'map-view button does not return');
   assert.equal(preview.message.textContent,'','extra guidance does not return');
   sandbox.stopWalkPreview(true);
 }
@@ -227,7 +233,7 @@ for (const finalPhoto of ['street-front','changed']) {
   const preview=sandbox.walkPreviewState;
   until(()=>preview.arrivalComplete && !preview.loading);
   assert.equal(preview.index,preview.frames.length-1);
-  assert.equal(preview.close.hidden,true);
+  assert.equal(preview.close.hidden,false);
   assert.equal(preview.message.textContent,'');
   assert.equal(preview.instruction.textContent,'테스트 호텔에 도착했어요.');
   assert.equal(preview.visual.classList.contains('walk-preview-map-fallback'),false);
@@ -257,7 +263,7 @@ for (const finalPhoto of ['street-front','changed']) {
   }
   assert.equal(preview.arrivalComplete,true,'autoplay still reaches the outside lodging photo');
   assert.equal(blankFallback,false,'missing near-arrival imagery never reveals a blank map slide');
-  assert.equal(preview.close.hidden,true);
+  assert.equal(preview.close.hidden,false);
   assert.equal(preview.message.textContent,'');
   sandbox.stopWalkPreview(true);
 }

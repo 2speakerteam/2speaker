@@ -46,7 +46,7 @@ class Panorama {
   setVisible() {}
 }
 const maps = {LatLng, Panorama, Event:{addListener(p,n,f){(p.listeners[n] ||= []).push(f);},clearInstanceListeners(p){p.listeners={};}}};
-const sandbox = { document, window:{matchMedia(){return {matches:false};}}, setTimeout:timer, clearTimeout:k=>jobs.delete(k),requestAnimationFrame:f=>timer(f,16),currentPage:'guide',routeRequestToken:1,walkPreviewState:null,console };
+const sandbox = { document, window:{matchMedia(){return {matches:false};}}, setTimeout:timer, clearTimeout:k=>jobs.delete(k),requestAnimationFrame:f=>timer(f,16),currentPage:'guide',routeRequestToken:1,walkPreviewState:null,console,isLodgingPlace:place=>/숙박|호텔|호스텔|모텔|게스트하우스|펜션|리조트|민박|여관|hotel|hostel|motel/i.test(String(place?.category||'')) };
 vm.createContext(sandbox); vm.runInContext(part,sandbox);
 const frames = sandbox.walkPreviewFrames(route,[]);
 assert.equal(sandbox.walkPreviewHoldBeforeNext({phase:'landmark-start',holdMs:3500},{phase:'start'}),1000,'show starting exit for one second before departure');
@@ -57,13 +57,12 @@ assert.equal(sandbox.walkPreviewHoldBeforeNext({phase:'approach',holdMs:850},{ph
 assert.equal(sandbox.walkPreviewHoldBeforeNext({phase:'turn',holdMs:1600},{phase:'straight'}),1600,'post-turn hold is unchanged when no further orientation follows');
 assert.equal(sandbox.walkPreviewHoldBeforeNext({phase:'straight',holdMs:400},{phase:'straight'}),400,'ordinary slide pacing unchanged');
 assert.equal(sandbox.walkPreviewHoldBeforeNext({phase:'straight',holdMs:750},{phase:'straight'}),750,'straight junction reading time unchanged');
-// Instruction and on-image cue must be calculated from the same photograph.
+// Keep the original compact route-aligned arrow and show it once at the actual instruction.
 const arrowFrame={phase:'turn',direction:'left',turnAngle:90,position:origin,
   ahead:[127,37.00013],meters:81,focusMeters:81,total:601,
   nextDecision:{meters:81,direction:'left'}};
-const arrowPhoto={offset:24,lateral:9,meters:81,heading:0,nearby:true,
-  routeTrace:[origin,[127,37.00013]]};
-const arrowPov={pan:0,tilt:0,fov:75};
+const arrowPhoto={offset:10,lateral:4,meters:81,heading:0,nearby:false};
+const arrowPov={pan:0,tilt:-5,fov:75};
 const arrowCoords=value=>value.split(' ').map(p=>p.split(',').map(Number));
 const arrowBounds=value=>{
   const points=arrowCoords(value),xs=points.map(p=>p[0]),ys=points.map(p=>p[1]);
@@ -71,43 +70,31 @@ const arrowBounds=value=>{
     minX:Math.min(...xs),maxX:Math.max(...xs),minY:Math.min(...ys),maxY:Math.max(...ys)};
 };
 for(const direction of ['left','right']) {
-  const scene={...arrowFrame,direction};
-  assert.match(sandbox.walkPreviewStepInstructionForPhoto(scene,arrowPhoto),
+  const scene={...arrowFrame,direction,
+    ahead:direction==='left'?[127,37.00013]:[127.00018,37]};
+  const photo={...arrowPhoto,heading:direction==='left'?0:90};
+  const pov={...arrowPov,pan:direction==='left'?0:90};
+  assert.match(sandbox.walkPreviewStepInstructionForPhoto(scene,photo),
     new RegExp('여기서 '+(direction==='left'?'좌':'우')+'회전'));
-  assert.equal(sandbox.walkPreviewArrowDirection(scene,arrowPhoto),direction);
-  const arrow=sandbox.walkPreviewTurnArrow(scene,origin,arrowPhoto,arrowPov,747,311);
-  assert.ok(arrow,'turn cue stays visible even for an offset panorama');
-  const points=arrowCoords(arrow),tip=points[5];
-  assert.ok(direction==='left'?tip[0]<747/2:tip[0]>747/2,
-    'left/right arrowhead matches the instruction');
-  assert.ok(arrowBounds(arrow).width>=75,'turn arrow does not shrink to a tiny mark');
+  const arrow=sandbox.walkPreviewTurnArrow(scene,origin,photo,pov,747,311);
+  assert.ok(arrow,'verified turn cue renders on the route-aligned photograph');
+  const box=arrowBounds(arrow);
+  assert.equal(arrowCoords(arrow).length,7,'original arrow keeps its compact seven-point silhouette');
+  assert.ok(box.width>=25&&box.height>=8,'arrow remains visible at the tested panorama size');
+  assert.ok(box.minX>=0&&box.maxX<=747&&box.minY>=0&&box.maxY<=311,
+    'arrow stays inside the panorama');
 }
-const earlierPhoto={...arrowPhoto,meters:70};
-assert.equal(sandbox.walkPreviewStepInstructionForPhoto(arrowFrame,earlierPhoto),
-  '약 11m 직진 후 좌회전하세요.');
-assert.equal(sandbox.walkPreviewArrowDirection(arrowFrame,earlierPhoto),'left');
-const laterPhoto={...arrowPhoto,meters:90};
-assert.doesNotMatch(sandbox.walkPreviewStepInstructionForPhoto(arrowFrame,laterPhoto),/여기서 좌회전/);
-assert.equal(sandbox.walkPreviewArrowDirection(arrowFrame,laterPhoto),'straight',
-  'camera beyond the corner cannot retain a stale turn');
-const farFrame={...arrowFrame,phase:'straight',meters:23,
-  nextDecision:{meters:81,direction:'left'}};
-const farPhoto={...arrowPhoto,meters:23};
-assert.match(sandbox.walkPreviewStepInstructionForPhoto(farFrame,farPhoto),/약 58m 직진 후 좌회전/);
-assert.equal(sandbox.walkPreviewArrowDirection(farFrame,farPhoto),'straight');
-for(const [width,height] of [[747,311],[600,300],[338,198]]) {
-  for(const scene of [arrowFrame,{...arrowFrame,direction:'right'},
-    {...arrowFrame,phase:'straight',nextDecision:null}]) {
-    const arrow=sandbox.walkPreviewTurnArrow(scene,origin,arrowPhoto,arrowPov,width,height);
-    assert.ok(arrow,'valid panoramas consistently show a cue');
-    const box=arrowBounds(arrow);
-    assert.ok(box.height>=45 && box.width>=30,'cue has a stable visible size');
-    assert.ok(box.minX>=0 && box.maxX<=width && box.minY>=0 && box.maxY<=height,
-      'cue stays inside the panorama');
-  }
-}
+assert.equal(sandbox.walkPreviewTurnArrow({...arrowFrame,phase:'approach'},origin,arrowPhoto,arrowPov,747,311),
+  null,'approach does not repeat the actual turn cue');
+assert.equal(sandbox.walkPreviewTurnArrow({...arrowFrame,phase:'straight',direction:'straight',turnAngle:0},
+  origin,arrowPhoto,arrowPov,747,311),null,'ordinary straight frames do not invent extra arrows');
+const straightJunction={...arrowFrame,phase:'straight',direction:'straight',turnAngle:0,junctionCue:true};
+assert.ok(sandbox.walkPreviewTurnArrow(straightJunction,origin,arrowPhoto,arrowPov,747,311),
+  'one verified straight-through junction can show its forward cue');
+assert.equal(sandbox.walkPreviewTurnArrow(arrowFrame,origin,{...arrowPhoto,nearby:true},arrowPov,600,300),
+  null,'unverified nearby photographs do not carry a route arrow');
 assert.equal(sandbox.walkPreviewTurnArrow(arrowFrame,origin,arrowPhoto,{...arrowPov,pan:180},600,300),
-  null,'hide when the viewer faces away from the route');
+  null,'arrow is hidden when the view faces away from the route');
 assert.equal(sandbox.walkPreviewTurnArrow(arrowFrame,origin,arrowPhoto,arrowPov,0,0),null);
 const junctionCenter=[127.09204455377541,37.5516751937452];
 const junctionRoute=[[junctionCenter.map((v,i)=>v+(i?-50/111320:0)),
@@ -156,8 +143,8 @@ const exitApproach = exitApproachFrames.find(f=>f.phase==='approach' && Math.abs
 assert.ok(exitCorner.turnAngle>80 && Math.abs(exitCorner.meters-27.732)<.1,'early instruction must not erase real corner');
 assert.ok(exitApproach && exitApproach.direction==='left','preserve 12 m approach and show upcoming left turn');
 const exitPhoto = sandbox.walkPreviewPhotoContext(exitApproach.position,exitApproach,exitApproachPath);
-assert.ok(sandbox.walkPreviewTurnArrow(exitApproach,exitApproach.position,exitPhoto,
-  {pan:exitPhoto.heading,tilt:0,fov:75},600,300),'exit approach arrow is visible on the road');
+assert.equal(sandbox.walkPreviewTurnArrow(exitApproach,exitApproach.position,exitPhoto,
+  {pan:exitPhoto.heading,tilt:0,fov:75},600,300),null,'approach does not show the upcoming turn arrow early');
 assert.equal(exitApproachFrames.filter(f=>f.phase==='turn').length,1,'no duplicate early turn');
 const oppositeInstruction = sandbox.walkPreviewFrames(exitApproachPath,[{
   position:exitApproachPath[0][1],description:'우회전 후 10m 이동',turnType:13
@@ -394,7 +381,10 @@ assert.equal(ep.history[0].panoId,ep.history[1].panoId,'keep purposeful exit-fac
 assert.ok(Math.abs(ep.history[0].heading-ep.history[1].heading)>150);
 until(()=>ep.finished && !ep.playing && !ep.loading);
 assert.equal(ep.frames.at(-1).phase,'landmark-end');
-assert.match(ep.message.textContent,/도착 입구 확인/);
+assert.equal(ep.arrivalComplete,true,'verified destination entrance ends the guidance');
+assert.equal(ep.message.textContent,'','arrival clears transient guidance alerts');
+assert.match(ep.instruction.textContent,/테스트공원 정문에 도착했어요/);
+assert.equal(ep.close.hidden,false,'Map view remains explicitly available after arrival');
 sandbox.stopWalkPreview(true); while(tick()) {}
 jobs.clear(); instances=[]; currentFixture=[{id:'cancel-exit',point:point(12)}]; now=0;
 sandbox.startWalkPreview(endpointContext,{paths:route,maneuvers:[]});
@@ -414,53 +404,69 @@ assert.equal(sandbox.entranceNameMatches('어린이대공원역1번출구','어�
 assert.equal(sandbox.entranceNameMatches('어린이대공원 정문','어린이대공원 후문'),false);
 console.log('PASS: endpoint sequence, exit/gate headings, proximity limits, intentional orientation change, exact exit parsing');
 
-// Preserve all three decision phases even when a nearest-camera lookup returns
-// the identical panorama/heading. Animate a real head turn within that camera.
+// Preserve all decision phases; repeated nearby samples may share one panorama id.
 jobs.clear(); instances=[]; currentFixture=[]; now=0;
 const bendFrames=sandbox.walkPreviewFrames(corner,[]);
-const bendPoint=point(60);
 currentFixture=bendFrames.map(frame=>({id:frame.meters>=50 && frame.meters<=75?'corner-camera':'bend-'+frame.meters,
-  point:frame.meters>=50 && frame.meters<=75?bendPoint:frame.position}));
+  point:frame.position}));
 sandbox.startWalkPreview({maps,map:{},english:false,requestId:1},{paths:corner,maneuvers:[]});
 const bend=sandbox.walkPreviewState;
-until(()=>!bend.loading && bend.frames[bend.index].phase==='turn');
+const turnIndex=bend.frames.findIndex(frame=>frame.phase==='turn');
+const departIndex=bend.frames.findIndex(frame=>frame.phase==='depart');
+bend.playing=false;
+clearTimeout(bend.timer);
+until(()=>!bend.loading);
+for(let target=1;target<turnIndex;target++) {
+  bend.next.onclick();
+  until(()=>!bend.loading&&bend.index===target);
+}
+assert.equal(bend.frames[bend.index].phase,'approach','pause immediately before the corner');
+bend.play.onclick();
+until(()=>!bend.loading&&bend.frames[bend.index].phase==='turn');
 assert.equal(bend.activeLayer.turnArrow.hidden,false,'turn scene displays its ground cue');
 const visibleTurnLayer=bend.activeLayer;
 visibleTurnLayer.panorama.emit('pano_changed');
-assert.equal(visibleTurnLayer.turnArrow.hidden,false,'late same-panorama readiness event cannot erase a visible cue');
-const turnView=bend.activeLayer.panorama, turnPov=turnView.getPov();
+assert.equal(visibleTurnLayer.turnArrow.hidden,false,'same-panorama readiness refresh keeps a valid cue');
+const turnView=visibleTurnLayer.panorama, turnPov=turnView.getPov();
 turnView.setPov({...turnPov,pan:turnPov.pan+180});
-assert.equal(bend.activeLayer.turnArrow.hidden,true,'user looking away hides the cue');
+assert.equal(visibleTurnLayer.turnArrow.hidden,true,'user looking away hides the cue');
 turnView.setPov(turnPov);
-assert.equal(bend.activeLayer.turnArrow.hidden,false,'looking back restores the route-anchored cue');
-until(()=>bend.loading);
+assert.equal(visibleTurnLayer.turnArrow.hidden,false,'looking back restores the route-anchored cue');
+assert.ok(instances.filter(instance=>instance.fixture.id==='corner-camera')
+  .every(instance=>(instance.povUpdates||0)<36),
+  'autoplay never rotates the camera at a middle junction');
+bend.play.onclick();
+bend.next.onclick();
+assert.equal(bend.loading,true,'manual next begins the next panorama lookup');
 assert.equal(bend.activeLayer,visibleTurnLayer,'outgoing turn image remains visible during next lookup');
 assert.equal(visibleTurnLayer.turnArrow.hidden,false,'keep arrow for as long as its photograph is visible');
-until(()=>bend.finished && !bend.playing && !bend.loading);
+until(()=>!bend.loading);
+for(let target=bend.index+1;target<=departIndex;target++) {
+  bend.next.onclick();
+  until(()=>!bend.loading&&bend.index===target);
+}
 assert.deepEqual(Array.from(bend.history.filter(entry=>entry.panoId==='corner-camera'),entry=>bend.frames[entry.index].phase),
-  ['approach','approach','turn','depart'],'same-camera corner phases are never removed as duplicates');
-assert.ok(instances.some(instance=>instance.fixture.id==='corner-camera' && instance.povUpdates>=36),
-  'junction orientation changes rotate inside the actual panorama');
-const cornerRotation=instances.find(instance=>instance.fixture.id==='corner-camera' && instance.povUpdates>=36);
-assert.ok(cornerRotation.povTimes.some((_,start)=> {
-  const rotation=cornerRotation.povTimes.slice(start,start+36);
-  return rotation.length===36 && rotation.slice(1).every((time,i)=>time-rotation[i]===24);
-}),
-  'junction rotation retains its current 24 ms pacing');
+  ['approach','approach','turn','straight','depart'],'same-camera decision phases remain present');
+assert.equal(bend.frames.filter(frame=>frame.showTurnArrow&&frame.phase==='turn').length,1,
+  'one turn instruction owns one arrow cue');
+assert.ok(bend.frames.filter(frame=>frame.phase==='approach').every(frame=>!frame.showTurnArrow),
+  'approach samples do not repeat the turn arrow');
 assert.ok(instances.some(instance=>instance.el.style.cssText.includes('450ms')),'gentle crossfade');
 sandbox.stopWalkPreview(true); while(tick()) {}
-// A backward snap at an important junction must show an explicit map cue,
-// not get silently fast-forwarded by the ordinary duplicate scanner.
+// An unverified final roadview frame ends cleanly without an automatic map view or stale turn alert.
 jobs.clear(); instances=[]; currentFixture=[]; now=0;
 currentFixture=bendFrames.map(frame=>({id:'junction-'+frame.meters,
   point:frame.phase==='turn'?point(30):frame.position}));
 sandbox.startWalkPreview({maps,map:{},english:false,requestId:1},{paths:corner,maneuvers:[]});
-const missedTurn=sandbox.walkPreviewState;
-until(()=>missedTurn.message.textContent.includes('이 갈림길의 사진은 이전 구간'));
-assert.equal(missedTurn.viewer.style.visibility,'hidden','show the route map for an untrustworthy turn view');
-assert.equal(missedTurn.frames[missedTurn.index].phase,'turn');
+const endedPreview=sandbox.walkPreviewState;
+until(()=>endedPreview.finished&&!endedPreview.playing&&!endedPreview.loading);
+assert.notEqual(endedPreview.mapElement.style.visibility,'visible','do not force the map view visible automatically at the end');
+assert.equal(endedPreview.visual.classList.contains('walk-preview-map-fallback'),false);
+assert.match(endedPreview.message.textContent,/로드뷰 미리보기가 끝났어요/);
+assert.match(endedPreview.instruction.textContent,/목적지 도착은 확인되지 않았어요/,'clear the last turn alert when the preview ends');
+assert.equal(endedPreview.close.hidden,false,'keep Map view available as an explicit choice');
 sandbox.stopWalkPreview(true); while(tick()) {}
-console.log('PASS: junction phases survive deduplication, gradual same-camera turn, slower pace, backward-turn map cue');
+console.log('PASS: junction phases, one arrow per instruction, initial-only rotation, no map fallback on gaps');
 
 // The green answer bubble holds the route overview; scene instructions stay separate.
 const overviewContext={maps:{LatLng,LatLngBounds:class {extend(){}},Polyline:class {},Marker:class {}},
