@@ -324,7 +324,7 @@ function trimWalkingRouteAtFront(route, place) {
   const front = walkPreviewLodgingFrontFrames(preview,place,route.paths).at(-1);
   const routeTotal = preview.at(-1)?.meters;
   if (!front?.lodgingFront || !(front.meters >= 2) || !(front.meters < routeTotal - 5)
-      || walkPreviewDistance(front.position,place.arrivalView.position) > 45) return null;
+      || walkPreviewDistance(front.position,place.arrivalView.position) > 55) return null;
   let traveled = 0;
   const paths = [];
   for (const path of route.paths) {
@@ -359,9 +359,11 @@ async function prepareLodgingArrival(maps, start, place, isCurrent) {
     place.arrivalAtFront = true;
     return;
   }
-  if (Array.isArray(originalEnd) && place.arrivalView?.position
-      && walkPreviewDistance(originalEnd,[place.longitude,place.latitude]) <= 45
-      && walkPreviewDistance(originalEnd,place.arrivalView.position) <= 45) {
+  // A TMAP walking route that already ends beside the lodging should not grow
+  // into a detour just because the nearest panorama camera is on another road.
+  // The terminal scene can use the map when no close street photo exists.
+  if (Array.isArray(originalEnd)
+      && walkPreviewDistance(originalEnd,[place.longitude,place.latitude]) <= 45) {
     place.arrivalAtFront = true;
     return;
   }
@@ -3688,7 +3690,7 @@ async function requestNaverTransitRoute(maps, map, start, end, isCurrent, instru
         endpointLabel.hidden = false;
         endpointLabel.textContent = walkPreviewRouteSummary(guideTransportContext, guideTransportRoutes.WALK);
         if (end.arrivalAtFront) endpointLabel.textContent += english
-          ? ' · Stops at the lodging frontage' : ' · 숙소 앞 도로변에서 종료';
+          ? ' · Stops near the lodging' : ' · 숙소 근처 도보 경로 종점에서 종료';
         else if (!end.landmark) endpointLabel.textContent += english
           ? ' · Destination representative point; entrance not confirmed'
           : ' · 목적지 대표 위치 기준, 입구 미확인';
