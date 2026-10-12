@@ -191,7 +191,14 @@ function parseRouteRequest(raw) {
 
 function isPlaceSearchRequest(text) {
   const query = String(text || '').trim();
-  if (/(숙소|호텔|모텔|게스트하우스|카페|식당|맛집|음식점|약국|병원|편의점|관광지|명소|주차장|화장실|공원|지하철역|기차역|accommodation|hotel|motel|cafe|coffee|restaurant|pharmacy|hospital|convenience store|attraction|parking|restroom|park)/i.test(query)) return true;
+  // A named hotel is a destination, not a request for nearby hotels.
+  const genericLodgingRequest = /(?:근처|주변|가까운|추천|몇\s*곳|nearby|near\s+me|around)/i.test(query)
+    || /역\s*(?:숙소|호텔|모텔|호스텔|게스트하우스)/.test(query)
+    || /^(?:숙소|호텔|모텔|호스텔|게스트하우스|민박|여관)\s*(?:찾아|검색|보여|알려)/.test(query);
+  if (/숙소|호텔|모텔|호스텔|게스트하우스|민박|여관|hotel|hostel|motel/i.test(query)
+      && !genericLodgingRequest
+      && !/^(숙소|호텔|모텔|호스텔|게스트하우스|민박|여관|hotel|hostel|motel)$/i.test(query)) return false;
+  if (/(숙소|호텔|모텔|호스텔|게스트하우스|민박|여관|카페|식당|맛집|음식점|약국|병원|편의점|관광지|명소|주차장|화장실|공원|지하철역|기차역|accommodation|hotel|hostel|motel|cafe|coffee|restaurant|pharmacy|hospital|convenience store|attraction|parking|restroom|park)/i.test(query)) return true;
   const asksToSearch = /(찾아|검색|추천|알려\s*줘|보여\s*줘|있(?:을까요?|나요?|어요?|습니까\??)|find|search|recommend|show\s+me|is\s+there)/i.test(query);
   const mentionsNearbyPlace = /(근처|주변|가까운|장소|공간|어디|어떤\s*곳|조용한\s*곳|현재\s*위치|nearby|near\s+me|around|place)/i.test(query);
   return asksToSearch && mentionsNearbyPlace;
@@ -220,6 +227,112 @@ async function reverseGeocodeArea(point) {
   } catch {
     return '';
   }
+}
+
+async function reverseGeocodeStart(maps, point) {
+  if (!maps?.Service?.reverseGeocode) return '';
+  return new Promise(resolve => {
+    let settled = false;
+    let timeout;
+    const finish = value => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      resolve(value);
+    };
+    timeout = setTimeout(() => finish(''), 2500);
+    maps.Service.reverseGeocode({ coords: new maps.LatLng(point.latitude, point.longitude), orders: 'roadaddr,addr' }, (status, response) => {
+      if (status !== maps.Service.Status.OK) return finish('');
+      const results = response?.v2?.results || [];
+      const road = results.find(result => result.name === 'roadaddr');
+      const area = road || results.find(result => result.name === 'addr');
+      const region = area?.region || {};
+      const district = [region.area2?.name, region.area3?.name].filter(Boolean).join(' ');
+      const street = [road?.land?.name, road?.land?.number1].filter(Boolean).join(' ');
+      finish([district, street].filter(Boolean).join(' ').slice(0, 100));
+    });
+  });
+}
+
+function isLodgingPlace(place) {
+  return /숙박|호텔|호스텔|모텔|게스트하우스|펜션|리조트|민박|여관|hotel|hostel|motel/i.test(String(place?.category || ''));
+}
+
+async function ensureLodgingArrivalView(maps, place) {
+  if (!isLodgingPlace(place)) return null;
+  if (place.arrivalView?.panoId && Array.isArray(place.arrivalView.position)
+      && walkPreviewDistance(place.arrivalView.position,[place.longitude,place.latitude]) <= 120) return place.arrivalView;
+  if (!maps?.Panorama) return null;
+  const host = document.createElement('div');
+  host.style.cssText = 'position:fixed;left:-10000px;top:0;width:320px;height:180px;pointer-events:none';
+  document.body.append(host);
+  try {
+    return await new Promise(resolve => {
+      let done = false;
+      let timeout;
+      const finish = value => {
+        if (done) return;
+        done = true;
+        clearTimeout(timeout);
+        maps.Event.clearInstanceListeners(panorama);
+        resolve(value);
+      };
+      const panorama = new maps.Panorama(host, {
+        position: new maps.LatLng(place.latitude, place.longitude), zoomControl: false, aroundControl: false
+      });
+      const capture = () => {
+        const coord = panorama.getLocation()?.coord;
+        const panoId = panorama.getPanoId?.();
+        if (!panoId || !coord || !Number.isFinite(coord.lng()) || !Number.isFinite(coord.lat())) return;
+        const position = [coord.lng(), coord.lat()];
+        if (walkPreviewDistance(position, [place.longitude, place.latitude]) > 120) return finish(null);
+        place.arrivalView = { panoId, position };
+        finish(place.arrivalView);
+      };
+      maps.Event.addListener(panorama, 'init', capture);
+      maps.Event.addListener(panorama, 'pano_status', status => status === 'OK' ? capture() : finish(null));
+      timeout = setTimeout(() => finish(null), 8000);
+    });
+  } catch { return null; }
+  finally { host.remove(); }
+}
+
+async function routeToLodgingFront(start, place, isCurrent) {
+  const view = place.arrivalView;
+  if (!isLodgingPlace(place) || !view?.panoId || !Array.isArray(view.position)) return null;
+  const response = await fetch('/api/walking/routes', {
+    method: 'POST', headers: {'content-type':'application/json'},
+    body: JSON.stringify({startX:start.longitude,startY:start.latitude,endX:view.position[0],endY:view.position[1]})
+  }).catch(() => null);
+  if (!response || !isCurrent()) return null;
+  const route = await response.json().catch(() => null);
+  const endpoint = route?.paths?.at(-1)?.at(-1);
+  if (!response.ok || !(Number(route?.totalTime) > 0) || !Array.isArray(endpoint)
+      || walkPreviewDistance(endpoint,view.position) > 45) return null;
+  return route;
+}
+
+async function prepareLodgingArrival(maps, start, place, isCurrent) {
+  if (!isLodgingPlace(place)) return;
+  await ensureLodgingArrivalView(maps, place);
+  if (!isCurrent()) return;
+  const frontRoute = await routeToLodgingFront(start, place, isCurrent);
+  if (frontRoute && isCurrent()) {
+    start.walkingRoute = frontRoute;
+    place.arrivalAtFront = true;
+  }
+}
+
+async function findNamedLodging(query) {
+  try {
+    const response = await fetch('/api/places/search', {
+      method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({action:'resolve-lodging',query})
+    });
+    if (!response.ok) return null;
+    const payload = await response.json();
+    return isLodgingPlace(payload.place) ? payload.place : null;
+  } catch { return null; }
 }
 
 async function runNearbyPlaceSearch(query) {
@@ -1651,14 +1764,18 @@ function getCurrentPosition() {
 }
 
 async function resolveRouteStart(naverMaps, originQuery) {
-  if (!originQuery) return getCurrentPosition();
-  if (entranceDescriptor(originQuery)) return resolvePedestrianLandmark(originQuery);
+  if (!originQuery) {
+    const point = await getCurrentPosition();
+    const location = await reverseGeocodeStart(naverMaps, point).catch(() => '');
+    return {...point, name: location ? `현재 위치 · ${location}` : '현재 위치', originKind:'gps'};
+  }
+  if (entranceDescriptor(originQuery)) return {...await resolvePedestrianLandmark(originQuery), originKind:'manual'};
   const naverResult = naverMaps
     ? await geocodeDestination(naverMaps, originQuery).catch(() => null)
     : null;
-  if (naverResult) return naverResult;
+  if (naverResult) return {...naverResult,name:originQuery,originKind:'manual'};
   const googleMaps = await loadGoogleMaps();
-  return searchGoogleDestination(googleMaps, originQuery);
+  return {...await searchGoogleDestination(googleMaps, originQuery),name:originQuery,originKind:'manual'};
 }
 
 async function resolvePedestrianLandmark(query) {
@@ -1730,7 +1847,7 @@ async function pedestrianCandidates(query, maps, nearby) {
 }
 
 async function choosePedestrianEndpoints(origin, destinationQuery, isCurrent, maps) {
-  const starts = origin ? await pedestrianCandidates(origin, maps) : [await getCurrentPosition()];
+  const starts = origin ? await pedestrianCandidates(origin, maps) : [await resolveRouteStart(maps, '')];
   if (!isCurrent()) return null;
   const ends = await pedestrianCandidates(destinationQuery, maps, starts[0]);
   if (!isCurrent()) return null;
@@ -2133,7 +2250,8 @@ function walkPreviewEndpointFrames(frames, context, paths) {
     const name = String(context.start.name).trim();
     const resolved = String(context.start.resolvedName || '').trim();
     const location = resolved && resolved !== name ? `${name} (${resolved})` : name;
-    result[0] = { ...result[0],startLabel: /현재 위치|your location/i.test(location) ? location : `${location} 앞` };
+    result[0] = { ...result[0],startLabel: context.start.originKind === 'gps' ? location
+      : `입력한 출발지 · ${location} 앞` };
   }
   for (const [side, endpoint] of [['start', context.start], ['end', context.end]]) {
     const landmark = endpoint?.landmark;
@@ -2173,13 +2291,23 @@ function walkPreviewArrivalEndpoint(frame, context, paths) {
 // provider's place coordinate may be inside the building or beyond its front.
 // Only use this camera when it is actually near both the walking path and place.
 function walkPreviewLodgingFrontFrames(frames, end, paths) {
-  const category = String(end?.category || '');
   const view = end?.arrivalView;
   const place = [Number(end?.longitude),Number(end?.latitude)];
   const capture = view?.position;
-  if (!/숙박|호텔|호스텔|모텔|게스트하우스|펜션|리조트|민박/i.test(category)
+  if (!isLodgingPlace(end)
       || !view?.panoId || !Array.isArray(capture) || !capture.every(Number.isFinite)
-      || !place.every(Number.isFinite) || walkPreviewDistance(capture,place) > 90) return frames;
+      || !place.every(Number.isFinite) || walkPreviewDistance(capture,place) > 120) return frames;
+  const routeEnd = paths?.at(-1)?.at(-1);
+  if (end.arrivalAtFront && Array.isArray(routeEnd)
+      && walkPreviewDistance(routeEnd,capture) <= 45) {
+    const last = frames.at(-1);
+    const front = {...last,phase:'landmark-end',position:routeEnd,ahead:place,
+      landmark:{kind:'lodging-front',label:end.name,position:capture},lodgingFront:true,
+      verifiedView:{panoId:view.panoId,pan:walkPreviewBearing(capture,place),tilt:0,fov:75,maxOffset:90},
+      nextDecision:null,focusMeters:null,turnPath:null,turnPosition:null,turnAhead:null,
+      direction:'straight',description:'',important:true,holdMs:1800};
+    return [...frames.slice(0,-1),front];
+  }
   let traveled = 0, closest = null;
   const cos = Math.cos(capture[1] * Math.PI / 180);
   for (const path of paths || []) for (let i = 1; i < path.length; i += 1) {
@@ -2194,8 +2322,7 @@ function walkPreviewLodgingFrontFrames(frames, end, paths) {
         || (Math.abs(candidate.lateral-closest.lateral) <= 0.5 && candidate.meters < closest.meters)) closest = candidate;
     traveled += length;
   }
-  if (!closest || closest.lateral > 35 || closest.meters < 8
-      || closest.meters >= traveled - 5) return frames;
+  if (!closest || closest.lateral > 55 || closest.meters < 2) return frames;
   const meters = closest.meters;
   const kept = frames.filter(frame => frame.meters < meters - 2 && frame.phase !== 'arrival' && frame.phase !== 'landmark-end');
   const base = kept.at(-1) || frames[0];
@@ -2910,7 +3037,8 @@ function startWalkPreview(context, choice) {
       state.mapElement.inert = false;
       state.mapElement.removeAttribute('aria-hidden');
       if (state.maps.Marker) {
-        const point = state.end.landmark?.position || [state.end.longitude,state.end.latitude];
+        const point = frame.lodgingFront ? state.end.arrivalView.position
+          : state.end.landmark?.position || [state.end.longitude,state.end.latitude];
         state.fallbackMarker?.setMap(null);
         state.fallbackMarker = new state.maps.Marker({ map:state.map,
           position:new state.maps.LatLng(point[1],point[0]),
@@ -3071,7 +3199,10 @@ function startWalkPreview(context, choice) {
           const capturePoint = capture && [capture.lng(), capture.lat()];
           // The entrance photograph has already passed the landmark proximity check.
           // Reuse it for the first head turn even if its camera is off the route line.
-          const photoContext = saved?.photoContext || (departure && capturePoint
+          const photoContext = saved?.photoContext || (frameNow.lodgingFront && capturePoint
+            ? {offset:walkPreviewDistance(capturePoint,frameNow.position),meters:frameNow.meters,
+                lateral:0,nearby:false,heading:walkPreviewBearing(capturePoint,frameNow.ahead)}
+            : departure && capturePoint
             ? { offset: walkPreviewDistance(capturePoint, frameNow.position), meters: frameNow.meters,
                 lateral: 0, nearby: false, heading: walkPreviewBearing(capturePoint, frameNow.ahead) }
             : walkPreviewPhotoContext(capturePoint, frameNow, choice.paths));
@@ -3386,7 +3517,7 @@ function startWalkPreview(context, choice) {
 
 function walkPreviewRouteSummary(context, choice) {
   const { start, end, english } = context;
-  const from = start.landmark?.label || routeOrigin || (english ? 'Your location' : '현재 위치');
+  const from = start.landmark?.label || start.name || routeOrigin || (english ? 'Your location' : '현재 위치');
   const to = end.landmark?.label || destination;
   let text = english
     ? `${from} → ${to} · ${Math.round(choice.distance)} m · about ${choice.minutes} min`
@@ -3686,10 +3817,30 @@ async function requestGuideRoute(naverMaps, container, scene, requestId) {
         if (busStop) start.landmark = { ...busStop,
           position:[origin.longitude,origin.latitude],source:'Naver place-search origin' };
       }
+      if (start.originKind === 'gps') {
+        const location = await reverseGeocodeStart(naverMaps, start).catch(() => '');
+        start.name = location ? `현재 위치 · ${location}` : '현재 위치';
+      }
+      await prepareLodgingArrival(naverMaps, start, place, isCurrent);
+      if (!isCurrent()) return;
       end = place;
       const map = createNaverMap(naverMaps, container, scene, end);
       await requestNaverTransitRoute(naverMaps, map, start, end, isCurrent, instruction);
       return;
+    }
+
+    if (naverMaps && !entranceDescriptor(query)) {
+      const namedLodging = await findNamedLodging(query);
+      if (!isCurrent()) return;
+      if (namedLodging) {
+        const start = await resolveRouteStart(naverMaps, routeOrigin);
+        if (!isCurrent()) return;
+        await prepareLodgingArrival(naverMaps, start, namedLodging, isCurrent);
+        if (!isCurrent()) return;
+        const map = createNaverMap(naverMaps, container, scene, namedLodging);
+        await requestNaverTransitRoute(naverMaps, map, start, namedLodging, isCurrent, instruction);
+        return;
+      }
     }
 
     if (naverMaps && (automaticEntranceQuery(query) || (routeOrigin && (automaticEntranceQuery(routeOrigin)
