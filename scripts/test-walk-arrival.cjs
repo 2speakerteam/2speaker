@@ -68,7 +68,7 @@ assert.equal(sandbox.walkPreviewArrivalEndpoint(frames.find(frame=>frame.meters>
   'a photograph before the final route point is not arrival');
 const landmarkStart=sandbox.walkPreviewEndpointFrames(frames,{
   start:{name:'동대문',resolvedName:'흥인지문'}},route)[0];
-assert.match(sandbox.walkPreviewStepInstruction(landmarkStart),/동대문 \(흥인지문\)에서 출발해요/);
+assert.match(sandbox.walkPreviewStepInstruction(landmarkStart),/동대문 \(흥인지문\) 앞에서 출발해요/);
 assert.doesNotMatch(sandbox.walkPreviewStepInstruction(landmarkStart),/번 출구/);
 const stationStart=sandbox.walkPreviewEndpointFrames(frames,{
   start:{landmark:{kind:'station-exit',label:'동대문역 9번 출구',position:point(0)}}},route)[0];
@@ -76,6 +76,18 @@ assert.match(sandbox.walkPreviewStepInstruction(stationStart),/동대문역 9번
 const busStart=sandbox.walkPreviewEndpointFrames(frames,{
   start:{landmark:{kind:'bus-stop',label:'동대문 버스 승강장',position:point(0)}}},route)[0];
 assert.match(sandbox.walkPreviewStepInstruction(busStart),/동대문 버스 승강장에서 출발해요/);
+
+const lodging={...place,category:'숙박>호텔',arrivalView:{panoId:'hotel-front',position:point(60)}};
+const lodgingFrames=sandbox.walkPreviewLodgingFrontFrames(frames,lodging,route);
+assert.ok(lodgingFrames.length < frames.length,'verified street-side lodging photo removes the indoor/POI tail');
+assert.ok(Math.abs(lodgingFrames.at(-1).meters-60)<1);
+assert.equal(lodgingFrames.at(-1).phase,'landmark-end');
+assert.equal(lodgingFrames.at(-1).verifiedView.panoId,'hotel-front');
+assert.equal(sandbox.walkPreviewArrivalEndpoint(lodgingFrames.at(-1),{end:lodging},route),true);
+assert.equal(sandbox.walkPreviewLodgingFrontFrames(frames,{...lodging,category:'음식점'},route),frames,
+  'non-lodging routes retain the provider endpoint');
+assert.equal(sandbox.walkPreviewLodgingFrontFrames(frames,{...lodging,arrivalView:{panoId:'far',position:point(300)}},route),frames,
+  'an unrelated lodging photo cannot cut the route');
 
 function reset(finalPhoto='exact'){
   jobs.clear();now=0;instances=[];
@@ -112,4 +124,31 @@ for(const finalPhoto of ['exact','missing','early']){
   sandbox.stopWalkPreview(true);
   while(tick()){}
 }
-console.log('PASS: exact-origin start cues, final-photo and no-photo arrival, synchronized progress, no post-arrival regression');
+
+for(const frontPhoto of ['matching','changed']){
+  jobs.clear();now=0;instances=[];
+  const previewFrames=sandbox.walkPreviewSceneFrames(lodgingFrames);
+  fixtures=previewFrames.map((frame,index)=>({id:frame.lodgingFront
+    ? frontPhoto==='matching'?'hotel-front':'different-photo' : 'lodging-'+index,
+    point:frame.lodgingFront?point(60):frame.position}));
+  sandbox.startWalkPreview({maps,map:{},english:false,requestId:1,
+    start:{name:'동대문',resolvedName:'흥인지문'},end:lodging},
+    {paths:route,maneuvers:[]});
+  const preview=sandbox.walkPreviewState;
+  until(()=>preview.arrivalComplete && !preview.loading);
+  assert.equal(preview.index,preview.frames.length-1,'lodging preview stops at the street-side front');
+  assert.ok(Math.abs(preview.frames.at(-1).meters-60)<1);
+  assert.equal(preview.close.hidden,true);
+  assert.equal(preview.next.disabled,true);
+  assert.equal(preview.message.textContent,'');
+  assert.equal(preview.instruction.textContent,'테스트 호텔에 도착했어요.');
+  assert.equal(preview.progress.textContent,'목적지 도착 완료');
+  assert.equal(Number(preview.seek.value),Number(preview.seek.max));
+  assert.match(document.querySelector('#walk-preview-origin').textContent,/동대문 \(흥인지문\) 앞/);
+  assert.equal(preview.visual.classList.contains('walk-preview-map-fallback'),frontPhoto==='changed');
+  const index=preview.index;
+  while(tick()){}
+  assert.equal(preview.index,index,'late playback cannot restart after the hotel front');
+  sandbox.stopWalkPreview(true);
+}
+console.log('PASS: verified lodging-front stop, origin context, final-photo and no-photo arrival, synchronized progress, no post-arrival regression');

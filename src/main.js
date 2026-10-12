@@ -362,6 +362,15 @@ async function showPlaceRoadview(index) {
     });
     placesPanorama = panorama;
     placesPanoramaMaps = maps;
+    const rememberPlaceFront = () => {
+      if (requestId !== placesPanoramaRequestId || placesPanorama !== panorama) return;
+      const capture = panorama.getLocation()?.coord;
+      const panoId = panorama.getPanoId?.();
+      if (panoId && capture && Number.isFinite(capture.lng()) && Number.isFinite(capture.lat())) {
+        place.arrivalView = { panoId, position: [capture.lng(), capture.lat()] };
+      }
+    };
+    maps.Event.addListener(panorama, 'init', rememberPlaceFront);
     maps.Event.addListener(panorama, 'pano_status', (panoStatus) => {
       if (requestId !== placesPanoramaRequestId || currentPage !== 'places' || panel.hidden) return;
       if (panoStatus !== 'OK') {
@@ -370,6 +379,7 @@ async function showPlaceRoadview(index) {
         return;
       }
       viewer.style.visibility = 'visible';
+      rememberPlaceFront();
       const photoDate = panorama.getLocation()?.photodate;
       status.textContent = photoDate
         ? `선택한 장소 주변의 로드뷰예요 · 촬영: ${photoDate}`
@@ -385,6 +395,13 @@ async function showPlaceRoadview(index) {
 function selectNearbyPlace(index) {
   const place = placeSearchState.places[index];
   if (!place?.route || !placeSearchState.origin) return;
+  if (placesPanorama && Number(document.querySelector('#places-roadview')?.dataset.placeIndex) === index) {
+    const capture = placesPanorama.getLocation()?.coord;
+    const panoId = placesPanorama.getPanoId?.();
+    if (panoId && capture && Number.isFinite(capture.lng()) && Number.isFinite(capture.lat())) {
+      place.arrivalView = { panoId, position: [capture.lng(), capture.lat()] };
+    }
+  }
   activePlaceSelection = { origin: placeSearchState.origin, place, route: place.route };
   destination = place.name;
   routeOrigin = placeSearchState.origin.name || '';
@@ -547,7 +564,7 @@ function guideScreen() {
     </section>
     <section class="walk-preview" id="walk-preview" aria-label="${english ? 'Walking street-view preview' : '도보 로드뷰 미리보기'}" hidden>
       <div class="walk-preview-header">
-        <div><small>${english ? 'Street-view route preview' : '도보 로드뷰 미리보기'}</small><h2>${escapeHtml(routeOrigin || (english ? 'Your location' : '현재 위치'))} → ${place}</h2></div>
+        <div><small>${english ? 'Street-view route preview' : '도보 로드뷰 미리보기'}</small><h2>${escapeHtml(routeOrigin || (english ? 'Your location' : '현재 위치'))} → ${place}</h2><p class="walk-preview-origin" id="walk-preview-origin" hidden></p></div>
       </div>
       <p class="walk-preview-message" id="route-endpoints" style="box-sizing:border-box;overflow-anchor:none" hidden></p>
       <p class="walk-preview-message" id="walk-preview-message" role="status" style="display:none"></p>
@@ -2106,8 +2123,8 @@ function walkPreviewEndpointFrames(frames, context, paths) {
   if (!context.start?.landmark && context.start?.name) {
     const name = String(context.start.name).trim();
     const resolved = String(context.start.resolvedName || '').trim();
-    result[0] = { ...result[0],startLabel:resolved && resolved !== name
-      ? `${name} (${resolved})` : name };
+    const location = resolved && resolved !== name ? `${name} (${resolved})` : name;
+    result[0] = { ...result[0],startLabel: /현재 위치|your location/i.test(location) ? location : `${location} 앞` };
   }
   for (const [side, endpoint] of [['start', context.start], ['end', context.end]]) {
     const landmark = endpoint?.landmark;
@@ -2130,6 +2147,10 @@ function walkPreviewEndpointFrames(frames, context, paths) {
 }
 
 function walkPreviewArrivalEndpoint(frame, context, paths) {
+  if (frame?.lodgingFront && frame.landmark?.kind === 'lodging-front'
+      && frame.verifiedView?.panoId
+      && frame.verifiedView.panoId === context?.end?.arrivalView?.panoId
+      && walkPreviewDistance(frame.landmark.position,context.end.arrivalView.position) <= 90) return true;
   if (!['arrival','landmark-end'].includes(frame?.phase)) return false;
   const endpoint = context?.end?.landmark?.position
     || [Number(context?.end?.longitude),Number(context?.end?.latitude)];
@@ -2137,6 +2158,45 @@ function walkPreviewArrivalEndpoint(frame, context, paths) {
   return Array.isArray(routeEnd) && routeEnd.every(Number.isFinite)
     && Array.isArray(endpoint) && endpoint.every(Number.isFinite)
     && walkPreviewDistance(routeEnd,endpoint) <= 35;
+}
+
+// A selected lodging's road-view camera is a street-side stopping point. The
+// provider's place coordinate may be inside the building or beyond its front.
+// Only use this camera when it is actually near both the walking path and place.
+function walkPreviewLodgingFrontFrames(frames, end, paths) {
+  const category = String(end?.category || '');
+  const view = end?.arrivalView;
+  const place = [Number(end?.longitude),Number(end?.latitude)];
+  const capture = view?.position;
+  if (!/숙박|호텔|호스텔|모텔|게스트하우스|펜션|리조트|민박/i.test(category)
+      || !view?.panoId || !Array.isArray(capture) || !capture.every(Number.isFinite)
+      || !place.every(Number.isFinite) || walkPreviewDistance(capture,place) > 90) return frames;
+  let traveled = 0, closest = null;
+  const cos = Math.cos(capture[1] * Math.PI / 180);
+  for (const path of paths || []) for (let i = 1; i < path.length; i += 1) {
+    const a = path[i - 1], b = path[i];
+    const length = walkPreviewDistance(a,b);
+    if (!length) continue;
+    const dx = (b[0]-a[0])*cos, dy = b[1]-a[1];
+    const t = Math.max(0,Math.min(1,((capture[0]-a[0])*cos*dx+(capture[1]-a[1])*dy)/(dx*dx+dy*dy)));
+    const point = [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t];
+    const candidate = { meters:traveled+length*t,lateral:walkPreviewDistance(capture,point),point };
+    if (!closest || candidate.lateral < closest.lateral - 0.5
+        || (Math.abs(candidate.lateral-closest.lateral) <= 0.5 && candidate.meters < closest.meters)) closest = candidate;
+    traveled += length;
+  }
+  if (!closest || closest.lateral > 35 || closest.meters < 8
+      || closest.meters >= traveled - 5) return frames;
+  const meters = closest.meters;
+  const kept = frames.filter(frame => frame.meters < meters - 2 && frame.phase !== 'arrival' && frame.phase !== 'landmark-end');
+  const base = kept.at(-1) || frames[0];
+  if (!base) return frames;
+  const front = { ...base, position:closest.point, ahead:place, meters, total:meters,
+    phase:'landmark-end', landmark:{kind:'lodging-front',label:end.name,position:place},
+    lodgingFront:true, verifiedView:{panoId:view.panoId,pan:walkPreviewBearing(capture,place),tilt:0,fov:75,maxOffset:90},
+    nextDecision:null, focusMeters:null, turnPath:null, turnPosition:null,turnAhead:null,
+    direction:'straight',description:'',important:true,holdMs:1800 };
+  return [...kept.map(frame => ({...frame,total:meters})),front];
 }
 
 // Visually verified Naver panoramas, 2026-10-10. IDs pin a real photograph;
@@ -2547,7 +2607,9 @@ function startWalkPreview(context, choice) {
   const mapElement = visual?.querySelector('.naver-map');
   const walkButton = visual?.querySelector('.walk-action');
   if (!panel || !viewer || !scene || !visual || !mapElement) return;
-  const frames = walkPreviewSceneFrames(walkPreviewEndpointFrames(walkPreviewFrames(choice.paths, choice.maneuvers), context, choice.paths));
+  const frames = walkPreviewSceneFrames(walkPreviewLodgingFrontFrames(
+    walkPreviewEndpointFrames(walkPreviewFrames(choice.paths, choice.maneuvers), context, choice.paths),
+    context.end, choice.paths));
   if (!frames.length) {
     if (panel) {
       panel.hidden = false;
@@ -2590,6 +2652,13 @@ function startWalkPreview(context, choice) {
     play: panel.querySelector('#walk-preview-play')
   };
   state.instruction = panel.querySelector('#route-endpoints');
+  const originLabel = panel.querySelector('#walk-preview-origin');
+  if (originLabel) {
+    const start = context.start || {};
+    const location = start.landmark?.label || frames[0]?.startLabel || start.name || '';
+    originLabel.hidden = !location;
+    originLabel.textContent = location ? (context.english ? `Start: ${location}` : `출발 위치 · ${location}`) : '';
+  }
   state.close.hidden = false;
   state.originalInstruction = state.instruction ? { text:state.instruction.textContent,
     hidden:state.instruction.hidden, minHeight:state.instruction.style.minHeight || '' } : null;
@@ -3018,6 +3087,11 @@ function startWalkPreview(context, choice) {
 
           const location = state.panorama.getLocation();
           const panoId = state.panorama.getPanoId?.() || location?.panoId || null;
+          if (frameNow.lodgingFront && panoId !== frameNow.verifiedView?.panoId) {
+            unavailable(state.english ? 'The selected lodging-front photo is no longer available.'
+              : '선택한 숙소 앞 사진을 다시 확인할 수 없어요.');
+            return;
+          }
           // The same provider photograph can be returned for many nearby route points.
           // Count physical scenes, not queries or changes to the camera angle.
           // Approach / turn / departure are distinct route instructions even when
