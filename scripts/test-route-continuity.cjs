@@ -36,7 +36,7 @@ class Panorama {
       : (currentFixture.shift() || {id:'photo-'+instances.length, point:[options.position.lng(),options.position.lat()]});
     instances.push(this);
     timer(()=>this.emit('pano_changed'),1);
-    timer(()=>this.emit('init'),50);
+    if (!this.fixture.hang) timer(()=>this.emit('init'),50);
   }
   emit(name,value) { for(const fn of this.listeners[name]||[]) fn(value); }
   getLocation() { return {coord:new LatLng(this.fixture.point[1],this.fixture.point[0]),photodate:'2026-06-01'}; }
@@ -465,6 +465,67 @@ assert.equal(endedPreview.visual.classList.contains('walk-preview-map-fallback')
 assert.match(endedPreview.message.textContent,/로드뷰 미리보기가 끝났어요/);
 assert.match(endedPreview.instruction.textContent,/목적지 도착은 확인되지 않았어요/,'clear the last turn alert when the preview ends');
 assert.equal(endedPreview.close.hidden,false,'keep Map view available as an explicit choice');
+assert.equal(endedPreview.seek.value,endedPreview.seek.max,'fill the preview timeline when scanning ends short of the destination');
+assert.match(endedPreview.progress.textContent,/로드뷰 미리보기 종료/,'show a terminal progress label, not a stale mid-route distance');
+sandbox.stopWalkPreview(true); while(tick()) {}
+
+// Two consecutive panorama timeouts should terminate the unresponsive tail,
+// clear the old instruction, and complete the slider without switching to map.
+jobs.clear(); instances=[]; currentFixture=[
+  {id:'timeout-first',point:origin},
+  {id:'timeout-a',point:point(5),hang:true},
+  {id:'timeout-b',point:point(10),hang:true}
+]; now=0;
+sandbox.startWalkPreview({maps,map:{},english:false,requestId:1},{paths:[[origin,point(10)]],maneuvers:[]});
+const timeoutPreview=sandbox.walkPreviewState;
+until(()=>timeoutPreview.finished&&!timeoutPreview.playing&&!timeoutPreview.loading);
+assert.equal(timeoutPreview.history.length,1,'retain the last real street photograph');
+assert.equal(timeoutPreview.seek.value,timeoutPreview.seek.max,'finish the progress bar after repeated timeouts');
+assert.match(timeoutPreview.message.textContent,/거리뷰 응답이 연속으로 지연/,'explain timeout termination');
+assert.match(timeoutPreview.instruction.textContent,/목적지 도착은 확인되지 않았어요/,'remove the stale turn instruction after timeout');
+assert.notEqual(timeoutPreview.mapElement.style.visibility,'visible','timeout completion must not open map view');
+sandbox.stopWalkPreview(true); while(tick()) {}
+
+// A failed lookup for a previously seen/cached scene during replay must be
+// skipped while autoplay continues instead of pausing on the old instruction.
+jobs.clear(); instances=[]; currentFixture=[
+  {id:'replay-first',point:origin},
+  {id:'replay-timeout',point:point(5),hang:true}
+]; now=0;
+sandbox.startWalkPreview({maps,map:{},english:false,requestId:1},{paths:route,maneuvers:[]});
+const replayPreview=sandbox.walkPreviewState;
+until(()=>replayPreview.history.length===1&&!replayPreview.loading);
+replayPreview.play.onclick(); // pause, then seed a previously visited candidate
+replayPreview.history.push({index:1,panoId:'replay-timeout',capturePoint:point(5),heading:0,
+  focusMeters:null,routeMeters:5,photoContext:{offset:0,meters:5,lateral:0,nearby:false,heading:0},
+  pov:{pan:0,tilt:0,fov:75}});
+replayPreview.cursor=0;
+replayPreview.play.onclick();
+until(()=>replayPreview.skippedScenes===1);
+assert.equal(replayPreview.revisiting,true,'the failed panorama is a previously visited route frame');
+assert.equal(replayPreview.playing,true,'autoplay continues across a missing cached panorama');
+assert.match(replayPreview.message.textContent,/건너뛰는 중/,'show progress while retaining the last real photograph');
+sandbox.stopWalkPreview(true); while(tick()) {}
+
+// If that evicted/revisited frame is the final route point, finish instead of
+// taking the revisiting branch that used to stop with its old cue still active.
+jobs.clear(); instances=[]; currentFixture=[
+  {id:'replay-end-first',point:origin},
+  {id:'replay-end-timeout',point:point(100),hang:true}
+]; now=0;
+sandbox.startWalkPreview({maps,map:{},english:false,requestId:1},{paths:route,maneuvers:[]});
+const replayEnd=sandbox.walkPreviewState;
+until(()=>replayEnd.history.length===1&&!replayEnd.loading);
+replayEnd.play.onclick();
+const finalIndex=replayEnd.frames.length-1;
+replayEnd.history.push({index:finalIndex,panoId:'replay-end-timeout',capturePoint:point(100),heading:0,
+  focusMeters:null,routeMeters:100,photoContext:{offset:0,meters:100,lateral:0,nearby:false,heading:0},
+  pov:{pan:0,tilt:0,fov:75}});
+replayEnd.cursor=0;
+replayEnd.play.onclick();
+until(()=>replayEnd.finished&&!replayEnd.playing&&!replayEnd.loading);
+assert.match(replayEnd.instruction.textContent,/목적지 도착은 확인되지 않았어요/,'finish text replaces the last turn cue on a failed final revisit');
+assert.equal(replayEnd.seek.value,replayEnd.seek.max,'failed final revisit still completes the timeline');
 sandbox.stopWalkPreview(true); while(tick()) {}
 console.log('PASS: junction phases, one arrow per instruction, initial-only rotation, no map fallback on gaps');
 
