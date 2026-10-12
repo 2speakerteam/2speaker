@@ -2338,6 +2338,23 @@ function walkPreviewArrivalEndpoint(frame, context, paths) {
     && walkPreviewDistance(routeEnd,endpoint) <= 35;
 }
 
+// Naver can return the same confirmed lodging-front panorama for a route point
+// just before the provider's final coordinate. That photograph is the outside
+// stopping point; do not request later indoor/imagery-free route slides.
+function walkPreviewLodgingArrivalPhoto(frame, panoId, capturePoint, context, paths) {
+  const view = context?.end?.arrivalView;
+  const routeEnd = paths?.at(-1)?.at(-1);
+  return isLodgingPlace(context?.end) && context.end.arrivalAtFront
+    && Boolean(view?.panoId && panoId === view.panoId)
+    && Array.isArray(capturePoint) && Array.isArray(view.position)
+    && Array.isArray(routeEnd) && routeEnd.every(Number.isFinite)
+    && walkPreviewDistance(capturePoint,view.position) <= 15
+    && walkPreviewDistance(routeEnd,view.position) <= 45
+    && Number.isFinite(frame?.meters) && Number.isFinite(frame?.total)
+    && frame.meters >= frame.total - 35
+    && frame.phase !== 'landmark-start';
+}
+
 // A selected lodging's road-view camera is a street-side stopping point. The
 // provider's place coordinate may be inside the building or beyond its front.
 // Only use this camera when it is actually near both the walking path and place.
@@ -3105,7 +3122,12 @@ function startWalkPreview(context, choice) {
     }
     // Keep the last confirmed scene while seeking, rather than flashing the map.
     const seeking = !state.revisiting && !state.directSeek && state.playing && state.index < frames.length - 1;
-    if (seeking && state.activeLayer && !missingLandmark && !frames[state.index].important) {
+    const lodgingFinal = frames.at(-1);
+    const nearLodgingFront = isLodgingPlace(state.end) && state.end.arrivalAtFront
+      && lodgingFinal && walkPreviewArrivalEndpoint(lodgingFinal,state,choice.paths)
+      && lodgingFinal.meters - frame.meters <= 35;
+    if (seeking && state.activeLayer && !missingLandmark
+        && (!frame.important || nearLodgingFront)) {
       state.loading = true;
       state.skippedScenes += 1;
       updateButtons();
@@ -3248,9 +3270,17 @@ function startWalkPreview(context, choice) {
           const frameNow = frames[state.index];
           const capture = state.panorama.getLocation()?.coord;
           const capturePoint = capture && [capture.lng(), capture.lat()];
+          const location = state.panorama.getLocation();
+          const panoId = state.panorama.getPanoId?.() || location?.panoId || null;
+          const arrivedOnFrontPhoto = state.playing && !state.revisiting && !state.directSeek
+            && walkPreviewLodgingArrivalPhoto(frameNow,panoId,capturePoint,state,choice.paths);
           // The entrance photograph has already passed the landmark proximity check.
           // Reuse it for the first head turn even if its camera is off the route line.
-          const photoContext = saved?.photoContext || (frameNow.lodgingFront && capturePoint
+          const photoContext = saved?.photoContext || (arrivedOnFrontPhoto && capturePoint
+            ? {offset:walkPreviewDistance(capturePoint,frameNow.position),meters:frames.at(-1).meters,
+                lateral:0,nearby:false,heading:walkPreviewBearing(capturePoint,
+                  [state.end.longitude,state.end.latitude])}
+            : frameNow.lodgingFront && capturePoint
             ? {offset:walkPreviewDistance(capturePoint,frameNow.position),meters:frameNow.meters,
                 lateral:0,nearby:false,heading:walkPreviewBearing(capturePoint,frameNow.ahead)}
             : departure && capturePoint
@@ -3276,8 +3306,6 @@ function startWalkPreview(context, choice) {
             photoContext.heading = walkPreviewBearing(capturePoint, frameNow.ahead);
           }
 
-          const location = state.panorama.getLocation();
-          const panoId = state.panorama.getPanoId?.() || location?.panoId || null;
           if (frameNow.lodgingFront && panoId !== frameNow.verifiedView?.panoId) {
             unavailable(state.english ? 'The selected lodging-front photo is no longer available.'
               : '선택한 숙소 앞 사진을 다시 확인할 수 없어요.');
@@ -3287,7 +3315,7 @@ function startWalkPreview(context, choice) {
           // Count physical scenes, not queries or changes to the camera angle.
           // Approach / turn / departure are distinct route instructions even when
           // the provider returns the same camera and a very similar heading.
-          const duplicate = !frameNow.important && state.history.some((entry) => {
+          const duplicate = !frameNow.important && !arrivedOnFrontPhoto && state.history.some((entry) => {
             const samePlace = panoId && entry.panoId ? entry.panoId === panoId
               : (capturePoint && walkPreviewDistance(entry.capturePoint, capturePoint) < 2);
             // Endpoint views are intentional: an exit-facing view followed by the walking direction.
@@ -3298,7 +3326,8 @@ function startWalkPreview(context, choice) {
           });
           const previousScene = state.history[state.activeLayer?.sceneCursor] || state.history.at(-1);
           const backwards = !frameNow.landmark && previousScene && photoContext.meters < previousScene.routeMeters - 6;
-          if (state.playing && !state.revisiting && !state.directSeek && backwards && frameNow.important) {
+          if (state.playing && !state.revisiting && !state.directSeek && backwards && frameNow.important
+              && !arrivedOnFrontPhoto) {
             // Never silently discard an intersection, or show a backward camera
             // as though it were the next alley. Keep this decision point on the map.
             unavailable(state.english ? 'The available photo is behind this junction. Check the turn on the map.'
@@ -3333,22 +3362,25 @@ function startWalkPreview(context, choice) {
             if (!valid() || state.arrivalComplete || state.panorama !== instance || state.pendingLayer !== layer) return;
             state.loading = false;
             if (!state.revisiting) {
-              state.history.push({ index: state.index, panoId, capturePoint, heading: photoContext.heading,
-                focusMeters: frameNow.focusMeters, routeMeters: photoContext.meters,
+              state.history.push({ index: arrivedOnFrontPhoto ? frames.length - 1 : state.index,
+                panoId, capturePoint, heading: photoContext.heading,
+                focusMeters: frameNow.focusMeters,
+                routeMeters: arrivedOnFrontPhoto ? frames.at(-1).meters : photoContext.meters,
                 photoContext: { ...photoContext }, pov: { ...cameraPov } });
               state.cursor = state.history.length - 1;
               state.shownScenes = state.history.length;
             }
+            if (arrivedOnFrontPhoto) state.index = frames.length - 1;
             if (state.index === frames.length - 1) state.finished = true;
             updateProgress();
             state.viewer.style.visibility = 'visible';
             const previousLayer = state.activeLayer;
             state.activeLayer = layer;
-            updateInstruction(frameNow, photoContext);
+            updateInstruction(arrivedOnFrontPhoto ? frames.at(-1) : frameNow, photoContext);
             layer.sceneCursor = state.cursor;
             state.pendingLayer = null;
             hideTurnArrows();
-            attachTurnArrow(layer, frameNow, capturePoint, photoContext, panoId);
+            if (!arrivedOnFrontPhoto) attachTurnArrow(layer, frameNow, capturePoint, photoContext, panoId);
             updateButtons();
             // Manual navigation is a cut, never a delayed overlap of two locations.
             const instant = !state.playing || state.directSeek;
@@ -3381,8 +3413,9 @@ function startWalkPreview(context, choice) {
             if (state.finished && state.cursor === state.history.length - 1 && !frameNow.landmark) {
               state.message.textContent += state.english ? ' · Last available scene; check the map for any remaining section.' : ' · 마지막 확인 가능한 장면이에요. 남은 구간은 지도를 확인해 주세요.';
             }
-            if (state.index === frames.length - 1 && walkPreviewArrivalEndpoint(frameNow,state,choice.paths)) {
-              completeArrival(frameNow);
+            if (state.index === frames.length - 1
+                && walkPreviewArrivalEndpoint(frames.at(-1),state,choice.paths)) {
+              completeArrival(frames.at(-1));
             }
             scheduleNext();
           }));
