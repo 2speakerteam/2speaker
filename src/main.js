@@ -1737,6 +1737,39 @@ async function choosePedestrianEndpoints(origin, destinationQuery, isCurrent, ma
   return best;
 }
 
+async function choosePedestrianStartForPlace(originName, place, isCurrent, maps) {
+  // The selected result already has exact Naver coordinates. Compare real
+  // walking routes from the station exits without geocoding its name again.
+  const starts = await pedestrianCandidates(originName, maps);
+  if (!isCurrent()) return null;
+  if (!starts.length) throw new Error('출발할 역 출구를 확인하지 못했어요. 출구 번호를 지정해 주세요.');
+  const routes = [];
+  for (let offset = 0; offset < starts.length; offset += 3) {
+    if (!isCurrent()) return null;
+    routes.push(...await Promise.all(starts.slice(offset, offset + 3).map(async start => {
+      try {
+        const response = await fetch('/api/walking/routes', { method:'POST',headers:{'content-type':'application/json'},
+          body:JSON.stringify({startX:start.longitude,startY:start.latitude,
+            endX:place.longitude,endY:place.latitude}) });
+        const walkingRoute = await response.json();
+        if (!response.ok || !(Number(walkingRoute.totalTime)>0)
+            || !walkPreviewFrames(walkingRoute.paths,walkingRoute.maneuvers).length) return null;
+        const measured = walkingRoute.paths.reduce((sum,path)=>sum
+          + path.slice(1).reduce((part,point,i)=>part+walkPreviewDistance(path[i],point),0),0);
+        return { start,walkingRoute,distance:Number(walkingRoute.totalDistance)>0
+          ? Number(walkingRoute.totalDistance):measured };
+      } catch { return null; }
+    })));
+  }
+  if (!isCurrent()) return null;
+  const checked = routes.filter(Boolean);
+  const best = checked.sort((a,b)=>a.distance-b.distance || a.walkingRoute.totalTime-b.walkingRoute.totalTime)[0];
+  if (!best) throw new Error('역 출구에서 선택한 장소까지 도보 경로를 확인하지 못했어요.');
+  return { ...best.start,walkingRoute:best.walkingRoute,
+    walkingComparison:{candidates:starts.length,checked:checked.length,
+      distance:best.distance,entranceConfirmed:false} };
+}
+
 function routeErrorMessage(error) {
   const message = error instanceof Error ? error.message : '';
   const english = routeLanguage === 'en';
@@ -2070,6 +2103,12 @@ function walkPreviewFrames(paths, maneuvers = []) {
 function walkPreviewEndpointFrames(frames, context, paths) {
   if (!frames.length) return frames;
   const result = frames.slice();
+  if (!context.start?.landmark && context.start?.name) {
+    const name = String(context.start.name).trim();
+    const resolved = String(context.start.resolvedName || '').trim();
+    result[0] = { ...result[0],startLabel:resolved && resolved !== name
+      ? `${name} (${resolved})` : name };
+  }
   for (const [side, endpoint] of [['start', context.start], ['end', context.end]]) {
     const landmark = endpoint?.landmark;
     if (!landmark) continue;
@@ -2088,6 +2127,16 @@ function walkPreviewEndpointFrames(frames, context, paths) {
     }
   }
   return result;
+}
+
+function walkPreviewArrivalEndpoint(frame, context, paths) {
+  if (!['arrival','landmark-end'].includes(frame?.phase)) return false;
+  const endpoint = context?.end?.landmark?.position
+    || [Number(context?.end?.longitude),Number(context?.end?.latitude)];
+  const routeEnd = paths?.at(-1)?.at(-1);
+  return Array.isArray(routeEnd) && routeEnd.every(Number.isFinite)
+    && Array.isArray(endpoint) && endpoint.every(Number.isFinite)
+    && walkPreviewDistance(routeEnd,endpoint) <= 35;
 }
 
 // Visually verified Naver panoramas, 2026-10-10. IDs pin a real photograph;
@@ -2216,9 +2265,22 @@ function walkPreviewCue(frame, english) {
 }
 
 function walkPreviewStepInstruction(frame, english = false) {
-  if (frame.landmark) return frame.phase === 'landmark-start'
-    ? (english ? `Start at ${frame.landmark.label}. Check the exit and the road ahead.` : `${frame.landmark.label}에서 출발해요. 출구와 앞으로 걸어갈 길을 확인해 주세요.`)
-    : (english ? `${frame.landmark.label}: check the entrance ahead.` : `${frame.landmark.label} 입구를 확인해 주세요.`);
+  if (frame.landmark) {
+    if (frame.phase === 'landmark-start') {
+      if (frame.landmark.kind === 'station-exit') return english
+        ? `Start at ${frame.landmark.label}. Exit the station and follow the walking route.`
+        : `${frame.landmark.label}에서 출발해요. 출구 밖으로 나와 도보 경로를 따라가세요.`;
+      if (frame.landmark.kind === 'bus-stop') return english
+        ? `Start at ${frame.landmark.label}. Follow the walking route from the bus stop.`
+        : `${frame.landmark.label}에서 출발해요. 승강장에서 나와 도보 경로를 따라가세요.`;
+      return english ? `Start at ${frame.landmark.label}. Follow the route on the map.`
+        : `${frame.landmark.label}에서 출발해요. 지도 경로를 따라 이동해 주세요.`;
+    }
+    return english ? `${frame.landmark.label}: check the entrance ahead.` : `${frame.landmark.label} 입구를 확인해 주세요.`;
+  }
+  if (frame.phase === 'start' && frame.startLabel) return english
+    ? `Start at ${frame.startLabel}. Follow the walking route.`
+    : `${frame.startLabel}에서 출발해요. 도보 경로를 따라가세요.`;
   if (frame.phase === 'arrival') return english
     ? 'Near the destination. Check the actual entrance ahead.' : '목적지 부근이에요. 앞쪽의 실제 입구를 확인해 주세요.';
   const action = direction => english
@@ -2516,7 +2578,7 @@ function startWalkPreview(context, choice) {
     ...context,
     panel, viewer, scene, visual, mapElement, walkButton, transportOptions, transportDisplay,
     close: scene.querySelector('#walk-preview-close'),
-    frames, index: 0, playing: true, loading: false,
+    frames, index: 0, playing: true, loading: false, arrivalComplete: false,
     timer: null, panorama: null, fallbackMarker: null, skippedScenes: 0, shownScenes: 0,
     layers: new Set(), activeLayer: null, pendingLayer: null,
     history: [], cursor: -1, finished: false, revisiting: false, duplicateScenes: 0,
@@ -2528,6 +2590,7 @@ function startWalkPreview(context, choice) {
     play: panel.querySelector('#walk-preview-play')
   };
   state.instruction = panel.querySelector('#route-endpoints');
+  state.close.hidden = false;
   state.originalInstruction = state.instruction ? { text:state.instruction.textContent,
     hidden:state.instruction.hidden, minHeight:state.instruction.style.minHeight || '' } : null;
   const updateInstruction = (frame, photo = null) => {
@@ -2615,7 +2678,7 @@ function startWalkPreview(context, choice) {
   };
   const scheduleNext = () => {
     clearTimeout(state.timer);
-    if (!valid() || !state.playing || state.scrubbing) return;
+    if (!valid() || state.arrivalComplete || !state.playing || state.scrubbing) return;
     if (state.finished && (state.freeSeek ? state.index === frames.length - 1 : state.cursor === state.history.length - 1)) {
       state.playing = false;
       state.play.textContent = state.english ? 'Replay' : '다시 보기';
@@ -2626,6 +2689,15 @@ function startWalkPreview(context, choice) {
     state.timer = setTimeout(advance, walkPreviewHoldBeforeNext(frames[state.index], frames[nextIndex]));
   };
   const updateButtons = () => {
+    if (state.arrivalComplete) {
+      const cursor = state.activeLayer?.sceneCursor ?? state.cursor;
+      const index = state.history[cursor]?.index ?? state.index;
+      state.prev.disabled = !state.history.length || (state.freeSeek ? index === 0 : cursor <= 0);
+      state.next.disabled = true;
+      state.play.disabled = !state.history.length;
+      state.seek.disabled = !state.history.length || frames.length < 2;
+      return;
+    }
     // Loading is transient, not a navigation boundary. Base controls on the
     // visible scene so every background panorama request cannot flash them.
     const cursor = state.activeLayer?.sceneCursor ?? state.cursor;
@@ -2635,6 +2707,40 @@ function startWalkPreview(context, choice) {
     state.play.disabled = state.scrubbing;
     // The seek control stays usable even while the next photograph is loading.
     state.seek.disabled = !state.history.length || frames.length < 2;
+  };
+
+  const completeArrival = (frame) => {
+    if (state.arrivalComplete) return;
+    clearTimeout(state.timer);
+    state.arrivalComplete = true;
+    state.finished = true;
+    state.playing = false;
+    state.loading = false;
+    state.play.textContent = state.english ? 'Arrived' : '도착 완료';
+    state.close.hidden = true;
+    state.message.textContent = '';
+    state.message.style.display = 'none';
+    if (state.instruction) {
+      const label = frame.landmark?.label || state.end?.name || '';
+      state.instruction.hidden = false;
+      state.instruction.style.minHeight = '3em';
+      state.instruction.textContent = label
+        ? (state.english ? `Arrived at ${label}.` : `${label}에 도착했어요.`)
+        : (state.english ? 'You have arrived at the destination.' : '목적지에 도착했어요.');
+    }
+    hideTurnArrows();
+    updateProgress();
+    state.progress.textContent = state.english ? 'Arrived at the destination' : '목적지 도착 완료';
+    updateButtons();
+  };
+
+  const leaveArrivalForReview = () => {
+    if (!state.arrivalComplete) return;
+    state.arrivalComplete = false;
+    state.finished = false;
+    state.close.hidden = false;
+    state.message.textContent = '';
+    state.message.style.display = 'none';
   };
 
   const updateSeek = (index = state.index) => {
@@ -2662,6 +2768,7 @@ function startWalkPreview(context, choice) {
     if (!state.scrubbing) updateSeek();
   };
   const finishScan = () => {
+    if (state.arrivalComplete) return;
     hideTurnArrows();
     state.finished = true;
     state.playing = false;
@@ -2690,7 +2797,7 @@ function startWalkPreview(context, choice) {
     }
   };
   const advance = () => {
-    if (!valid()) return;
+    if (!valid() || state.arrivalComplete) return;
     if (state.freeSeek) {
       if (state.index < frames.length - 1) seekFrame(state.index + 1, !state.playing);
       else finishScan();
@@ -2707,11 +2814,33 @@ function startWalkPreview(context, choice) {
     }
   };
   const unavailable = (message) => {
+    if (state.arrivalComplete) return;
     clearTimeout(state.timer);
     state.loading = false;
     state.disposeLayer(state.pendingLayer);
     state.pendingLayer = null;
     state.panorama = null;
+    const frame = frames[state.index];
+    if (state.index === frames.length - 1 && walkPreviewArrivalEndpoint(frame,state,choice.paths)) {
+      // The TMAP route has reached the selected destination even if there is
+      // no close panorama. End on the exact destination map instead of
+      // resuming the missing-imagery scanner or reusing a stale photograph.
+      hideTurnArrows();
+      state.viewer.style.visibility = 'hidden';
+      state.visual.classList.add('walk-preview-map-fallback');
+      state.mapElement.style.visibility = 'visible';
+      state.mapElement.inert = false;
+      state.mapElement.removeAttribute('aria-hidden');
+      if (state.maps.Marker) {
+        const point = state.end.landmark?.position || [state.end.longitude,state.end.latitude];
+        state.fallbackMarker?.setMap(null);
+        state.fallbackMarker = new state.maps.Marker({ map:state.map,
+          position:new state.maps.LatLng(point[1],point[0]),
+          title:state.english ? 'Destination' : '목적지' });
+      }
+      completeArrival(frame);
+      return;
+    }
     const missingLandmark = frames[state.index].landmark;
     if (missingLandmark) {
       if (frames[state.index].phase === 'landmark-start') state.missingStartLandmark = true;
@@ -2739,18 +2868,17 @@ function startWalkPreview(context, choice) {
       });
     }
     state.message.textContent = missingLandmark
-      ? `${missingLandmark.label} · ` + (state.english ? 'No suitable entrance photograph was found. This map marker is the requested entrance, not a confirmed photograph.' : '해당 출입구를 보여줄 적절한 사진을 찾지 못했어요. 지도에 표시한 출입구 위치를 확인해 주세요.')
-      : walkPreviewCue(frames[state.index], state.english) + ' · ' + message;
+      ? `${missingLandmark.label} · ` + (state.english ? 'No suitable entrance photograph was found. Check its marked location on the map.' : '해당 출입구의 거리뷰를 찾지 못했어요. 지도에 표시한 위치를 확인해 주세요.')
+      : message;
     state.message.style.display = '';
     updateInstruction(frames[state.index]);
+    updateProgress();
     updateButtons();
     // Missing imagery must not strand playback on a map at the first campus/alley point.
     // Keep manual inspection paused, but auto-play scans forward to the next available view.
     state.skippedScenes += 1;
     if (!state.revisiting && !state.directSeek && state.playing && state.index < frames.length - 1) {
       const nextIndex = state.index + 1;
-      state.message.textContent += state.english
-        ? ' · Looking for the next available street image…' : ' · 다음 거리뷰가 있는 구간으로 이동 중이에요.';
       state.timer = setTimeout(() => showFrame(nextIndex), missingLandmark ? 3000 : frames[state.index].important ? 1400 : 350);
     } else if (!state.directSeek && !state.revisiting && state.index === frames.length - 1) {
       if (missingLandmark) {
@@ -2765,7 +2893,7 @@ function startWalkPreview(context, choice) {
     }
   };
   const showFrame = (index, revisiting = false, directSeek = false) => {
-    if (!valid()) return;
+    if (!valid() || state.arrivalComplete) return;
     // Keep the visible photo's cue during background loading. Replace it only
     // when the new scene is revealed, not when its network request begins.
     clearTimeout(state.timer);
@@ -2778,6 +2906,9 @@ function startWalkPreview(context, choice) {
     state.directSeek = directSeek;
     state.loading = true;
     state.visual.classList.remove('walk-preview-map-fallback');
+    state.mapElement.style.visibility = '';
+    state.mapElement.inert = true;
+    state.mapElement.setAttribute('aria-hidden','true');
     state.fallbackMarker?.setMap(null);
     const frame = frames[state.index];
     updateButtons();
@@ -2847,14 +2978,14 @@ function startWalkPreview(context, choice) {
         layer.panorama = state.panorama;
         const instance = state.panorama;
         state.maps.Event.addListener(instance, 'pano_status', (status) => {
-          if (!valid() || state.panorama !== instance || !state.loading || layer.readyStarted) return;
+          if (!valid() || state.arrivalComplete || state.panorama !== instance || !state.loading || layer.readyStarted) return;
           if (status !== 'OK') {
             unavailable(state.english ? 'No street image for this section. See the route on the map.' : '이 구간에는 거리뷰가 없어요. 지도 경로를 확인해 주세요.');
           }
           // OK only confirms the lookup; getLocation may still describe the previous image.
         });
         const onPanoramaReady = () => {
-          if (!valid() || state.panorama !== instance || !state.loading || layer.readyStarted) return;
+          if (!valid() || state.arrivalComplete || state.panorama !== instance || !state.loading || layer.readyStarted) return;
           layer.readyStarted = true;
           clearTimeout(state.timer);
           const frameNow = frames[state.index];
@@ -2868,6 +2999,15 @@ function startWalkPreview(context, choice) {
             : walkPreviewPhotoContext(capturePoint, frameNow, choice.paths));
           if (!photoContext) {
             unavailable(state.english ? 'No close street image for this route point. Check the map.' : '이 지점과 가까운 거리뷰가 없어요. 다른 길 사진 대신 지도를 확인해 주세요.');
+            return;
+          }
+          if (state.index === frames.length - 1 && !frameNow.landmark
+              && walkPreviewArrivalEndpoint(frameNow,state,choice.paths)
+              && walkPreviewDistance(capturePoint,[state.end.longitude,state.end.latitude]) > 35) {
+            // A photo snapped to an earlier street can look like the building,
+            // but it is not proof that the final entrance has been reached.
+            unavailable(state.english ? 'The final street photo is not at the destination.'
+              : '마지막 거리뷰가 목적지와 떨어져 있어요.');
             return;
           }
           if (departure && photoContext.lateral > 3) {
@@ -2907,7 +3047,7 @@ function startWalkPreview(context, choice) {
             state.panorama = null;
             // Keep navigation locked during the seek even when manually paused.
             state.timer = setTimeout(() => {
-              if (!valid()) return;
+              if (!valid() || state.arrivalComplete) return;
               if (state.index < frames.length - 1) showFrame(state.index + 1);
               else finishScan();
             }, 80);
@@ -2925,7 +3065,7 @@ function startWalkPreview(context, choice) {
           // pano_changed can fire before initialization/rendering is complete. Start from init,
           // settle the corrected camera offscreen, then reveal it without a visible pan/zoom.
           const reveal = () => requestAnimationFrame(() => requestAnimationFrame(() => {
-            if (!valid() || state.panorama !== instance || state.pendingLayer !== layer) return;
+            if (!valid() || state.arrivalComplete || state.panorama !== instance || state.pendingLayer !== layer) return;
             state.loading = false;
             if (!state.revisiting) {
               state.history.push({ index: state.index, panoId, capturePoint, heading: photoContext.heading,
@@ -2976,6 +3116,9 @@ function startWalkPreview(context, choice) {
             if (state.finished && state.cursor === state.history.length - 1 && !frameNow.landmark) {
               state.message.textContent += state.english ? ' · Last available scene; check the map for any remaining section.' : ' · 마지막 확인 가능한 장면이에요. 남은 구간은 지도를 확인해 주세요.';
             }
+            if (state.index === frames.length - 1 && walkPreviewArrivalEndpoint(frameNow,state,choice.paths)) {
+              completeArrival(frameNow);
+            }
             scheduleNext();
           }));
           const rotatingLayer = state.activeLayer;
@@ -2985,7 +3128,7 @@ function startWalkPreview(context, choice) {
             && rotatingLayer?.panoId === panoId && rotatingLayer.pov && rotationTransition;
           layer.settleTimer = setTimeout(() => {
             const outgoing = state.activeLayer;
-            if (!valid() || state.pendingLayer !== layer) return;
+            if (!valid() || state.arrivalComplete || state.pendingLayer !== layer) return;
             // Show a real turn of the head within the same photograph, not a jump
             // between different years/cameras. Reduced motion and seeking stay instant.
             if (reduceMotion || !state.playing || state.directSeek || (state.revisiting && !replayDeparture)
@@ -2995,7 +3138,7 @@ function startWalkPreview(context, choice) {
             const delta = ((cameraPov.pan - from.pan + 540) % 360) - 180;
             let step = 0;
             const rotate = () => {
-              if (!valid() || state.pendingLayer !== layer || state.activeLayer !== outgoing) return;
+              if (!valid() || state.arrivalComplete || state.pendingLayer !== layer || state.activeLayer !== outgoing) return;
               const t = Math.min(1, ++step / 36), eased = t * t * (3 - 2 * t);
               try {
                 outgoing.panorama.setPov({ pan: ((from.pan + delta * eased + 540) % 360) - 180,
@@ -3019,6 +3162,7 @@ function startWalkPreview(context, choice) {
   // This prevents late init/settle callbacks from overriding the user's selected scene.
   const beginScrub = () => {
     if (!valid() || !state.history.length) return;
+    leaveArrivalForReview();
     clearTimeout(state.timer);
     clearTimeout(state.seekTimer);
     state.playing = false;
@@ -3036,7 +3180,7 @@ function startWalkPreview(context, choice) {
   };
   const commitScrub = () => {
     clearTimeout(state.seekTimer);
-    if (!valid() || !state.scrubbing || !state.history.length) return;
+    if (!valid() || state.arrivalComplete || !state.scrubbing || !state.history.length) return;
     let selected = Math.max(0, Math.min(frames.length - 1, Math.round(Number(state.seek.value) || 0)));
     // The far left means the first available photograph, even if lookup point 0 had none.
     if (selected === 0) selected = Math.min(...state.history.map(entry => entry.index));
@@ -3050,6 +3194,7 @@ function startWalkPreview(context, choice) {
     seekFrame(selected);
   };
   const seekFrame = (index, directSeek = true) => {
+    if (state.arrivalComplete) return;
     const cached = state.history.findIndex(entry => entry.index === index);
     state.finished = index === frames.length - 1;
     if (cached >= 0) state.cursor = cached;
@@ -3104,6 +3249,16 @@ function startWalkPreview(context, choice) {
   };
   state.play.onclick = () => {
     if (!valid()) return;
+    if (state.arrivalComplete) {
+      leaveArrivalForReview();
+      state.playing = true;
+      state.index = state.history[0]?.index ?? 0;
+      state.cursor = 0;
+      updateProgress();
+      state.play.textContent = state.english ? 'Pause' : '일시정지';
+      showFrame(state.index,true);
+      return;
+    }
     if (state.finished && (state.freeSeek ? state.index === frames.length - 1 : state.cursor === state.history.length - 1) && !state.playing && !state.loading) {
       state.playing = true;
       state.finished = false;
@@ -3438,7 +3593,16 @@ async function requestGuideRoute(naverMaps, container, scene, requestId) {
     if (activePlaceSelection?.place?.name === query) {
       if (!naverMaps) throw new Error('국내 장소 지도에 연결하지 못했어요. 잠시 후 다시 시도해 주세요.');
       const { origin, place, route } = activePlaceSelection;
-      const start = { ...origin, walkingRoute: route };
+      let start = { ...origin,walkingRoute:route };
+      if (automaticEntranceQuery(origin.name) && /역\s*$/.test(origin.name)) {
+        if (instruction) instruction.textContent = '출발할 역 출구별 실제 도보 경로를 비교하고 있어요.';
+        start = await choosePedestrianStartForPlace(origin.name,place,isCurrent,naverMaps);
+        if (!start || !isCurrent()) return;
+      } else {
+        const busStop = explicitBusStopLandmark(origin.name);
+        if (busStop) start.landmark = { ...busStop,
+          position:[origin.longitude,origin.latitude],source:'Naver place-search origin' };
+      }
       end = place;
       const map = createNaverMap(naverMaps, container, scene, end);
       await requestNaverTransitRoute(naverMaps, map, start, end, isCurrent, instruction);

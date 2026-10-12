@@ -230,7 +230,10 @@ module.exports = async function handler(req, res) {
     try {
       const anchors = await searchNaver(criteria.originName, clientId, clientSecret);
       if (!anchors.length) return res.status(404).json({ error: '출발 기준 장소를 네이버에서 찾지 못했어요. 역이나 동네 이름을 확인해 주세요.' });
-      origin = { name: criteria.originName, latitude: anchors[0].latitude, longitude: anchors[0].longitude };
+      // Keep the Naver match so a landmark is not later described as an
+      // unverified numbered subway exit.
+      origin = { name: criteria.originName, resolvedName: anchors[0].name,
+        latitude: anchors[0].latitude, longitude: anchors[0].longitude };
     } catch (error) {
       return res.status(error.statusCode || 502).json({ error: error.message });
     }
