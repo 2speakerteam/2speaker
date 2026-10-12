@@ -120,6 +120,13 @@ assert.equal(routedFrames.at(-1).verifiedView.panoId,'street-front',
   'a walking route ending at the confirmed roadside photo uses it as the terminal scene');
 assert.ok(Math.abs(routedFrames.at(-1).meters-100)<1);
 assert.equal(sandbox.walkPreviewArrivalEndpoint(routedFrames.at(-1),{end:routedFront},route),true);
+const nearFront=sandbox.walkPreviewSceneFrames(routedFrames).find(frame=>
+  !frame.landmark && frame.meters>=frame.total-35 && frame.meters<frame.total-5);
+assert.ok(nearFront,'the approach has a route point before the outside hotel photograph');
+assert.equal(sandbox.walkPreviewLodgingArrivalPhoto(nearFront,'street-front',point(96),
+  {end:routedFront},route),true);
+assert.equal(sandbox.walkPreviewLodgingArrivalPhoto(nearFront,'unrelated',point(96),
+  {end:routedFront},route),false,'another street image cannot imply hotel arrival');
 
 function reset(finalPhoto='exact'){
   jobs.clear();now=0;instances=[];
@@ -207,6 +214,54 @@ for (const finalPhoto of ['street-front','changed']) {
   assert.equal(preview.message.textContent,'','extra guidance does not return');
   sandbox.stopWalkPreview(true);
 }
+// The confirmed outside photograph may be served before TMAP's last coordinate.
+// It must become the terminal scene, with no later blank image or map-button flash.
+{
+  jobs.clear();now=0;instances=[];
+  const scenes=sandbox.walkPreviewSceneFrames(routedFrames);
+  const earlyIndex=scenes.findIndex(frame=>frame.meters===nearFront.meters);
+  fixtures=scenes.map((frame,index)=>({id:index===earlyIndex?'street-front':'approach-'+index,
+    point:index===earlyIndex?point(96):frame.position}));
+  sandbox.startWalkPreview({maps,map:{},english:false,requestId:1,
+    start:{name:'동대문'},end:routedFront},{paths:route,maneuvers:[]});
+  const preview=sandbox.walkPreviewState;
+  until(()=>preview.arrivalComplete && !preview.loading);
+  assert.equal(preview.index,preview.frames.length-1);
+  assert.equal(preview.close.hidden,true);
+  assert.equal(preview.message.textContent,'');
+  assert.equal(preview.instruction.textContent,'테스트 호텔에 도착했어요.');
+  assert.equal(preview.visual.classList.contains('walk-preview-map-fallback'),false);
+  assert.equal(Number(preview.seek.value),Number(preview.seek.max));
+  assert.ok(instances.length<=earlyIndex+1,'no later panorama is requested after the lodging front');
+  while(tick()){}
+  assert.equal(preview.arrivalComplete,true,'late timers cannot restart a completed hotel route');
+  sandbox.stopWalkPreview(true);
+}
+// If a nearby approach image is unavailable, preserve the outgoing photograph
+// while autoplay moves to the verified front; even an important cue is not a
+// reason to expose an empty map slide 20 m before arrival.
+{
+  jobs.clear();now=0;instances=[];
+  const scenes=sandbox.walkPreviewSceneFrames(routedFrames);
+  const missingIndex=scenes.findIndex(frame=>frame.meters===nearFront.meters);
+  fixtures=scenes.map((frame,index)=>({id:index===scenes.length-1?'street-front':'approach-'+index,
+    point:index===missingIndex?point(300):frame.position}));
+  sandbox.startWalkPreview({maps,map:{},english:false,requestId:1,
+    start:{name:'동대문'},end:routedFront},{paths:route,maneuvers:[]});
+  const preview=sandbox.walkPreviewState;
+  preview.frames[missingIndex].important=true;
+  let blankFallback=false;
+  for(let i=0;i<2000 && !preview.arrivalComplete;i++) {
+    if(!tick()) break;
+    if(preview.visual.classList.contains('walk-preview-map-fallback')) blankFallback=true;
+  }
+  assert.equal(preview.arrivalComplete,true,'autoplay still reaches the outside lodging photo');
+  assert.equal(blankFallback,false,'missing near-arrival imagery never reveals a blank map slide');
+  assert.equal(preview.close.hidden,true);
+  assert.equal(preview.message.textContent,'');
+  sandbox.stopWalkPreview(true);
+}
+jobs.clear();now=0;
 sandbox.ensureLodgingArrivalView=async()=>{};
 let reroutes=0;
 sandbox.routeToLodgingFront=async()=>{reroutes+=1;return null;};
@@ -243,5 +298,5 @@ sandbox.routeToLodgingFront=async()=>{reroutes+=1;return null;};
   assert.equal(endpointStart.walkingRoute.totalDistance,100,
     'the verified route endpoint needs no detour to an older panorama');
   assert.equal(reroutes,0);
-  console.log('PASS: verified lodging-front stop, origin context, reused walking route, route-end panorama, synchronized progress, no post-arrival regression');
+  console.log('PASS: verified lodging-front stop, origin context, reused walking route, early exterior arrival, missing-image skip, synchronized progress, no post-arrival regression');
 })().catch(error=>{console.error(error);process.exitCode=1;});
