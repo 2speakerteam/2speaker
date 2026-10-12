@@ -2242,6 +2242,16 @@ function walkPreviewStepInstruction(frame, english = false) {
     : `목적지까지 약 ${distance}m, 길을 따라 계속 이동하세요.`;
 }
 
+function walkPreviewStepInstructionForPhoto(frame, photo, english = false) {
+  if (!Number.isFinite(photo?.meters) || frame.landmark) return walkPreviewStepInstruction(frame, english);
+  const photographedFrame = { ...frame, meters: photo.meters };
+  if (['approach', 'turn'].includes(frame.phase) && Number.isFinite(frame.focusMeters)) {
+    if (photo.meters < frame.focusMeters - 3) photographedFrame.phase = 'approach';
+    else if (photo.meters > frame.focusMeters + 3) photographedFrame.phase = 'depart';
+  }
+  return walkPreviewStepInstruction(photographedFrame, english);
+}
+
 function walkPreviewCameraPov(frame, photoContext, photoDate) {
   if (frame.verifiedView) {
     const { pan, tilt, fov } = frame.verifiedView;
@@ -2283,63 +2293,92 @@ function walkPreviewHoldBeforeNext(frame, nextFrame) {
 // POV contract: navermaps.github.io/maps.js.ncp/docs/naver.maps.Panorama.html
 function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
   const approach = frame?.phase === 'approach' && frame.turnPosition && frame.turnAhead;
-  // Normal straight roads and post-turn departure scenes stay uncluttered.
-  // Only confirmed junction windows may opt into a straight-through cue.
   const connecting = frame?.phase === 'straight' && frame.junctionCue === true;
   const junction = frame?.important && /교차로|사거리|삼거리|갈림길|갈래길|분기|횡단보도/.test(frame.description || '');
-  const focusMeters = Number.isFinite(frame?.focusMeters) ? frame.focusMeters : frame?.meters;
-  // A normal connecting scene can describe the next instruction before it
-  // becomes an explicit approach frame. Use that decision's route measure too.
-  const decisionMeters = approach && Number.isFinite(frame.focusMeters) ? frame.focusMeters
-    : Number.isFinite(frame?.nextDecision?.meters) ? frame.nextDecision.meters : focusMeters;
+  const decisionMeters = approach ? (Number.isFinite(frame.focusMeters) ? frame.focusMeters : frame.meters)
+    : Number.isFinite(frame?.nextDecision?.meters) ? frame.nextDecision.meters : null;
   const photoBeforeTurn = Number.isFinite(photo?.meters) && Number.isFinite(decisionMeters)
     ? decisionMeters - photo.meters : Infinity;
-  // A panorama can be more than 20 m from the sampled frame while still being
-  // on the correct route and looking at the upcoming corner. Judge that photo
-  // by its route projection and distance to the turn, not its sample offset.
-  const routeAlignedTurnPhoto = Boolean((approach || frame?.phase === 'turn') && Number.isFinite(photoBeforeTurn)
-    && photoBeforeTurn >= -3 && photoBeforeTurn <= 35
-    // On foot, do not trust a panorama across another block or far from the path.
-    && photo.offset > 20 && photo.offset <= 30 && photo.lateral <= 12);
-  // If the instruction is still 35–120 m ahead, draw a short forward arrow
-  // over this panorama's own route trace. The trace is grounded in the selected
-  // walking path and the camera must be close to that path, so the cue remains
-  // useful without pretending the distant junction is already under the camera.
-  const routeAheadInstruction = Boolean((approach && frame?.important)
-    || (frame?.phase === 'straight' && Number.isFinite(frame?.nextDecision?.meters)));
-  const routeAheadCue = Boolean(routeAheadInstruction && Number.isFinite(photoBeforeTurn)
-    && photoBeforeTurn > 35 && photoBeforeTurn <= 120
-    && Number.isFinite(photo?.meters) && photo.offset <= 80 && photo.lateral <= 12
-    && Array.isArray(photo?.point) && Array.isArray(photo.routeTrace) && photo.routeTrace.length >= 8);
-  const trustedRoutePhoto = routeAlignedTurnPhoto || routeAheadCue;
-  if ((!approach && !connecting && frame?.phase !== 'turn' && !routeAheadCue)
-      || (!connecting && !routeAheadCue && frame.turnAngle < 35 && !junction)
-      || frame.landmark || !capture || !photo || (photo.nearby && !trustedRoutePhoto)
-      || (!trustedRoutePhoto && (photo.offset > (connecting ? 20 : 18) || photo.lateral > 12
-        || (!connecting && photo.meters > frame.meters + 5))) || !(width > 0 && height > 0)
-      || ![pov?.pan, pov?.tilt, pov?.fov].every(Number.isFinite)) return null;
+  // Show the earlier, compact corner cue only when the photographed road is
+  // close to the turn. From farther back the camera must get a forward cue,
+  // not a tiny distant corner squeezed against the panorama edge.
+  const nearCorner = Boolean(approach && ['left', 'right'].includes(frame.direction)
+    && photoBeforeTurn >= -3 && photoBeforeTurn <= 20);
+  const forwardCue = Boolean(['straight', 'depart'].includes(frame?.phase)
+    || (approach && (photoBeforeTurn > 20 || frame.direction === 'straight'))
+    || (frame?.phase === 'turn' && frame.direction === 'straight'));
+  const turnCue = Boolean((nearCorner || frame?.phase === 'turn')
+    && (frame.turnAngle >= 35 || junction));
+  if ((!forwardCue && !turnCue) || frame.landmark || !capture || !photo
+      || ![pov?.pan, pov?.tilt, pov?.fov].every(Number.isFinite)
+      || !(width > 0 && height > 0) || photo.lateral > 12 || photo.offset > 80
+      || (photo.nearby && photo.offset <= 20)
+      || (frame.phase === 'turn' && photo.meters > frame.meters + 5)
+      || (turnCue && photoBeforeTurn < -3 && approach)) return null;
+  const centeredTurnCue = () => {
+    const side = frame.direction === 'left' ? -1 : 1;
+    const cx = width / 2, cy = height * .75;
+    return [[-5,25],[5,25],[5,4],[28,4],[28,15],[50,-2],
+      [28,-19],[28,-8],[-5,-8]].map(([x,y]) => [cx + side*x,cy + y]
+      .map(v => v.toFixed(1)).join(',')).join(' ');
+  };
+  if (nearCorner) {
+    const incoming = walkPreviewBearing(frame.position, frame.turnPosition);
+    if (Math.abs(((incoming - pov.pan + 540) % 360) - 180) > 85) return null;
+    if (photo.lateral > 6) return centeredTurnCue();
+  }
   const radians = Math.PI / 180;
   // Straight scene photographs can be snapped ahead of the requested sample.
   // Start from their actual route projection, never draw backwards to the sample.
-  const anchor = routeAheadCue ? photo.point
-    : approach ? frame.turnPosition : connecting && photo.point ? photo.point : frame.position;
-  const target = routeAheadCue ? photo.routeTrace.at(-1)
-    : approach ? frame.turnAhead : connecting && frame.cueAhead ? frame.cueAhead : frame.ahead;
-  const heading = walkPreviewBearing(anchor, target) * radians;
-  // On connecting scenes indicate the route bearing ahead of the camera.
-  // The walking line is often on the sidewalk while the camera is in the road;
-  // projecting that lateral offset would put a simple forward cue off-screen.
-  // Actual corner cues retain their geographic anchor.
-  const east = connecting ? 0 : (anchor[0] - capture[0]) * Math.cos(capture[1] * radians) * 111320;
-  const north = connecting ? 0 : (anchor[1] - capture[1]) * 111320;
-  if ((!routeAheadCue && Math.hypot(east, north) > (routeAlignedTurnPhoto ? 30 : 25))
-      || walkPreviewDistance(anchor, target) < (approach && !routeAheadCue ? 4 : 8)) return null;
+  const trace = Array.isArray(photo.routeTrace) && photo.routeTrace.length >= 2 ? photo.routeTrace : null;
+  const anchor = forwardCue ? capture : approach ? frame.turnPosition
+    : connecting && photo.point ? photo.point : frame.position;
+  const target = forwardCue ? (trace?.at(-1) || (connecting && frame.cueAhead) || frame.ahead) : approach ? frame.turnAhead
+    : connecting && frame.cueAhead ? frame.cueAhead : frame.ahead;
+  const worldHeading = forwardCue && trace ? walkPreviewBearing(trace[0], trace.at(-1))
+    : walkPreviewBearing(anchor, target);
+  const heading = worldHeading * radians;
+  const headingDifference = Math.abs(((worldHeading - pov.pan + 540) % 360) - 180);
+  if (forwardCue && headingDifference > 80) return null;
+  // Center the forward cue in the photographed traffic lane. A road panorama
+  // can be 10 m sideways from the walking line; projecting that offset pushed
+  // yesterday's arrow to the far-left edge of the image.
+  const east = forwardCue ? 0 : (anchor[0] - capture[0]) * Math.cos(capture[1] * radians) * 111320;
+  const north = forwardCue ? 0 : (anchor[1] - capture[1]) * 111320;
+  if ((!forwardCue && Math.hypot(east, north) > 30)
+      || (target && (!forwardCue || connecting) && walkPreviewDistance(anchor, target) < (approach && !forwardCue ? 4 : 8))) return null;
   const pan = pov.pan * radians, tilt = pov.tilt * radians;
   const focal = width / (2 * Math.tan(Math.max(20, Math.min(100, pov.fov)) * radians / 2));
   // Approximate flat pavement at camera height 2.4 m. This is a directional cue,
   // not a surveyed ground anchor; uncertain/off-screen placements are suppressed.
   const at = (side, forward) => [east + Math.sin(heading) * forward + Math.cos(heading) * side,
     north + Math.cos(heading) * forward - Math.sin(heading) * side];
+  let polygon = [[-.32,8],[.32,8],[.32,11],[.95,11],[0,13],[-.95,11],[-.32,11]].map(p=>at(...p));
+  let tipIndex = 4;
+  if (nearCorner) {
+    const incoming = walkPreviewBearing(frame.position, anchor) * radians;
+    const vi = [Math.sin(incoming),Math.cos(incoming)], vo = [Math.sin(heading),Math.cos(heading)];
+    if (1 + vi[0]*vo[0] + vi[1]*vo[1] < .25) return null;
+    // Compact rounded elbow: equal-length legs, no long miter or stretched tip.
+    const center = [east,north], curveStart = center.map((v,i)=>v-vi[i]*.9);
+    const curveEnd = center.map((v,i)=>v+vo[i]*.9);
+    const left = [], right = [];
+    const edge = (p,tangent) => {
+      const length = Math.hypot(...tangent);
+      const normal = [tangent[1]/length,-tangent[0]/length];
+      left.push(p.map((v,i)=>v-normal[i]*.25));
+      right.push(p.map((v,i)=>v+normal[i]*.25));
+    };
+    edge(center.map((v,i)=>v-vi[i]*2.4),vi);
+    for (let step=0;step<=6;step+=1) {
+      const t=step/6;
+      edge(center.map((_,i)=>(1-t)**2*curveStart[i]+2*(1-t)*t*center[i]+t*t*curveEnd[i]),
+        center.map((_,i)=>(1-t)*(center[i]-curveStart[i])+t*(curveEnd[i]-center[i])));
+    }
+    edge(at(0,1.5),vo);
+    polygon = [...right,at(.65,1.5),at(0,2.7),at(-.65,1.5),...left.reverse()];
+    tipIndex = right.length + 1;
+  }
   const projectGround = (e, n) => {
     const right = e * Math.cos(pan) - n * Math.sin(pan);
     const ahead = e * Math.sin(pan) + n * Math.cos(pan);
@@ -2348,114 +2387,20 @@ function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
     if (depth < 3) return null;
     return [width / 2 + focal * right / depth, height / 2 - focal * up / depth];
   };
-  let polygon = [[-.32,8],[.32,8],[.32,11],[.95,11],[0,13],[-.95,11],[-.32,11]].map(p=>at(...p));
-  let tipIndex = 4;
-  let usesRoutePath = false;
-  if (approach || routeAheadCue) {
-    const sourcePath = routeAheadCue ? photo.routeTrace : frame.turnPath;
-    let routePath = Array.isArray(sourcePath) && sourcePath.length >= 5
-      ? sourcePath.map(point => [
-        (point[0] - capture[0]) * Math.cos(capture[1] * radians) * 111320,
-        (point[1] - capture[1]) * 111320
-      ]) : null;
-    if (routePath?.every(point => point.every(Number.isFinite))) {
-      // A correct route can start behind the camera, or its path ribbon can
-      // touch the panorama edge. Keep the contiguous route segment that is in
-      // front of the camera; the SVG will clip/fit the remaining visible cue.
-      let bestStart = -1, bestEnd = -1, runStart = -1;
-      routePath.forEach((point, i) => {
-        if (projectGround(...point)) {
-          if (runStart < 0) runStart = i;
-          if (i - runStart > bestEnd - bestStart) { bestStart = runStart; bestEnd = i; }
-        } else runStart = -1;
-      });
-      if (bestStart < 0 || bestEnd - bestStart + 1 < 5) return null;
-      routePath = routePath.slice(bestStart, bestEnd + 1);
-      // Lay the arrow directly over geographic walking-route coordinates so its
-      // shaft follows the sidewalk bend instead of a guessed right-angle elbow.
-      const right = [], left = [];
-      const tangents = routePath.map((point, i) => {
-        const before = routePath[Math.max(0, i - 1)];
-        const after = routePath[Math.min(routePath.length - 1, i + 1)];
-        const dx = after[0] - before[0], dy = after[1] - before[1];
-        const length = Math.hypot(dx, dy);
-        return length > 0 ? [dx / length, dy / length] : null;
-      });
-      if (tangents.some(tangent => !tangent)) return null;
-      const arrowBase = routePath.length - 3;
-      for (let i = 0; i <= arrowBase; i += 1) {
-        const [dx, dy] = tangents[i], halfWidth = .42;
-        const normal = [-dy, dx];
-        right.push([routePath[i][0] - normal[0] * halfWidth, routePath[i][1] - normal[1] * halfWidth]);
-        left.push([routePath[i][0] + normal[0] * halfWidth, routePath[i][1] + normal[1] * halfWidth]);
-      }
-      const [dx, dy] = tangents[arrowBase], normal = [-dy, dx];
-      const base = routePath[arrowBase], tip = routePath.at(-1), headWidth = 1.25;
-      polygon = [
-        ...right,
-        [base[0] - normal[0] * headWidth, base[1] - normal[1] * headWidth],
-        tip,
-        [base[0] + normal[0] * headWidth, base[1] + normal[1] * headWidth],
-        ...left.reverse()
-      ];
-      tipIndex = polygon.indexOf(tip);
-      usesRoutePath = true;
-    } else {
-      const incoming = walkPreviewBearing(frame.position, anchor) * radians;
-      const vi = [Math.sin(incoming),Math.cos(incoming)], vo = [Math.sin(heading),Math.cos(heading)];
-      if (1 + vi[0]*vo[0] + vi[1]*vo[1] < .25) return null;
-      // Fallback for older frames without an explicit walking-route trace.
-      const center = [east,north], curveStart = center.map((v,i)=>v-vi[i]*.9);
-      const curveEnd = center.map((v,i)=>v+vo[i]*.9);
-      const left = [], right = [];
-      const edge = (p,tangent) => {
-        const length = Math.hypot(...tangent);
-        const normal = [tangent[1]/length,-tangent[0]/length];
-        left.push(p.map((v,i)=>v-normal[i]*.25));
-        right.push(p.map((v,i)=>v+normal[i]*.25));
-      };
-      edge(center.map((v,i)=>v-vi[i]*2.4),vi);
-      for (let step=0;step<=6;step+=1) {
-        const t=step/6;
-        edge(center.map((_,i)=>(1-t)**2*curveStart[i]+2*(1-t)*t*center[i]+t*t*curveEnd[i]),
-          center.map((_,i)=>(1-t)*(center[i]-curveStart[i])+t*(curveEnd[i]-center[i])));
-      }
-      edge(at(0,1.5),vo);
-      polygon = [...right,at(.65,1.5),at(0,2.7),at(-.65,1.5),...left.reverse()];
-      tipIndex = right.length + 1;
-    }
-  }
-  const projected = polygon.map(([e, n]) => projectGround(e, n));
-  if (projected.some(p => !p || !p.every(Number.isFinite))) return null;
-  if (usesRoutePath) {
-    // Keep the bend fixed to the route corner (or the route-ahead arrowhead)
-    // while shrinking only enough to keep the visible path inside the image.
-    const fitOrigin = routeAheadCue ? projected[tipIndex] : projectGround(east, north);
-    if (!fitOrigin || fitOrigin[0] < 14 || fitOrigin[0] > width - 14
-        || fitOrigin[1] < 18 || fitOrigin[1] > height - 6) return null;
-    let fit = 1;
-    for (const point of projected) {
-      for (let axis = 0; axis < 2; axis += 1) {
-        const delta = point[axis] - fitOrigin[axis];
-        const min = axis === 0 ? 14 : 18, max = axis === 0 ? width - 14 : height - 6;
-        if (delta > 0) fit = Math.min(fit, (max - fitOrigin[axis]) / delta);
-        else if (delta < 0) fit = Math.min(fit, (min - fitOrigin[axis]) / delta);
-      }
-    }
-    if (fit < .12) return null;
-    if (fit < 1) for (const point of projected) {
-      point[0] = fitOrigin[0] + (point[0] - fitOrigin[0]) * fit;
-      point[1] = fitOrigin[1] + (point[1] - fitOrigin[1]) * fit;
-    }
-    return projected.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ');
-  }
+  let projected = polygon.map(([e, n]) => projectGround(e, n));
+  if (projected.some(p => !p || !p.every(Number.isFinite))) return nearCorner ? centeredTurnCue() : null;
   let anchorPixel = null;
-  if (approach) {
+  if (nearCorner) {
     // Keep the bend pinned to the actual route corner while fitting its legs.
     // Scaling around the polygon's bounding-box center moved the arrow away
     // from the turn, especially for asymmetric left/right bends.
     anchorPixel = projectGround(east, north);
-    if (!anchorPixel) return null;
+    if (!anchorPixel || anchorPixel[0] < 14 || anchorPixel[0] > width - 14
+        || anchorPixel[1] < 18 || anchorPixel[1] > height - 6) {
+      // Exact corner lies outside this panorama: retain the requested turn
+      // direction as a centered preview cue instead of losing the arrow.
+      return centeredTurnCue();
+    }
     const xs=projected.map(p=>p[0]),ys=projected.map(p=>p[1]);
     const minX=Math.min(...xs),maxX=Math.max(...xs),minY=Math.min(...ys),maxY=Math.max(...ys);
     const scale=Math.min(1,width*.16/(maxX-minX),height*.2/(maxY-minY));
@@ -2479,7 +2424,7 @@ function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
       else if (delta<0) fit=Math.min(fit,(min-fitOrigin[axis])/delta);
     }
   }
-  if (fit < .12) return null; // Keep a readable cue when the corner is near an edge.
+  if (fit < .35) return null; // A tiny cue is harder to understand than no cue.
   if (fit < 1) for (const p of projected) {
     p[0]=fitOrigin[0]+(p[0]-fitOrigin[0])*fit;
     p[1]=fitOrigin[1]+(p[1]-fitOrigin[1])*fit;
@@ -2574,7 +2519,7 @@ function startWalkPreview(context, choice) {
     if (!state.instruction) return;
     state.instruction.hidden = false;
     state.instruction.style.minHeight = '3em';
-    state.instruction.textContent = walkPreviewStepInstruction(frame,state.english)
+    state.instruction.textContent = walkPreviewStepInstructionForPhoto(frame,photo,state.english)
       + (photo?.nearby ? (state.english ? ' · Nearby photograph; confirm the junction on the map.' : ' · 주변에서 촬영된 사진이에요. 꺾는 위치는 지도로 확인해 주세요.') : '');
   };
   updateInstruction(frames[0]);
@@ -2615,7 +2560,7 @@ function startWalkPreview(context, choice) {
     for (const layer of state.layers) if (layer.turnArrow) layer.turnArrow.hidden = true;
   };
   const attachTurnArrow = (layer, frame, capture, photo, panoId) => {
-    if (!['approach','turn'].includes(frame.phase) && !(frame.phase === 'straight' && frame.junctionCue)) {
+    if (!['approach','turn','straight','depart'].includes(frame.phase)) {
       layer.arrowContext = null;
       if (layer.turnArrow) layer.turnArrow.hidden = true;
       return;
