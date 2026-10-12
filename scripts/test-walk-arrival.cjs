@@ -59,6 +59,8 @@ const sandbox={document,window:{matchMedia:()=>({matches:true})},setTimeout:time
   clearTimeout:id=>jobs.delete(id),requestAnimationFrame:fn=>timer(fn,16),
   currentPage:'guide',routeRequestToken:1,walkPreviewState:null,console};
 vm.createContext(sandbox);
+vm.runInContext(source.slice(source.indexOf('function isLodgingPlace'),
+  source.indexOf('async function ensureLodgingArrivalView')),sandbox);
 vm.runInContext(previewSource,sandbox);
 
 const frames=sandbox.walkPreviewFrames(route,[]);
@@ -67,9 +69,13 @@ assert.equal(sandbox.walkPreviewArrivalEndpoint(frames.at(-1),{end:place},route)
 assert.equal(sandbox.walkPreviewArrivalEndpoint(frames.find(frame=>frame.meters>=60),{end:place},route),false,
   'a photograph before the final route point is not arrival');
 const landmarkStart=sandbox.walkPreviewEndpointFrames(frames,{
-  start:{name:'동대문',resolvedName:'흥인지문'}},route)[0];
-assert.match(sandbox.walkPreviewStepInstruction(landmarkStart),/동대문 \(흥인지문\) 앞에서 출발해요/);
+  start:{name:'동대문',resolvedName:'흥인지문',originKind:'manual'}},route)[0];
+assert.match(sandbox.walkPreviewStepInstruction(landmarkStart),/입력한 출발지 · 동대문 \(흥인지문\) 앞에서 출발해요/);
 assert.doesNotMatch(sandbox.walkPreviewStepInstruction(landmarkStart),/번 출구/);
+const gpsStart=sandbox.walkPreviewEndpointFrames(frames,{
+  start:{name:'현재 위치 · 종로구 종로 266',originKind:'gps'}},route)[0];
+assert.match(sandbox.walkPreviewStepInstruction(gpsStart),/현재 위치 · 종로구 종로 266에서 출발해요/);
+assert.doesNotMatch(sandbox.walkPreviewStepInstruction(gpsStart),/입력한 출발지/);
 const stationStart=sandbox.walkPreviewEndpointFrames(frames,{
   start:{landmark:{kind:'station-exit',label:'동대문역 9번 출구',position:point(0)}}},route)[0];
 assert.match(sandbox.walkPreviewStepInstruction(stationStart),/동대문역 9번 출구에서 출발해요/);
@@ -88,6 +94,15 @@ assert.equal(sandbox.walkPreviewLodgingFrontFrames(frames,{...lodging,category:'
   'non-lodging routes retain the provider endpoint');
 assert.equal(sandbox.walkPreviewLodgingFrontFrames(frames,{...lodging,arrivalView:{panoId:'far',position:point(300)}},route),frames,
   'an unrelated lodging photo cannot cut the route');
+const endpointPhoto={...lodging,arrivalView:{panoId:'terminal-front',position:point(98)}};
+assert.equal(sandbox.walkPreviewLodgingFrontFrames(frames,endpointPhoto,route).at(-1).verifiedView.panoId,
+  'terminal-front','a verified hotel photo near the route end is not discarded');
+const routedFront={...lodging,arrivalAtFront:true,arrivalView:{panoId:'street-front',position:point(96)}};
+const routedFrames=sandbox.walkPreviewLodgingFrontFrames(frames,routedFront,route);
+assert.equal(routedFrames.at(-1).verifiedView.panoId,'street-front',
+  'a walking route ending at the confirmed roadside photo uses it as the terminal scene');
+assert.ok(Math.abs(routedFrames.at(-1).meters-100)<1);
+assert.equal(sandbox.walkPreviewArrivalEndpoint(routedFrames.at(-1),{end:routedFront},route),true);
 
 function reset(finalPhoto='exact'){
   jobs.clear();now=0;instances=[];
@@ -149,6 +164,30 @@ for(const frontPhoto of ['matching','changed']){
   const index=preview.index;
   while(tick()){}
   assert.equal(preview.index,index,'late playback cannot restart after the hotel front');
+  sandbox.stopWalkPreview(true);
+}
+for (const finalPhoto of ['street-front','changed']) {
+  jobs.clear();now=0;instances=[];
+  const routeScenes=sandbox.walkPreviewSceneFrames(routedFrames);
+  fixtures=routeScenes.map((frame,index)=>({id:index===routeScenes.length-1?finalPhoto:'road-'+index,
+    point:index===routeScenes.length-1?point(96):frame.position}));
+  sandbox.startWalkPreview({maps,map:{},english:false,requestId:1,
+    start:{name:'현재 위치 · 종로구 종로 266',originKind:'gps'},end:routedFront},
+    {paths:route,maneuvers:[]});
+  const preview=sandbox.walkPreviewState;
+  until(()=>preview.arrivalComplete && !preview.loading);
+  assert.ok(Math.abs(preview.frames.at(-1).meters-100)<1);
+  assert.equal(preview.close.hidden,true);
+  assert.equal(preview.message.textContent,'');
+  assert.equal(preview.instruction.textContent,'테스트 호텔에 도착했어요.');
+  assert.equal(Number(preview.seek.value),Number(preview.seek.max));
+  assert.equal(preview.visual.classList.contains('walk-preview-map-fallback'),finalPhoto==='changed');
+  const lastIndex=preview.index;
+  instances.at(-1).emit('init');
+  while(tick()){}
+  assert.equal(preview.index,lastIndex,'late callbacks cannot resume after confirmed frontage');
+  assert.equal(preview.close.hidden,true,'map-view button does not return');
+  assert.equal(preview.message.textContent,'','extra guidance does not return');
   sandbox.stopWalkPreview(true);
 }
 console.log('PASS: verified lodging-front stop, origin context, final-photo and no-photo arrival, synchronized progress, no post-arrival regression');
