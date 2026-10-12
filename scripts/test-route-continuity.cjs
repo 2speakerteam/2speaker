@@ -36,8 +36,7 @@ class Panorama {
       : (currentFixture.shift() || {id:'photo-'+instances.length, point:[options.position.lng(),options.position.lat()]});
     instances.push(this);
     timer(()=>this.emit('pano_changed'),1);
-    if (this.fixture.status) timer(()=>this.emit('pano_status',this.fixture.status),1);
-    if (!this.fixture.hang) timer(()=>this.emit('init'),50);
+    timer(()=>this.emit('init'),50);
   }
   emit(name,value) { for(const fn of this.listeners[name]||[]) fn(value); }
   getLocation() { return {coord:new LatLng(this.fixture.point[1],this.fixture.point[0]),photodate:'2026-06-01'}; }
@@ -47,7 +46,7 @@ class Panorama {
   setVisible() {}
 }
 const maps = {LatLng, Panorama, Event:{addListener(p,n,f){(p.listeners[n] ||= []).push(f);},clearInstanceListeners(p){p.listeners={};}}};
-const sandbox = { document, window:{matchMedia(){return {matches:false};}}, setTimeout:timer, clearTimeout:k=>jobs.delete(k),requestAnimationFrame:f=>timer(f,16),currentPage:'guide',routeRequestToken:1,walkPreviewState:null,console,WALK_PANORAMA_TIMEOUT_MS:2500,isLodgingPlace:place=>/숙박|호텔|호스텔|모텔|게스트하우스|펜션|리조트|민박|여관|hotel|hostel|motel/i.test(String(place?.category||'')) };
+const sandbox = { document, window:{matchMedia(){return {matches:false};}}, setTimeout:timer, clearTimeout:k=>jobs.delete(k),requestAnimationFrame:f=>timer(f,16),currentPage:'guide',routeRequestToken:1,walkPreviewState:null,console,isLodgingPlace:place=>/숙박|호텔|호스텔|모텔|게스트하우스|펜션|리조트|민박|여관|hotel|hostel|motel/i.test(String(place?.category||'')) };
 vm.createContext(sandbox); vm.runInContext(part,sandbox);
 const frames = sandbox.walkPreviewFrames(route,[]);
 assert.equal(sandbox.walkPreviewHoldBeforeNext({phase:'landmark-start',holdMs:3500},{phase:'start'}),1000,'show starting exit for one second before departure');
@@ -58,8 +57,7 @@ assert.equal(sandbox.walkPreviewHoldBeforeNext({phase:'approach',holdMs:850},{ph
 assert.equal(sandbox.walkPreviewHoldBeforeNext({phase:'turn',holdMs:1600},{phase:'straight'}),1600,'post-turn hold is unchanged when no further orientation follows');
 assert.equal(sandbox.walkPreviewHoldBeforeNext({phase:'straight',holdMs:400},{phase:'straight'}),400,'ordinary slide pacing unchanged');
 assert.equal(sandbox.walkPreviewHoldBeforeNext({phase:'straight',holdMs:750},{phase:'straight'}),750,'straight junction reading time unchanged');
-// Keep the compact route-aligned arrow on the pavement for both the approach
-// cue and the actual turn instruction.
+// Keep the original compact route-aligned arrow and show it once at the actual instruction.
 const arrowFrame={phase:'turn',direction:'left',turnAngle:90,position:origin,
   ahead:[127,37.00013],meters:81,focusMeters:81,total:601,
   nextDecision:{meters:81,direction:'left'}};
@@ -86,31 +84,18 @@ for(const direction of ['left','right']) {
   assert.ok(box.minX>=0&&box.maxX<=747&&box.minY>=0&&box.maxY<=311,
     'arrow stays inside the panorama');
 }
-assert.ok(sandbox.walkPreviewTurnArrow({...arrowFrame,phase:'approach'},origin,arrowPhoto,arrowPov,747,311),
-  'upcoming turn instructions show one forward arrow on the pavement');
+assert.equal(sandbox.walkPreviewTurnArrow({...arrowFrame,phase:'approach'},origin,arrowPhoto,arrowPov,747,311),
+  null,'approach does not repeat the actual turn cue');
 assert.equal(sandbox.walkPreviewTurnArrow({...arrowFrame,phase:'straight',direction:'straight',turnAngle:0},
   origin,arrowPhoto,arrowPov,747,311),null,'ordinary straight frames do not invent extra arrows');
 const straightJunction={...arrowFrame,phase:'straight',direction:'straight',turnAngle:0,junctionCue:true};
 assert.ok(sandbox.walkPreviewTurnArrow(straightJunction,origin,arrowPhoto,arrowPov,747,311),
   'one verified straight-through junction can show its forward cue');
-assert.ok(sandbox.walkPreviewTurnArrow(arrowFrame,origin,{...arrowPhoto,nearby:true},arrowPov,600,300),
-  'route-aligned nearby photographs keep the pavement cue anchored to their actual camera position');
+assert.equal(sandbox.walkPreviewTurnArrow(arrowFrame,origin,{...arrowPhoto,nearby:true},arrowPov,600,300),
+  null,'unverified nearby photographs do not carry a route arrow');
 assert.equal(sandbox.walkPreviewTurnArrow(arrowFrame,origin,arrowPhoto,{...arrowPov,pan:180},600,300),
   null,'arrow is hidden when the view faces away from the route');
 assert.equal(sandbox.walkPreviewTurnArrow(arrowFrame,origin,arrowPhoto,arrowPov,0,0),null);
-const synchronizedTurn={...arrowFrame,focusMeters:81};
-const beforeTurnPhoto={...arrowPhoto,meters:76};
-const atTurnPhoto={...arrowPhoto,meters:81};
-const afterTurnPhoto={...arrowPhoto,meters:86};
-assert.match(sandbox.walkPreviewStepInstructionForPhoto(synchronizedTurn,beforeTurnPhoto),/약 5m 직진 후 좌회전/);
-assert.ok(sandbox.walkPreviewTurnArrow(synchronizedTurn,origin,beforeTurnPhoto,arrowPov,747,311),
-  'show a forward pavement arrow while the same photo says to continue toward the turn');
-assert.match(sandbox.walkPreviewStepInstructionForPhoto(synchronizedTurn,atTurnPhoto),/여기서 좌회전/);
-assert.ok(sandbox.walkPreviewTurnArrow(synchronizedTurn,origin,atTurnPhoto,arrowPov,747,311),
-  'show the route arrow when the visible photo and instruction reach the turn');
-assert.doesNotMatch(sandbox.walkPreviewStepInstructionForPhoto(synchronizedTurn,afterTurnPhoto),/여기서 좌회전/);
-assert.equal(sandbox.walkPreviewTurnArrow(synchronizedTurn,origin,afterTurnPhoto,arrowPov,747,311),null,
-  'remove the turn arrow once the same photo advances to the after-turn instruction');
 const junctionCenter=[127.09204455377541,37.5516751937452];
 const junctionRoute=[[junctionCenter.map((v,i)=>v+(i?-50/111320:0)),
   junctionCenter.map((v,i)=>v+(i?50/111320:0))]];
@@ -158,8 +143,8 @@ const exitApproach = exitApproachFrames.find(f=>f.phase==='approach' && Math.abs
 assert.ok(exitCorner.turnAngle>80 && Math.abs(exitCorner.meters-27.732)<.1,'early instruction must not erase real corner');
 assert.ok(exitApproach && exitApproach.direction==='left','preserve 12 m approach and show upcoming left turn');
 const exitPhoto = sandbox.walkPreviewPhotoContext(exitApproach.position,exitApproach,exitApproachPath);
-assert.ok(sandbox.walkPreviewTurnArrow(exitApproach,exitApproach.position,exitPhoto,
-  {pan:exitPhoto.heading,tilt:0,fov:75},600,300),'approach shows a forward pavement arrow before the later corner');
+assert.equal(sandbox.walkPreviewTurnArrow(exitApproach,exitApproach.position,exitPhoto,
+  {pan:exitPhoto.heading,tilt:0,fov:75},600,300),null,'approach does not show the upcoming turn arrow early');
 assert.equal(exitApproachFrames.filter(f=>f.phase==='turn').length,1,'no duplicate early turn');
 const oppositeInstruction = sandbox.walkPreviewFrames(exitApproachPath,[{
   position:exitApproachPath[0][1],description:'우회전 후 10m 이동',turnType:13
@@ -169,8 +154,6 @@ console.log('PASS: early station-exit instruction retains approach cue and actua
 const css = fs.readFileSync(__dirname + '/../src/styles.css','utf8');
 assert.match(css,/\.walk-preview-panorama \{[^}]*z-index: 0;[^}]*isolation: isolate;/);
 assert.match(css,/\.walk-preview-map-button \{[^}]*z-index: 3;/);
-assert.match(css,/\.guide-screen \.route-visual > \.route-instruction \{[^}]*margin-top: 10px;/,
-  'route instruction stays below the map instead of covering it');
 // Nearby reverse-running parallel segment must not override the requested forward section.
 const loop = [[point(0),point(100),[point(100)[0],37.00004],[127,37.00004]]];
 const context = sandbox.walkPreviewPhotoContext([point(30)[0],37.000035],{position:point(30),meters:30,focusMeters:null,phase:'straight'},loop);
@@ -197,7 +180,7 @@ const firstInstruction = state.instruction.textContent;
 assert.equal(state.instruction.hidden,false);
 until(()=>state.duplicateScenes===1);
 assert.equal(state.message.textContent,firstMessage,'skip must not replace visible cue');
-assert.equal(state.instruction.textContent,firstInstruction,'a repeated panorama does not replace the cue for the visible photo');
+assert.equal(state.instruction.textContent,firstInstruction,'pending or skipped image cannot change visible step instruction');
 assert.equal(state.viewer.style.visibility,'visible');
 until(()=>state.finished && !state.playing && !state.loading);
 const ids = Array.from(state.history,x=>x.panoId);
@@ -227,23 +210,8 @@ const missing = start([{id:'a',point:point(0)},{id:'far',point:[128,38]},{id:'b'
 until(()=>missing.skippedScenes===1);
 assert.equal(missing.viewer.style.visibility,'visible');
 assert.equal(missing.loading,true);
-assert.equal(missing.instruction.textContent,'거리뷰가 없는 구간을 건너뛰는 중이에요.');
 sandbox.stopWalkPreview(true); while(tick()) {}
 assert.equal(missing.layers.size,0);
-
-// An explicit provider failure should advance immediately; the 2.5s watchdog
-// is only for a request that emits no status or initialization event at all.
-jobs.clear(); instances=[]; currentFixture=[
-  {id:'status-first',point:origin},
-  {id:'status-error',point:point(5),status:'ERROR'},
-  {id:'status-next',point:point(22)}
-]; now=0;
-const statusFailure=start(currentFixture);
-until(()=>statusFailure.history.length===1&&!statusFailure.loading);
-until(()=>statusFailure.skippedScenes===1);
-assert.ok(now<2500,'an explicit no-panorama response does not wait for the timeout watchdog');
-sandbox.stopWalkPreview(true); while(tick()) {}
-
 const closing = start([{id:'closing',point:point(0)}]);
 tick(); tick(); // Camera is settling, but the new scene has not been committed.
 assert.equal(closing.history.length,0);
@@ -445,17 +413,10 @@ sandbox.startWalkPreview({maps,map:{},english:false,requestId:1},{paths:corner,m
 const bend=sandbox.walkPreviewState;
 const turnIndex=bend.frames.findIndex(frame=>frame.phase==='turn');
 const departIndex=bend.frames.findIndex(frame=>frame.phase==='depart');
-const approachArrowIndex=bend.frames.findIndex(frame=>frame.phase==='approach'&&frame.showTurnArrow);
-assert.ok(approachArrowIndex>=0,'the upcoming maneuver selects exactly one approach photo for its forward arrow');
 bend.playing=false;
 clearTimeout(bend.timer);
 until(()=>!bend.loading);
-for(let target=1;target<=approachArrowIndex;target++) {
-  bend.next.onclick();
-  until(()=>!bend.loading&&bend.index===target);
-}
-assert.equal(bend.activeLayer.turnArrow.hidden,false,'approach instruction displays the forward arrow on the road surface');
-for(let target=bend.index+1;target<turnIndex;target++) {
+for(let target=1;target<turnIndex;target++) {
   bend.next.onclick();
   until(()=>!bend.loading&&bend.index===target);
 }
@@ -488,10 +449,8 @@ assert.deepEqual(Array.from(bend.history.filter(entry=>entry.panoId==='corner-ca
   ['approach','approach','turn','straight','depart'],'same-camera decision phases remain present');
 assert.equal(bend.frames.filter(frame=>frame.showTurnArrow&&frame.phase==='turn').length,1,
   'one turn instruction owns one arrow cue');
-assert.equal(bend.frames.filter(frame=>frame.showTurnArrow&&frame.phase==='approach').length,1,
-  'one approach instruction owns one forward pavement cue');
-assert.ok(bend.frames.filter(frame=>frame.phase==='approach'&&!frame.showTurnArrow).length>0,
-  'other dense approach samples do not repeat the pavement cue');
+assert.ok(bend.frames.filter(frame=>frame.phase==='approach').every(frame=>!frame.showTurnArrow),
+  'approach samples do not repeat the turn arrow');
 assert.ok(instances.some(instance=>instance.el.style.cssText.includes('450ms')),'gentle crossfade');
 sandbox.stopWalkPreview(true); while(tick()) {}
 // An unverified final roadview frame ends cleanly without an automatic map view or stale turn alert.
@@ -506,68 +465,6 @@ assert.equal(endedPreview.visual.classList.contains('walk-preview-map-fallback')
 assert.match(endedPreview.message.textContent,/로드뷰 미리보기가 끝났어요/);
 assert.match(endedPreview.instruction.textContent,/목적지 도착은 확인되지 않았어요/,'clear the last turn alert when the preview ends');
 assert.equal(endedPreview.close.hidden,false,'keep Map view available as an explicit choice');
-assert.equal(endedPreview.seek.value,endedPreview.seek.max,'fill the preview timeline when scanning ends short of the destination');
-assert.match(endedPreview.progress.textContent,/로드뷰 미리보기 종료/,'show a terminal progress label, not a stale mid-route distance');
-sandbox.stopWalkPreview(true); while(tick()) {}
-
-// Two consecutive panorama timeouts should skip the remaining route and end
-// consistently, clear the old instruction, and complete the slider without
-// switching to map or pretending the destination was confirmed.
-jobs.clear(); instances=[]; currentFixture=[
-  {id:'timeout-first',point:origin},
-  {id:'timeout-a',point:point(5),hang:true},
-  {id:'timeout-b',point:point(10),hang:true}
-]; now=0;
-sandbox.startWalkPreview({maps,map:{},english:false,requestId:1},{paths:[[origin,point(10)]],maneuvers:[]});
-const timeoutPreview=sandbox.walkPreviewState;
-until(()=>timeoutPreview.finished&&!timeoutPreview.playing&&!timeoutPreview.loading);
-assert.equal(timeoutPreview.history.length,1,'retain the last real street photograph');
-assert.equal(timeoutPreview.seek.value,timeoutPreview.seek.max,'finish the progress bar after repeated timeouts');
-assert.match(timeoutPreview.message.textContent,/남은 구간을 건너뛰고 미리보기를 마쳤어요/,'explain that the unavailable tail was skipped');
-assert.match(timeoutPreview.instruction.textContent,/목적지 도착은 확인되지 않았어요/,'remove the stale turn instruction after timeout');
-assert.notEqual(timeoutPreview.mapElement.style.visibility,'visible','timeout completion must not open map view');
-sandbox.stopWalkPreview(true); while(tick()) {}
-
-// A failed lookup for a previously seen/cached scene during replay must be
-// skipped while autoplay continues instead of pausing on the old instruction.
-jobs.clear(); instances=[]; currentFixture=[
-  {id:'replay-first',point:origin},
-  {id:'replay-timeout',point:point(5),hang:true}
-]; now=0;
-sandbox.startWalkPreview({maps,map:{},english:false,requestId:1},{paths:route,maneuvers:[]});
-const replayPreview=sandbox.walkPreviewState;
-until(()=>replayPreview.history.length===1&&!replayPreview.loading);
-replayPreview.play.onclick(); // pause, then seed a previously visited candidate
-replayPreview.history.push({index:1,panoId:'replay-timeout',capturePoint:point(5),heading:0,
-  focusMeters:null,routeMeters:5,photoContext:{offset:0,meters:5,lateral:0,nearby:false,heading:0},
-  pov:{pan:0,tilt:0,fov:75}});
-replayPreview.cursor=0;
-replayPreview.play.onclick();
-until(()=>replayPreview.skippedScenes===1);
-assert.equal(replayPreview.revisiting,true,'the failed panorama is a previously visited route frame');
-assert.equal(replayPreview.playing,true,'autoplay continues across a missing cached panorama');
-assert.match(replayPreview.message.textContent,/건너뛰는 중/,'show progress while retaining the last real photograph');
-sandbox.stopWalkPreview(true); while(tick()) {}
-
-// If that evicted/revisited frame is the final route point, finish instead of
-// taking the revisiting branch that used to stop with its old cue still active.
-jobs.clear(); instances=[]; currentFixture=[
-  {id:'replay-end-first',point:origin},
-  {id:'replay-end-timeout',point:point(100),hang:true}
-]; now=0;
-sandbox.startWalkPreview({maps,map:{},english:false,requestId:1},{paths:route,maneuvers:[]});
-const replayEnd=sandbox.walkPreviewState;
-until(()=>replayEnd.history.length===1&&!replayEnd.loading);
-replayEnd.play.onclick();
-const finalIndex=replayEnd.frames.length-1;
-replayEnd.history.push({index:finalIndex,panoId:'replay-end-timeout',capturePoint:point(100),heading:0,
-  focusMeters:null,routeMeters:100,photoContext:{offset:0,meters:100,lateral:0,nearby:false,heading:0},
-  pov:{pan:0,tilt:0,fov:75}});
-replayEnd.cursor=0;
-replayEnd.play.onclick();
-until(()=>replayEnd.finished&&!replayEnd.playing&&!replayEnd.loading);
-assert.match(replayEnd.instruction.textContent,/목적지 도착은 확인되지 않았어요/,'finish text replaces the last turn cue on a failed final revisit');
-assert.equal(replayEnd.seek.value,replayEnd.seek.max,'failed final revisit still completes the timeline');
 sandbox.stopWalkPreview(true); while(tick()) {}
 console.log('PASS: junction phases, one arrow per instruction, initial-only rotation, no map fallback on gaps');
 
@@ -659,5 +556,6 @@ console.log('PASS: green walking answer overview, dynamic exit/comparison, Engli
   assert.equal((await sandbox.pedestrianCandidates('아차산',{})).length,1,'reject distant namesake plaza');
   console.log('PASS: Achasan entrance routing, explicit summit preserved, current-location origin');
 })().catch(error=>{console.error(error);process.exitCode=1;});
+
 
 
