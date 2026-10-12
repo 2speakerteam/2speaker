@@ -57,13 +57,24 @@ module.exports = async function handler(req, res) {
 
     const result = payload.features?.[0]?.properties;
     const totalTime = Number(result?.totalTime);
-    const taxiFare = Number(result?.taxiFare);
+    const taxiFare = result?.taxiFare == null ? NaN : Number(result.taxiFare);
+    const totalDistance = result?.totalDistance == null ? NaN : Number(result.totalDistance);
     if (!Number.isFinite(totalTime) || totalTime <= 0) {
       return res.status(404).json({ error: '이 구간의 자동차 경로를 찾지 못했어요.' });
     }
+    const paths = (payload.features ?? []).flatMap((feature) => {
+      const geometry = feature?.geometry;
+      const lines = geometry?.type === 'LineString' ? [geometry.coordinates]
+        : geometry?.type === 'MultiLineString' ? geometry.coordinates : [];
+      return lines.filter((line) => Array.isArray(line) && line.length > 1).map((line) => line.filter((point) =>
+        Array.isArray(point) && point.length >= 2 && coordinate(point[0], 124, 133) !== null
+          && coordinate(point[1], 33, 40) !== null));
+    }).filter((line) => line.length > 1);
     return res.status(200).json({
       totalTime,
-      taxiFare: Number.isFinite(taxiFare) && taxiFare >= 0 ? taxiFare : null
+      taxiFare: Number.isFinite(taxiFare) && taxiFare >= 0 ? taxiFare : null,
+      totalDistance: Number.isFinite(totalDistance) && totalDistance >= 0 ? totalDistance : null,
+      paths
     });
   } catch {
     return res.status(502).json({ error: '자동차 경로 API에 연결하지 못했어요.' });
