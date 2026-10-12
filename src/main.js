@@ -2742,46 +2742,29 @@ function walkPreviewCameraPov(frame, photoContext, photoDate) {
 // Physical duplicate photographs are removed during playback, not by dropping connecting roads.
 function walkPreviewSceneFrames(frames) {
   const showArrow = new Set();
-  const maneuvers = frames.map((frame, index) => ({ frame, index }))
-    .filter(({ frame }) => frame.phase === 'turn' && Number.isFinite(frame.focusMeters));
-  let previousDecisionMeters = -Infinity;
-  for (const { frame: maneuver, index: turnIndex } of maneuvers) {
-    const decisionMeters = maneuver.focusMeters;
-    // Show the cue once when this instruction first becomes relevant, then
-    // once at the actual turn. Keep all the in-between panorama slides clean.
-    const earlyIndex = frames.findIndex((frame, index) => index < turnIndex
-      && frame.meters > previousDecisionMeters + 2
-      && frame.meters <= decisionMeters - 20
-      && !frame.landmark && ['straight', 'approach', 'depart'].includes(frame.phase)
-      && (Math.abs((frame.nextDecision?.meters ?? Infinity) - decisionMeters) < 2
-        || Math.abs((frame.focusMeters ?? Infinity) - decisionMeters) < 2));
-    if (earlyIndex >= 0) showArrow.add(earlyIndex);
-    showArrow.add(turnIndex);
-    previousDecisionMeters = decisionMeters;
-  }
-
-  // A confirmed straight-through junction has no turn frame; show its cue on
-  // the first and last panorama in that short junction window.
+  const turnMeters = [];
+  frames.forEach((frame, index) => {
+    const verifiedTurn = frame.phase === 'turn' && frame.turnAngle >= 35;
+    const straightDecision = frame.phase === 'turn' && frame.direction === 'straight' && frame.important;
+    if ((!verifiedTurn && !straightDecision) || !Number.isFinite(frame.focusMeters)) return;
+    // One instruction can yield several nearby panorama samples. Bind its cue
+    // to the single actual decision frame instead of repeating it on approach.
+    if (turnMeters.some(meters => Math.abs(meters - frame.focusMeters) < 1)) return;
+    turnMeters.push(frame.focusMeters);
+    showArrow.add(index);
+  });
   let junctionGroup = [];
   const flushJunctionGroup = () => {
     if (!junctionGroup.length) return;
-    showArrow.add(junctionGroup[0]);
-    if (junctionGroup.length > 1) showArrow.add(junctionGroup.at(-1));
+    showArrow.add(junctionGroup[Math.floor((junctionGroup.length - 1) / 2)]);
     junctionGroup = [];
   };
   frames.forEach((frame, index) => {
-    const nearTurn = maneuvers.some(({ frame: maneuver }) =>
-      Math.abs(frame.meters - maneuver.focusMeters) < 18);
+    const nearTurn = turnMeters.some(meters => Math.abs(frame.meters - meters) < 18);
     if (frame.junctionCue && !nearTurn) junctionGroup.push(index);
     else flushJunctionGroup();
   });
   flushJunctionGroup();
-
-  // On a route with no decision points, keep one forward cue at the start.
-  if (!showArrow.size) {
-    const firstStraight = frames.findIndex(frame => frame.phase === 'straight' && !frame.landmark);
-    if (firstStraight >= 0) showArrow.add(firstStraight);
-  }
   return frames.map((frame, sceneSlot) => ({
     ...frame, sceneSlot, showTurnArrow: showArrow.has(sceneSlot)
   }));
@@ -2801,91 +2784,37 @@ function walkPreviewHoldBeforeNext(frame, nextFrame) {
 // camera/image changed; it also turned a left/right instruction into a tiny
 // straight arrow. The same photographed frame drives the text and this cue.
 function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
-  if (!frame || !capture || !photo || ![pov?.pan, pov?.tilt, pov?.fov].every(Number.isFinite)
-      || !(width > 0 && height > 0)) return null;
-  const direction = walkPreviewArrowDirection(frame, photo);
-  if (!direction) return null;
-  const trace = Array.isArray(photo.routeTrace) ? photo.routeTrace : [];
-  const routeHeading = trace.length > 1 && walkPreviewDistance(trace[0], trace[1]) > 2
-    ? walkPreviewBearing(trace[0], trace[1])
-    : Number.isFinite(photo.heading) ? photo.heading
-      : frame.position && frame.ahead ? walkPreviewBearing(frame.position, frame.ahead) : null;
-  // Keep the cue tied to the route-facing view, but place its footprint on the
-  // ground plane so it reads like a painted road marking instead of a floating icon.
-  if (Number.isFinite(routeHeading)
-      && Math.abs(((routeHeading - pov.pan + 540) % 360) - 180) > 115) return null;
-
+  const verifiedTurn = frame?.phase === 'turn' && frame.turnAngle >= 35;
+  const straightDecision = frame?.phase === 'turn' && frame.direction === 'straight' && frame.important;
+  const straightJunction = frame?.junctionCue && frame.direction === 'straight';
+  if ((!verifiedTurn && !straightDecision && !straightJunction) || frame.landmark || !capture
+      || !photo || photo.nearby || photo.offset > 18 || photo.lateral > 12
+      || photo.meters > frame.meters + 5 || !(width > 0 && height > 0)
+      || ![pov?.pan, pov?.tilt, pov?.fov].every(Number.isFinite)) return null;
   const radians = Math.PI / 180;
-  const tilt = pov.tilt * radians;
+  const heading = walkPreviewBearing(frame.position, frame.ahead) * radians;
+  const east = (frame.position[0] - capture[0]) * Math.cos(capture[1] * radians) * 111320;
+  const north = (frame.position[1] - capture[1]) * 111320;
+  if (Math.hypot(east, north) > 20 || walkPreviewDistance(frame.position, frame.ahead) < 13) return null;
+  const pan = pov.pan * radians, tilt = pov.tilt * radians;
   const focal = width / (2 * Math.tan(Math.max(20, Math.min(100, pov.fov)) * radians / 2));
-  const cameraHeight = 2.4;
-  // Coordinates are camera-relative: side is across the view, forward is along
-  // its ground direction. Projecting every vertex from the same flat plane
-  // keeps the arrow glued to the pavement as the panorama moves or is resized.
-  const projectGround = ([side, forward]) => {
-    const depth = forward * Math.cos(tilt) - cameraHeight * Math.sin(tilt);
-    const up = -cameraHeight * Math.cos(tilt) - forward * Math.sin(tilt);
+  // Approximate flat pavement at camera height 2.4 m. This is a directional cue,
+  // not a surveyed ground anchor; uncertain/off-screen placements are suppressed.
+  const polygon = [[-.32,8],[.32,8],[.32,11],[.95,11],[0,13],[-.95,11],[-.32,11]];
+  const projected = polygon.map(([side, forward]) => {
+    const e = east + Math.sin(heading) * forward + Math.cos(heading) * side;
+    const n = north + Math.cos(heading) * forward - Math.sin(heading) * side;
+    const right = e * Math.cos(pan) - n * Math.sin(pan);
+    const ahead = e * Math.sin(pan) + n * Math.cos(pan);
+    const depth = ahead * Math.cos(tilt) - 2.4 * Math.sin(tilt);
+    const up = -2.4 * Math.cos(tilt) - ahead * Math.sin(tilt);
     if (depth < 3) return null;
-    return [
-      width / 2 + focal * side / depth,
-      height / 2 - focal * up / depth
-    ];
-  };
-
-  const straight = [
-    [-.45, 7], [.45, 7], [.45, 10], [1.65, 10],
-    [0, 13], [-1.65, 10], [-.45, 10]
-  ];
-  const right = [
-    [-.42, 7], [.42, 7], [.42, 8.55], [1.3, 8.55],
-    [1.3, 7.95], [2.8, 9.3], [1.3, 10.65], [1.3, 10.05],
-    [-.42, 10.05]
-  ];
-  const uturn = [
-    [-.42, 7], [.42, 7], [.42, 9.45], [.2, 10.15],
-    [-.3, 10.8], [-1.05, 11.1], [-1.8, 10.95], [-2.35, 10.35],
-    [-2.45, 9.45], [-2.45, 8.55], [-3.15, 8.55], [-2.45, 7.1],
-    [-1.75, 8.55], [-1.75, 9.45], [-1.65, 10.0], [-1.35, 10.4],
-    [-.9, 10.45], [-.45, 10.1]
-  ];
-  let polygon;
-  if (direction === 'straight') polygon = straight;
-  else if (direction === 'uturn') {
-    // A hooked ground marking whose head points back along the U-turn leg.
-    polygon = uturn;
-  } else {
-    polygon = right.map(([side, forward]) => [
-      direction === 'left' ? -side : side, forward
-    ]);
-  }
-  const centerForward = direction === 'straight' ? 10 : 9;
-  const size = .78;
-  const sized = polygon.map(([side, forward]) => [
-    side * size,
-    centerForward + (forward - centerForward) * size
-  ]);
-  const rounded = [];
-  for (let index = 0; index < sized.length; index += 1) {
-    const previous = sized[(index + sized.length - 1) % sized.length];
-    const current = sized[index];
-    const next = sized[(index + 1) % sized.length];
-    const previousLength = Math.hypot(previous[0] - current[0], previous[1] - current[1]);
-    const nextLength = Math.hypot(next[0] - current[0], next[1] - current[1]);
-    const radius = Math.min(.22, previousLength * .28, nextLength * .28);
-    const start = current.map((value, axis) => value + (previous[axis] - value) * radius / previousLength);
-    const finish = current.map((value, axis) => value + (next[axis] - value) * radius / nextLength);
-    rounded.push(start);
-    for (let step = 1; step < 4; step += 1) {
-      const t = step / 4;
-      rounded.push(start.map((value, axis) =>
-        (1 - t) ** 2 * value + 2 * (1 - t) * t * current[axis] + t ** 2 * finish[axis]));
-    }
-    rounded.push(finish);
-  }
-  const projected = rounded.map(projectGround);
-  if (projected.some(point => !point || !point.every(Number.isFinite))) return null;
-  return projected.map(point => point.map(value => value.toFixed(1)).join(',')).join(' ');
+    return [width / 2 + focal * right / depth, height / 2 - focal * up / depth];
+  });
+  if (projected.some(p => !p || !p.every(Number.isFinite) || p[0] < 14 || p[0] > width-14 || p[1] < 18 || p[1] > height-18)) return null;
+  return projected.map(p => p.map(v => v.toFixed(1)).join(',')).join(' ');
 }
+
 
 function stopWalkPreview(hidePanel = false) {
   const state = walkPreviewState;
@@ -3025,7 +2954,10 @@ function startWalkPreview(context, choice) {
     for (const layer of state.layers) if (layer.turnArrow) layer.turnArrow.hidden = true;
   };
   const attachTurnArrow = (layer, frame, capture, photo, panoId) => {
-    if (!frame.showTurnArrow || !['approach','turn','straight','depart'].includes(frame.phase)) {
+    if (!frame.showTurnArrow
+        || !((frame.phase === 'turn' && (frame.turnAngle >= 35
+            || (frame.direction === 'straight' && frame.important)))
+          || (frame.junctionCue && frame.direction === 'straight'))) {
       layer.arrowContext = null;
       if (layer.turnArrow) layer.turnArrow.hidden = true;
       return;
@@ -3067,8 +2999,11 @@ function startWalkPreview(context, choice) {
     clearTimeout(state.timer);
     if (!valid() || state.arrivalComplete || !state.playing || state.scrubbing) return;
     if (state.finished && (state.freeSeek ? state.index === frames.length - 1 : state.cursor === state.history.length - 1)) {
-      state.playing = false;
-      state.play.textContent = state.english ? 'Replay' : '다시 보기';
+      if (!state.arrivalComplete) finishScan();
+      else {
+        state.playing = false;
+        state.play.textContent = state.english ? 'Replay' : '다시 보기';
+      }
       return;
     }
     const nextIndex = !state.freeSeek && state.cursor + 1 < state.history.length
@@ -3104,7 +3039,7 @@ function startWalkPreview(context, choice) {
     state.playing = false;
     state.loading = false;
     state.play.textContent = state.english ? 'Arrived' : '도착 완료';
-    state.close.hidden = true;
+    state.close.hidden = false;
     state.message.textContent = '';
     state.message.style.display = 'none';
     if (state.instruction) {
@@ -3162,24 +3097,37 @@ function startWalkPreview(context, choice) {
     state.loading = false;
     state.play.textContent = state.english ? 'Replay' : '다시 보기';
     if (state.history.length) {
-      // Retain the last real photograph; never call a missing tail "arrival".
+      // Keep the last real photograph, but do not leave its old turn instruction
+      // active after the street-view sequence has ended short of the destination.
       state.cursor = state.activeLayer?.sceneCursor ?? state.history.length - 1;
       state.index = state.history[state.cursor].index;
       state.viewer.style.visibility = 'visible';
       state.visual.classList.remove('walk-preview-map-fallback');
       state.fallbackMarker?.setMap(null);
+      state.fallbackMarker = null;
       updateProgress();
       updateButtons();
-      state.message.textContent = (state.activeLayer?.caption || state.message.textContent) + (state.english
-        ? ' · Last available scene. Check the map for any remaining section.'
-        : ' · 마지막 확인 가능한 장면이에요. 남은 구간은 지도를 확인해 주세요.');
-      updateInstruction(frames[state.index]);
-      if (state.instruction && state.index < frames.length-1) state.instruction.textContent += state.english
-        ? ' · Last available street view; use the map for the remaining route.' : ' · 거리뷰는 여기까지예요. 남은 구간은 지도로 확인해 주세요.';
+      state.message.textContent = state.english
+        ? 'Street-view preview has ended. Select "Map view" to see the remaining route.'
+        : '로드뷰 미리보기가 끝났어요. 남은 경로는 지도보기 버튼을 눌러 확인하세요.';
+      state.message.style.display = '';
+      if (state.instruction) {
+        state.instruction.hidden = false;
+        state.instruction.style.minHeight = '3em';
+        state.instruction.textContent = state.english
+          ? 'Street-view preview ended. The destination has not been confirmed.'
+          : '로드뷰 미리보기가 끝났어요. 목적지 도착은 확인되지 않았어요.';
+      }
     } else {
       state.message.textContent = state.english
-        ? 'No usable street images were found along this route. Please use the map.'
-        : '이 경로에서 사용할 수 있는 거리뷰를 찾지 못했어요. 지도를 확인해 주세요.';
+        ? 'No usable street images were found along this route. Select "Map view" to see the route.'
+        : '이 경로에서 사용할 수 있는 거리뷰를 찾지 못했어요. 지도보기 버튼으로 경로를 확인해 주세요.';
+      state.message.style.display = '';
+      if (state.instruction) {
+        state.instruction.hidden = false;
+        state.instruction.style.minHeight = '3em';
+        state.instruction.textContent = state.message.textContent;
+      }
       updateButtons();
     }
   };
@@ -3208,43 +3156,41 @@ function startWalkPreview(context, choice) {
     state.pendingLayer = null;
     state.panorama = null;
     const frame = frames[state.index];
-    if (state.index === frames.length - 1 && walkPreviewArrivalEndpoint(frame,state,choice.paths)) {
-      // The TMAP route has reached the selected destination even if there is
-      // no close panorama. End on the exact destination map instead of
-      // resuming the missing-imagery scanner or reusing a stale photograph.
-      hideTurnArrows();
-      state.viewer.style.visibility = 'hidden';
-      state.visual.classList.add('walk-preview-map-fallback');
-      state.mapElement.style.visibility = 'visible';
-      state.mapElement.inert = false;
-      state.mapElement.removeAttribute('aria-hidden');
-      if (state.maps.Marker) {
-        const point = frame.lodgingFront ? state.end.arrivalView.position
-          : state.end.landmark?.position || [state.end.longitude,state.end.latitude];
-        state.fallbackMarker?.setMap(null);
-        state.fallbackMarker = new state.maps.Marker({ map:state.map,
-          position:new state.maps.LatLng(point[1],point[0]),
-          title:state.english ? 'Destination' : '목적지' });
-      }
-      completeArrival(frame);
-      return;
-    }
-    const missingLandmark = frames[state.index].landmark;
+    const missingLandmark = frame.landmark;
     if (missingLandmark) {
-      if (frames[state.index].phase === 'landmark-start') state.missingStartLandmark = true;
+      if (frame.phase === 'landmark-start') state.missingStartLandmark = true;
       else state.missingEndLandmark = true;
     }
-    // Keep the last confirmed scene while seeking, rather than flashing the map.
-    const seeking = !state.revisiting && !state.directSeek && state.playing && state.index < frames.length - 1;
-    if (seeking) {
-      // Keep playback on the last real panorama while skipping a missing scene.
-      // Map fallback is reserved for the route endpoint, never an autoplay gap.
+
+    // A verified route endpoint completes the instruction, but never changes
+    // the view to a map automatically. The user can still choose Map view.
+    if (state.index === frames.length - 1 && walkPreviewArrivalEndpoint(frame,state,choice.paths)) {
       state.visual.classList.remove('walk-preview-map-fallback');
       state.mapElement.style.visibility = 'hidden';
       state.mapElement.inert = true;
       state.mapElement.setAttribute('aria-hidden', 'true');
       state.fallbackMarker?.setMap(null);
       state.fallbackMarker = null;
+      state.viewer.style.visibility = state.activeLayer ? 'visible' : 'hidden';
+      hideTurnArrows();
+      completeArrival(frame);
+      return;
+    }
+
+    state.visual.classList.remove('walk-preview-map-fallback');
+    state.mapElement.style.visibility = 'hidden';
+    state.mapElement.inert = true;
+    state.mapElement.setAttribute('aria-hidden', 'true');
+    state.fallbackMarker?.setMap(null);
+    state.fallbackMarker = null;
+
+    const gapMessage = missingLandmark
+      ? missingLandmark.label + ' · ' + (state.english
+        ? 'No entrance street image was found. Select "Map view" to check its location.'
+        : '출입구 거리뷰를 찾지 못했어요. 지도보기 버튼으로 위치를 확인해 주세요.')
+      : message + (state.english ? ' Select "Map view" to check the route.' : ' 지도는 지도보기 버튼을 눌러 확인할 수 있어요.');
+    const seeking = !state.revisiting && !state.directSeek && state.playing && state.index < frames.length - 1;
+    if (seeking) {
       if (state.activeLayer && !missingLandmark) {
         state.viewer.style.visibility = 'visible';
         state.loading = true;
@@ -3254,55 +3200,35 @@ function startWalkPreview(context, choice) {
         return;
       }
       state.viewer.style.visibility = state.activeLayer ? 'visible' : 'hidden';
-      hideTurnArrows();
-      state.message.textContent = missingLandmark
-        ? `${missingLandmark.label} · ` + (state.english
-          ? 'Looking for the next available street view…'
-          : '다음 거리뷰가 있는 구간을 찾고 있어요.')
-        : (state.english ? 'Looking for the next available street view…' : '다음 거리뷰가 있는 구간을 찾고 있어요.');
+      if (!state.activeLayer) {
+        hideTurnArrows();
+        if (state.instruction) state.instruction.textContent = gapMessage;
+      }
+      state.message.textContent = gapMessage;
       state.message.style.display = '';
-      if (!state.activeLayer) updateInstruction(frame);
       updateProgress();
       updateButtons();
       state.skippedScenes += 1;
-      state.timer = setTimeout(() => showFrame(state.index + 1), missingLandmark ? 3000 : frame.important ? 1400 : 350);
+      state.timer = setTimeout(() => showFrame(state.index + 1),
+        missingLandmark ? 3000 : frame.important ? 1400 : 350);
       return;
     }
-    hideTurnArrows();
-    state.viewer.style.visibility = 'hidden';
-    state.visual.classList.add('walk-preview-map-fallback');
-    const point = missingLandmark?.position || frames[state.index].position;
-    if (state.maps.Marker) {
-      state.fallbackMarker?.setMap(null);
-      state.fallbackMarker = new state.maps.Marker({
-        map: state.map, position: new state.maps.LatLng(point[1], point[0]),
-        title: state.english ? 'Preview point · street image unavailable' : '현재 미리보기 지점 · 거리뷰 없음',
-        icon: { content: '<span style="display:block;padding:5px 8px;border:2px solid #fff;border-radius:14px;background:#9b5500;color:#fff;font-size:12px;font-weight:700;white-space:nowrap">' + (state.english ? 'Viewpoint' : '확인 지점') + '</span>' }
-      });
+
+    state.viewer.style.visibility = state.activeLayer ? 'visible' : 'hidden';
+    if (!state.activeLayer) {
+      hideTurnArrows();
+      if (state.instruction) state.instruction.textContent = gapMessage;
     }
-    state.message.textContent = missingLandmark
-      ? `${missingLandmark.label} · ` + (state.english ? 'No suitable entrance photograph was found. Check its marked location on the map.' : '해당 출입구의 거리뷰를 찾지 못했어요. 지도에 표시한 위치를 확인해 주세요.')
-      : message;
+    state.message.textContent = gapMessage;
     state.message.style.display = '';
-    updateInstruction(frames[state.index]);
     updateProgress();
     updateButtons();
-    // Missing imagery must not strand playback on a map at the first campus/alley point.
-    // Keep manual inspection paused, but auto-play scans forward to the next available view.
     state.skippedScenes += 1;
-    if (!state.revisiting && !state.directSeek && state.playing && state.index < frames.length - 1) {
-      const nextIndex = state.index + 1;
-      state.timer = setTimeout(() => showFrame(nextIndex), missingLandmark ? 3000 : frames[state.index].important ? 1400 : 350);
-    } else if (!state.directSeek && !state.revisiting && state.index === frames.length - 1) {
-      if (missingLandmark) {
-        state.finished = true;
-        state.playing = false;
-        state.play.textContent = state.english ? 'Replay' : '다시 보기';
-        updateButtons();
-      } else finishScan();
-    } else if (state.revisiting) {
+    if (state.revisiting) {
       state.playing = false;
       state.play.textContent = state.english ? 'Play' : '자동 재생';
+    } else if (!state.directSeek && state.index === frames.length - 1) {
+      finishScan();
     }
   };
   const showFrame = (index, revisiting = false, directSeek = false) => {
@@ -3330,14 +3256,7 @@ function startWalkPreview(context, choice) {
     // Hiding it here made every position change flash the underlying map.
     if (!state.history.length && !revisiting) state.viewer.style.visibility = 'hidden';
     const saved = revisiting ? state.history[state.cursor] : null;
-    const previousEntry = revisiting ? state.history[state.cursor - 1] : null;
-    const replayDeparture = Boolean(saved && state.playing && !directSeek && frame.phase === 'start'
-      && previousEntry && frames[previousEntry.index]?.phase === 'landmark-start'
-      && previousEntry.panoId && previousEntry.panoId === saved.panoId
-      && state.activeLayer?.panoId === saved.panoId);
-    // Replay the exit-to-route head turn even when this scene is already cached.
-    // Loading the same panorama again lets the outgoing exit view turn naturally.
-    const retained = saved && !replayDeparture && [...state.layers].find(layer => layer.sceneCursor === state.cursor);
+    const retained = saved && [...state.layers].find(layer => layer.sceneCursor === state.cursor);
     if (retained) {
       clearTimeout(retained.retireTimer);
       const outgoing = state.activeLayer;
@@ -3550,23 +3469,24 @@ function startWalkPreview(context, choice) {
             if (state.index === frames.length - 1
                 && walkPreviewArrivalEndpoint(frames.at(-1),state,choice.paths)) {
               completeArrival(frames.at(-1));
+            } else if (state.index === frames.length - 1) {
+              finishScan();
             }
             scheduleNext();
           }));
           const rotatingLayer = state.activeLayer;
-          const rotationTransition = departure || replayDeparture || frameNow.important;
-          const canRotate = !reduceMotion && state.playing && !state.directSeek
-            && (!state.revisiting || replayDeparture)
+          // Rotate only for the first departure from a verified station/entrance view.
+          const rotationTransition = Boolean(departure);
+          const canRotate = !reduceMotion && state.playing && !state.directSeek && !state.revisiting
             && rotatingLayer?.panoId === panoId && rotatingLayer.pov && rotationTransition;
           layer.settleTimer = setTimeout(() => {
             const outgoing = state.activeLayer;
             if (!valid() || state.arrivalComplete || state.pendingLayer !== layer) return;
             // Show a real turn of the head within the same photograph, not a jump
             // between different years/cameras. Reduced motion and seeking stay instant.
-            if (reduceMotion || !state.playing || state.directSeek || (state.revisiting && !replayDeparture)
+            if (reduceMotion || !state.playing || state.directSeek || state.revisiting
                 || !outgoing || outgoing.panoId !== panoId || !outgoing.pov || !rotationTransition) { reveal(); return; }
             const from = outgoing.panorama.getPov?.() || outgoing.pov;
-            attachTurnArrow(outgoing, frameNow, capturePoint, photoContext, panoId);
             const delta = ((cameraPov.pan - from.pan + 540) % 360) - 180;
             let step = 0;
             const rotate = () => {
