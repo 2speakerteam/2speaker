@@ -46,7 +46,7 @@ class Panorama {
   setVisible() {}
 }
 const maps = {LatLng, Panorama, Event:{addListener(p,n,f){(p.listeners[n] ||= []).push(f);},clearInstanceListeners(p){p.listeners={};}}};
-const sandbox = { document, window:{matchMedia(){return {matches:false};}}, setTimeout:timer, clearTimeout:k=>jobs.delete(k),requestAnimationFrame:f=>timer(f,16),currentPage:'guide',routeRequestToken:1,walkPreviewState:null,console,isLodgingPlace:place=>/숙박|호텔|호스텔|모텔|게스트하우스|펜션|리조트|민박|여관|hotel|hostel|motel/i.test(String(place?.category||'')) };
+const sandbox = { document, window:{matchMedia(){return {matches:false};}}, setTimeout:timer, clearTimeout:k=>jobs.delete(k),requestAnimationFrame:f=>timer(f,16),currentPage:'guide',routeRequestToken:1,walkPreviewState:null,console,WALK_PANORAMA_TIMEOUT_MS:2500,isLodgingPlace:place=>/숙박|호텔|호스텔|모텔|게스트하우스|펜션|리조트|민박|여관|hotel|hostel|motel/i.test(String(place?.category||'')) };
 vm.createContext(sandbox); vm.runInContext(part,sandbox);
 const frames = sandbox.walkPreviewFrames(route,[]);
 assert.equal(sandbox.walkPreviewHoldBeforeNext({phase:'landmark-start',holdMs:3500},{phase:'start'}),1000,'show starting exit for one second before departure');
@@ -96,6 +96,19 @@ assert.equal(sandbox.walkPreviewTurnArrow(arrowFrame,origin,{...arrowPhoto,nearb
 assert.equal(sandbox.walkPreviewTurnArrow(arrowFrame,origin,arrowPhoto,{...arrowPov,pan:180},600,300),
   null,'arrow is hidden when the view faces away from the route');
 assert.equal(sandbox.walkPreviewTurnArrow(arrowFrame,origin,arrowPhoto,arrowPov,0,0),null);
+const synchronizedTurn={...arrowFrame,focusMeters:81};
+const beforeTurnPhoto={...arrowPhoto,meters:76};
+const atTurnPhoto={...arrowPhoto,meters:81};
+const afterTurnPhoto={...arrowPhoto,meters:86};
+assert.match(sandbox.walkPreviewStepInstructionForPhoto(synchronizedTurn,beforeTurnPhoto),/약 5m 직진 후 좌회전/);
+assert.equal(sandbox.walkPreviewTurnArrow(synchronizedTurn,origin,beforeTurnPhoto,arrowPov,747,311),null,
+  'do not show the turn arrow while the same photo says to continue toward the turn');
+assert.match(sandbox.walkPreviewStepInstructionForPhoto(synchronizedTurn,atTurnPhoto),/여기서 좌회전/);
+assert.ok(sandbox.walkPreviewTurnArrow(synchronizedTurn,origin,atTurnPhoto,arrowPov,747,311),
+  'show the route arrow when the visible photo and instruction reach the turn');
+assert.doesNotMatch(sandbox.walkPreviewStepInstructionForPhoto(synchronizedTurn,afterTurnPhoto),/여기서 좌회전/);
+assert.equal(sandbox.walkPreviewTurnArrow(synchronizedTurn,origin,afterTurnPhoto,arrowPov,747,311),null,
+  'remove the turn arrow once the same photo advances to the after-turn instruction');
 const junctionCenter=[127.09204455377541,37.5516751937452];
 const junctionRoute=[[junctionCenter.map((v,i)=>v+(i?-50/111320:0)),
   junctionCenter.map((v,i)=>v+(i?50/111320:0))]];
