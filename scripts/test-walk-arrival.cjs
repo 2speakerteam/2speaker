@@ -34,7 +34,7 @@ class Element {
   focus(){} scrollIntoView(){}
 }
 const nodes={},visual=new Element();
-const document={querySelector:selector=>nodes[selector] ||= new Element(),
+const document={body:new Element(),querySelector:selector=>nodes[selector] ||= new Element(),
   createElement:()=>new Element()};
 class LatLng { constructor(lat,lng){this.latitude=lat;this.longitude=lng;}
   lat(){return this.latitude;} lng(){return this.longitude;} }
@@ -62,10 +62,13 @@ vm.createContext(sandbox);
 vm.runInContext(source.slice(source.indexOf('function isLodgingPlace'),
   source.indexOf('async function ensureLodgingArrivalView')),sandbox);
 vm.runInContext(previewSource,sandbox);
+vm.runInContext(source.slice(source.indexOf('async function ensureLodgingArrivalView'),
+  source.indexOf('async function routeToLodgingFront')),sandbox);
 vm.runInContext(source.slice(source.indexOf('function trimWalkingRouteAtFront'),
   source.indexOf('async function prepareLodgingArrival')),sandbox);
 vm.runInContext(source.slice(source.indexOf('async function prepareLodgingArrival'),
   source.indexOf('async function findNamedLodging')),sandbox);
+const realEnsureLodgingArrivalView=sandbox.ensureLodgingArrivalView;
 
 const frames=sandbox.walkPreviewFrames(route,[]);
 const place={name:'테스트 호텔',longitude:point(100)[0],latitude:37};
@@ -215,5 +218,19 @@ sandbox.routeToLodgingFront=async()=>{reroutes+=1;return null;};
   assert.equal(selected.arrivalAtFront,true);
   assert.ok(Math.abs(start.walkingRoute.totalDistance-60)<1);
   assert.ok(Math.abs(sandbox.walkPreviewDistance(start.walkingRoute.paths.at(-1).at(-1),point(60)))<1);
-  console.log('PASS: verified lodging-front stop, origin context, reused walking route, synchronized progress, no post-arrival regression');
+  sandbox.ensureLodgingArrivalView=realEnsureLodgingArrivalView;
+  const endpointLodging={...place,category:'숙박>호텔',arrivalView:{panoId:'old-photo',position:point(20)}};
+  fixtures=[{id:'route-end-photo',point:point(98)}];
+  const reselection=sandbox.ensureLodgingArrivalView(maps,endpointLodging,point(100));
+  tick();
+  await reselection;
+  assert.equal(endpointLodging.arrivalView.panoId,'route-end-photo',
+    'a prior hotel photo away from the walking endpoint is replaced with a roadside panorama');
+  const endpointStart={walkingRoute:{paths:route,maneuvers:[],totalDistance:100,totalTime:600}};
+  await sandbox.prepareLodgingArrival(maps,endpointStart,endpointLodging,()=>true);
+  assert.equal(endpointLodging.arrivalAtFront,true);
+  assert.equal(endpointStart.walkingRoute.totalDistance,100,
+    'the verified route endpoint needs no detour to an older panorama');
+  assert.equal(reroutes,0);
+  console.log('PASS: verified lodging-front stop, origin context, reused walking route, route-end panorama, synchronized progress, no post-arrival regression');
 })().catch(error=>{console.error(error);process.exitCode=1;});
