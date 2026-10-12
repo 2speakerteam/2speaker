@@ -192,11 +192,11 @@ function parseRouteRequest(raw) {
 
 function isExplicitRouteRequest(text) {
   const query = String(text || '').trim();
-  if (/(길찾기|경로|가는\\s*(?:길|방법)|어떻게\\s*(?:가|찾아)|가려면|도보(?:로|시간)?|대중교통|(?:버스|지하철)\\s*타고|어디로\\s*가|\\b(?:directions?|route|how\\s+to\\s+get|walk(?:ing)?|by\\s+(?:bus|subway|transit))\\b)/i.test(query)) return true;
+  if (/(길찾기|경로|가는\s*(?:길|방법)|어떻게\s*(?:가|찾아)|가려면|도보(?:로|시간)?|대중교통|(?:버스|지하철)\s*타고|어디로\s*가|\b(?:directions?|route|how\s+to\s+get|walk(?:ing)?|by\s+(?:bus|subway|transit))\b)/i.test(query)) return true;
   const parsed = parseRouteRequest(query);
-  const fromCurrentLocation = /^(?:여기서|이곳에서|현재\\s*위치에서|내\\s*위치에서|지금\\s*있는\\s*곳에서)\\s*/.test(query);
-  const englishFromTo = /\\bfrom\\s+.+?\\s+to\\s+.+|\\bto\\s+.+?\\s+from\\s+.+/i.test(query);
-  const placeSearchIntent = /(근처|주변|가까운|장소|공간|어디|어떤\\s*곳|조용한\\s*곳|찾아|검색|추천|알려\\s*줘|보여\\s*줘|있(?:을까요?|나요?|어요?|습니까\\??)|nearby|near\\s+me|around|place|find|search|recommend|show\\s+me|is\\s+there)/i;
+  const fromCurrentLocation = /^(?:여기서|이곳에서|현재\s*위치에서|내\s*위치에서|지금\s*있는\s*곳에서)\s*/.test(query);
+  const englishFromTo = /\bfrom\s+.+?\s+to\s+.+|\bto\s+.+?\s+from\s+.+/i.test(query);
+  const placeSearchIntent = /(근처|주변|가까운|장소|공간|어디|어떤\s*곳|조용한\s*곳|찾아|검색|추천|알려\s*줘|보여\s*줘|있(?:을까요?|나요?|어요?|습니까\??)|nearby|near\s+me|around|place|find|search|recommend|show\s+me|is\s+there)/i;
   // Place names can contain category words like "공원". A clear route must not
   // be diverted into Naver's nearby-place search just because of that word.
   return Boolean(parsed.origin || fromCurrentLocation || englishFromTo) && !placeSearchIntent.test(query);
