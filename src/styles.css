@@ -70,7 +70,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .route-entry-body { margin-top: clamp(54px, 8vh, 125px); }
 .large-input { display: flex; width: 100%; min-width: 0; height: 80px; padding: 0 28px; border: 1.5px solid var(--cyan); border-radius: 32px; align-items: center; }
 .route-entry-body .large-input { height: clamp(58px, 7vh, 114px); padding-inline: clamp(24px, 4vw, 42px); border-radius: 38px; background: rgba(0, 31, 56, .3); }
-.large-input input { min-width: 0; flex: 1; border: 0; outline: 0; color: white; background: transparent; font-size: clamp(22px, 6vw, 31px); }
+.large-input input { min-width: 0; flex: 1; border: 0; outline: 0; color: white; background: transparent; font-size: 28px; text-size-adjust: 100%; -webkit-text-size-adjust: 100%; }
 .route-form { display: grid; gap: 18px; }
 .route-voice-button, .route-text-button, .route-submit { width: 42px; height: 42px; flex: 0 0 42px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; color: var(--cyan); background: rgba(8, 118, 157, .24); cursor: pointer; }
 .route-text-button { background: transparent; }
@@ -418,6 +418,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 }
 
 @media (max-width: 430px) {
+  .large-input input { font-size: 22px; }
   .howto-card { padding-inline: 12px; }
   .account-card { padding: 20px 16px; }
   .account-card h2 { margin-bottom: 17px; font-size: clamp(22px, 6vw, 26px); }
