@@ -2370,21 +2370,57 @@ function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
     ? walkPreviewBearing(trace[0], trace[1])
     : Number.isFinite(photo.heading) ? photo.heading
       : frame.position && frame.ahead ? walkPreviewBearing(frame.position, frame.ahead) : null;
-  // Only suppress a cue when the viewer has intentionally turned well away
-  // from the route. Camera-to-footpath offset and zoom must not make it vanish.
+  // Keep the cue tied to the route-facing view, but place its footprint on the
+  // ground plane so it reads like a painted road marking instead of a floating icon.
   if (Number.isFinite(routeHeading)
       && Math.abs(((routeHeading - pov.pan + 540) % 360) - 180) > 115) return null;
-  const scale = Math.max(.7, Math.min(1.25, width / 600, height / 300));
-  const cx = width / 2, cy = height * .72;
-  const straight = [[-9,36],[9,36],[9,-8],[25,-8],[0,-46],[-25,-8],[-9,-8]];
-  const bend = [[-8,36],[8,36],[8,3],[34,3],[34,17],[66,-7],
-    [34,-31],[34,-17],[-8,-17]];
-  const uturn = [[-8,36],[8,36],[8,-10],[-26,-10],[-26,4],[-58,-20],
-    [-26,-44],[-26,-30],[-8,-30]];
-  const polygon = direction === 'straight' ? straight : direction === 'uturn'
-    ? uturn : bend.map(([x,y]) => [direction === 'left' ? -x : x,y]);
-  return polygon.map(([x,y]) => [cx + x * scale,cy + y * scale]
-    .map(value => value.toFixed(1)).join(',')).join(' ');
+
+  const radians = Math.PI / 180;
+  const tilt = pov.tilt * radians;
+  const focal = width / (2 * Math.tan(Math.max(20, Math.min(100, pov.fov)) * radians / 2));
+  const cameraHeight = 2.4;
+  // Coordinates are camera-relative: side is across the view, forward is along
+  // its ground direction. Projecting every vertex from the same flat plane
+  // keeps the arrow glued to the pavement as the panorama moves or is resized.
+  const projectGround = ([side, forward]) => {
+    const depth = forward * Math.cos(tilt) - cameraHeight * Math.sin(tilt);
+    const up = -cameraHeight * Math.cos(tilt) - forward * Math.sin(tilt);
+    if (depth < 3) return null;
+    return [
+      width / 2 + focal * side / depth,
+      height / 2 - focal * up / depth
+    ];
+  };
+
+  const straight = [
+    [-.45, 7], [.45, 7], [.45, 10], [1.65, 10],
+    [0, 13], [-1.65, 10], [-.45, 10]
+  ];
+  const right = [
+    [-.42, 7], [.42, 7], [.42, 8.55], [1.3, 8.55],
+    [1.3, 7.95], [2.8, 9.3], [1.3, 10.65], [1.3, 10.05],
+    [-.42, 10.05]
+  ];
+  const uturn = [
+    [-.42, 7], [.42, 7], [.42, 9.45], [.2, 10.15],
+    [-.3, 10.8], [-1.05, 11.1], [-1.8, 10.95], [-2.35, 10.35],
+    [-2.45, 9.45], [-2.45, 8.55], [-3.15, 8.55], [-2.45, 7.1],
+    [-1.75, 8.55], [-1.75, 9.45], [-1.65, 10.0], [-1.35, 10.4],
+    [-.9, 10.45], [-.45, 10.1]
+  ];
+  let polygon;
+  if (direction === 'straight') polygon = straight;
+  else if (direction === 'uturn') {
+    // A hooked ground marking whose head points back along the U-turn leg.
+    polygon = uturn;
+  } else {
+    polygon = right.map(([side, forward]) => [
+      direction === 'left' ? -side : side, forward
+    ]);
+  }
+  const projected = polygon.map(projectGround);
+  if (projected.some(point => !point || !point.every(Number.isFinite))) return null;
+  return projected.map(point => point.map(value => value.toFixed(1)).join(',')).join(' ');
 }
 
 function stopWalkPreview(hidePanel = false) {
