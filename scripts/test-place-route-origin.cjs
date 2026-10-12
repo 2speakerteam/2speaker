@@ -4,6 +4,16 @@ const assert = require('node:assert/strict');
 
 const source = fs.readFileSync(__dirname + '/../src/main.js', 'utf8');
 new Function(source);
+const busStopSnippet = source.slice(source.indexOf('function explicitBusStopLandmark'),
+  source.indexOf('async function pedestrianCandidates'));
+assert.ok(busStopSnippet.startsWith('function explicitBusStopLandmark'));
+const busStopContext = vm.createContext({});
+vm.runInContext(busStopSnippet,busStopContext);
+assert.equal(busStopContext.explicitBusStopLandmark('동대문'),null,
+  'a generic place origin must not become a made-up bus platform');
+assert.equal(busStopContext.explicitBusStopLandmark('동대문역 9번 출구'),null);
+assert.equal(busStopContext.explicitBusStopLandmark('서울역 버스 승강장').label,'서울역 버스 승강장');
+assert.equal(busStopContext.explicitBusStopLandmark('서울역 버스 승강장').kind,'bus-stop');
 const snippet = source.slice(source.indexOf('async function choosePedestrianStartForPlace'),
   source.indexOf('function routeErrorMessage'));
 assert.ok(snippet.startsWith('async function choosePedestrianStartForPlace'));
