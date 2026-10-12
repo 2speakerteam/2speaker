@@ -1,6 +1,4 @@
 const root = document.querySelector('#root');
-// Fail-safe for a panorama request that emits neither init nor an error status.
-const WALK_PANORAMA_TIMEOUT_MS = 2500;
 let currentPage = 'home';
 let destination = '';
 let routeOrigin = '';
@@ -313,7 +311,7 @@ async function ensureLodgingArrivalView(maps, place, routeEnd) {
       };
       maps.Event.addListener(panorama, 'init', capture);
       maps.Event.addListener(panorama, 'pano_status', status => status === 'OK' ? capture() : finish(null));
-      timeout = setTimeout(() => finish(null), WALK_PANORAMA_TIMEOUT_MS);
+      timeout = setTimeout(() => finish(null), 8000);
     });
   } catch { return previous; }
   finally { host.remove(); }
@@ -2744,18 +2742,15 @@ function walkPreviewCameraPov(frame, photoContext, photoDate) {
 // Physical duplicate photographs are removed during playback, not by dropping connecting roads.
 function walkPreviewSceneFrames(frames) {
   const showArrow = new Set();
-  const approachMeters = [];
   const turnMeters = [];
   frames.forEach((frame, index) => {
-    const turnApproach = frame.phase === 'approach' && frame.turnAngle >= 35;
     const verifiedTurn = frame.phase === 'turn' && frame.turnAngle >= 35;
     const straightDecision = frame.phase === 'turn' && frame.direction === 'straight' && frame.important;
-    if ((!turnApproach && !verifiedTurn && !straightDecision) || !Number.isFinite(frame.focusMeters)) return;
-    // Show one forward pavement cue for the approach instruction and one
-    // turning cue at the decision itself. Dense samples must not repeat either.
-    const seenMeters = turnApproach ? approachMeters : turnMeters;
-    if (seenMeters.some(meters => Math.abs(meters - frame.focusMeters) < 1)) return;
-    seenMeters.push(frame.focusMeters);
+    if ((!verifiedTurn && !straightDecision) || !Number.isFinite(frame.focusMeters)) return;
+    // One instruction can yield several nearby panorama samples. Bind its cue
+    // to the single actual decision frame instead of repeating it on approach.
+    if (turnMeters.some(meters => Math.abs(meters - frame.focusMeters) < 1)) return;
+    turnMeters.push(frame.focusMeters);
     showArrow.add(index);
   });
   let junctionGroup = [];
@@ -2781,29 +2776,30 @@ function walkPreviewHoldBeforeNext(frame, nextFrame) {
   return departure || nextFrame?.important ? 1000 : frame.holdMs;
 }
 
-// Project a compact cue onto the photographed pavement, aligned to the route
-// direction visible in that same panorama instead of pinning it to screen center.
+// A small ground-plane cue, not a screen-fixed direction icon. Use the actual
+// camera position and POV, so dragging/zooming cannot leave it pointing elsewhere.
 // POV contract: navermaps.github.io/maps.js.ncp/docs/naver.maps.Panorama.html
+// A deliberately screen-sized guidance cue, not a surveyed line on the road.
+// Ground projection made the arrow shrink to a few pixels or disappear as the
+// camera/image changed; it also turned a left/right instruction into a tiny
+// straight arrow. The same photographed frame drives the text and this cue.
 function walkPreviewTurnArrow(frame, capture, photo, pov, width, height) {
-  const viewedFrame = walkPreviewPhotoFrame(frame, photo);
-  const turnApproach = viewedFrame?.phase === 'approach' && viewedFrame.turnAngle >= 35;
-  const verifiedTurn = viewedFrame?.phase === 'turn' && viewedFrame.turnAngle >= 35;
-  const straightDecision = viewedFrame?.phase === 'turn' && viewedFrame.direction === 'straight' && viewedFrame.important;
-  const straightJunction = viewedFrame?.junctionCue && viewedFrame.direction === 'straight';
-  if ((!turnApproach && !verifiedTurn && !straightDecision && !straightJunction)
-      || viewedFrame.landmark || !capture || !photo || photo.lateral > 12
-      || !(width > 0 && height > 0)
+  const verifiedTurn = frame?.phase === 'turn' && frame.turnAngle >= 35;
+  const straightDecision = frame?.phase === 'turn' && frame.direction === 'straight' && frame.important;
+  const straightJunction = frame?.junctionCue && frame.direction === 'straight';
+  if ((!verifiedTurn && !straightDecision && !straightJunction) || frame.landmark || !capture
+      || !photo || photo.nearby || photo.offset > 18 || photo.lateral > 12
+      || photo.meters > frame.meters + 5 || !(width > 0 && height > 0)
       || ![pov?.pan, pov?.tilt, pov?.fov].every(Number.isFinite)) return null;
   const radians = Math.PI / 180;
-  const heading = (Number.isFinite(photo.heading)
-    ? photo.heading : walkPreviewBearing(viewedFrame.position, viewedFrame.ahead)) * radians;
-  // Anchor on the actual camera capture, not a route sample it may be tens of
-  // metres away from along the same street. This keeps the arrow on the visible road.
-  const east = 0, north = 0;
-  if (!turnApproach && walkPreviewDistance(viewedFrame.position, viewedFrame.ahead) < 13) return null;
+  const heading = walkPreviewBearing(frame.position, frame.ahead) * radians;
+  const east = (frame.position[0] - capture[0]) * Math.cos(capture[1] * radians) * 111320;
+  const north = (frame.position[1] - capture[1]) * 111320;
+  if (Math.hypot(east, north) > 20 || walkPreviewDistance(frame.position, frame.ahead) < 13) return null;
   const pan = pov.pan * radians, tilt = pov.tilt * radians;
   const focal = width / (2 * Math.tan(Math.max(20, Math.min(100, pov.fov)) * radians / 2));
-  // Approximate flat pavement at camera height 2.4 m; reject only genuinely offscreen projections.
+  // Approximate flat pavement at camera height 2.4 m. This is a directional cue,
+  // not a surveyed ground anchor; uncertain/off-screen placements are suppressed.
   const polygon = [[-.32,8],[.32,8],[.32,11],[.95,11],[0,13],[-.95,11],[-.32,11]];
   const projected = polygon.map(([side, forward]) => {
     const e = east + Math.sin(heading) * forward + Math.cos(heading) * side;
@@ -2891,11 +2887,10 @@ function startWalkPreview(context, choice) {
     ...context,
     panel, viewer, scene, visual, mapElement, walkButton, transportOptions, transportDisplay,
     close: scene.querySelector('#walk-preview-close'),
-    frames, index: 0, playing: true, loading: false, arrivalComplete: false, previewEnded: false,
+    frames, index: 0, playing: true, loading: false, arrivalComplete: false,
     timer: null, panorama: null, fallbackMarker: null, skippedScenes: 0, shownScenes: 0,
     layers: new Set(), activeLayer: null, pendingLayer: null,
     history: [], cursor: -1, finished: false, revisiting: false, duplicateScenes: 0,
-    consecutiveTimeouts: 0, finishMessage: '',
     message: panel.querySelector('#walk-preview-message'),
     progress: panel.querySelector('#walk-preview-progress-text'),
     seek, seekTimer: null, scrubbing: false,
@@ -2908,14 +2903,8 @@ function startWalkPreview(context, choice) {
   if (originLabel) {
     const start = context.start || {};
     const location = start.landmark?.label || frames[0]?.startLabel || start.name || '';
-    const compactLocation = String(location)
-      .replace(/^(?:(?:출발 위치|입력한 출발지)\s*·\s*)+/, '')
-      .replace(/\s*\(\s*/g, '(')
-      .replace(/\s*\)/g, ')')
-      .replace(/\s+(앞|뒤|옆)$/, '$1')
-      .trim();
-    originLabel.hidden = !compactLocation;
-    originLabel.textContent = compactLocation ? (context.english ? `Start: ${compactLocation}` : compactLocation) : '';
+    originLabel.hidden = !location;
+    originLabel.textContent = location ? (context.english ? `Start: ${location}` : `출발 위치 · ${location}`) : '';
   }
   state.close.hidden = false;
   state.originalInstruction = state.instruction ? { text:state.instruction.textContent,
@@ -2966,8 +2955,7 @@ function startWalkPreview(context, choice) {
   };
   const attachTurnArrow = (layer, frame, capture, photo, panoId) => {
     if (!frame.showTurnArrow
-        || !((frame.phase === 'approach' && frame.turnAngle >= 35)
-          || (frame.phase === 'turn' && (frame.turnAngle >= 35
+        || !((frame.phase === 'turn' && (frame.turnAngle >= 35
             || (frame.direction === 'straight' && frame.important)))
           || (frame.junctionCue && frame.direction === 'straight'))) {
       layer.arrowContext = null;
@@ -3080,12 +3068,10 @@ function startWalkPreview(context, choice) {
   const updateSeek = (index = state.index) => {
     // A stable full-route timeline allows seeking into uncached sections too.
     const max = Math.max(0, frames.length - 1);
-    const atTerminal = state.arrivalComplete || state.previewEnded;
-    const selected = atTerminal ? max : Math.max(0, Math.min(max, index));
     state.seek.max = String(max);
-    state.seek.value = String(selected);
-    state.seek.style.setProperty('--seek-fill', (max ? 100 * selected / max : 0) + '%');
-    const frame = frames[selected];
+    state.seek.value = String(Math.max(0, Math.min(max, index)));
+    state.seek.style.setProperty('--seek-fill', (max ? 100 * Number(state.seek.value) / max : 0) + '%');
+    const frame = frames[index];
     state.seek.setAttribute('aria-valuetext', state.english
       ? `${Math.round(frame.meters)} m of ${Math.round(frame.total)} m`
       : `전체 ${Math.round(frame.total)}m 중 ${Math.round(frame.meters)}m`);
@@ -3093,19 +3079,6 @@ function startWalkPreview(context, choice) {
 
   const updateProgress = () => {
     const frame = frames[state.index];
-    const atTerminal = state.previewEnded;
-    if (state.arrivalComplete) {
-      state.progress.textContent = state.english ? 'Arrived at the destination' : '목적지 도착 완료';
-      if (!state.scrubbing) updateSeek();
-      return;
-    }
-    if (atTerminal) {
-      state.progress.textContent = state.english
-        ? 'Street-view preview ended · destination not confirmed'
-        : '로드뷰 미리보기 종료 · 목적지 도착은 확인되지 않았어요.';
-      if (!state.scrubbing) updateSeek();
-      return;
-    }
     // Lookup candidates are not displayed scenes: missing/duplicate photographs
     // must never make the visible scene counter jump from 2 to 30.
     const sceneNumber = Math.max(1, new Set(state.history
@@ -3118,11 +3091,8 @@ function startWalkPreview(context, choice) {
   };
   const finishScan = () => {
     if (state.arrivalComplete) return;
-    const autoplayFinished = state.playing && !state.directSeek;
-    clearTimeout(state.timer);
     hideTurnArrows();
     state.finished = true;
-    state.previewEnded = autoplayFinished;
     state.playing = false;
     state.loading = false;
     state.play.textContent = state.english ? 'Replay' : '다시 보기';
@@ -3137,9 +3107,9 @@ function startWalkPreview(context, choice) {
       state.fallbackMarker = null;
       updateProgress();
       updateButtons();
-      state.message.textContent = state.finishMessage || (state.english
+      state.message.textContent = state.english
         ? 'Street-view preview has ended. Select "Map view" to see the remaining route.'
-        : '로드뷰 미리보기가 끝났어요. 남은 경로는 지도보기 버튼을 눌러 확인하세요.');
+        : '로드뷰 미리보기가 끝났어요. 남은 경로는 지도보기 버튼을 눌러 확인하세요.';
       state.message.style.display = '';
       if (state.instruction) {
         state.instruction.hidden = false;
@@ -3149,16 +3119,15 @@ function startWalkPreview(context, choice) {
           : '로드뷰 미리보기가 끝났어요. 목적지 도착은 확인되지 않았어요.';
       }
     } else {
-      state.message.textContent = state.finishMessage || (state.english
+      state.message.textContent = state.english
         ? 'No usable street images were found along this route. Select "Map view" to see the route.'
-        : '이 경로에서 사용할 수 있는 거리뷰를 찾지 못했어요. 지도보기 버튼으로 경로를 확인해 주세요.');
+        : '이 경로에서 사용할 수 있는 거리뷰를 찾지 못했어요. 지도보기 버튼으로 경로를 확인해 주세요.';
       state.message.style.display = '';
       if (state.instruction) {
         state.instruction.hidden = false;
         state.instruction.style.minHeight = '3em';
         state.instruction.textContent = state.message.textContent;
       }
-      updateProgress();
       updateButtons();
     }
   };
@@ -3179,7 +3148,7 @@ function startWalkPreview(context, choice) {
       else finishScan();
     }
   };
-  const unavailable = (message, timedOut = false) => {
+  const unavailable = (message) => {
     if (state.arrivalComplete) return;
     clearTimeout(state.timer);
     state.loading = false;
@@ -3208,16 +3177,6 @@ function startWalkPreview(context, choice) {
       return;
     }
 
-    const autoScanning = !state.directSeek && state.playing;
-    state.consecutiveTimeouts = timedOut && autoScanning ? state.consecutiveTimeouts + 1 : 0;
-    if (autoScanning && state.consecutiveTimeouts >= 2) {
-      state.finishMessage = state.english
-        ? 'Street-view responses kept timing out, so the remaining sections were skipped. The preview has ended; the destination is not confirmed. Select "Map view" to check the remaining route.'
-        : '거리뷰 응답이 계속 늦어 남은 구간을 건너뛰고 미리보기를 마쳤어요. 목적지 도착은 확인되지 않았어요. 남은 경로는 지도보기로 확인해 주세요.';
-      finishScan();
-      return;
-    }
-
     state.visual.classList.remove('walk-preview-map-fallback');
     state.mapElement.style.visibility = 'hidden';
     state.mapElement.inert = true;
@@ -3230,22 +3189,12 @@ function startWalkPreview(context, choice) {
         ? 'No entrance street image was found. Select "Map view" to check its location.'
         : '출입구 거리뷰를 찾지 못했어요. 지도보기 버튼으로 위치를 확인해 주세요.')
       : message + (state.english ? ' Select "Map view" to check the route.' : ' 지도는 지도보기 버튼을 눌러 확인할 수 있어요.');
-    const seeking = !state.directSeek && state.playing && state.index < frames.length - 1;
+    const seeking = !state.revisiting && !state.directSeek && state.playing && state.index < frames.length - 1;
     if (seeking) {
       if (state.activeLayer && !missingLandmark) {
         state.viewer.style.visibility = 'visible';
         state.loading = true;
         state.skippedScenes += 1;
-        state.message.textContent = state.english
-          ? 'Skipping a section without a usable street view…'
-          : '거리뷰가 없는 구간을 건너뛰는 중이에요.';
-        state.message.style.display = '';
-        if (state.instruction) {
-          state.instruction.hidden = false;
-          state.instruction.style.minHeight = '3em';
-          state.instruction.textContent = state.message.textContent;
-        }
-        updateProgress();
         updateButtons();
         state.timer = setTimeout(() => showFrame(state.index + 1), 80);
         return;
@@ -3275,11 +3224,11 @@ function startWalkPreview(context, choice) {
     updateProgress();
     updateButtons();
     state.skippedScenes += 1;
-    if (!state.directSeek && state.playing && state.index === frames.length - 1) {
-      finishScan();
-    } else if (state.revisiting) {
+    if (state.revisiting) {
       state.playing = false;
       state.play.textContent = state.english ? 'Play' : '자동 재생';
+    } else if (!state.directSeek && state.index === frames.length - 1) {
+      finishScan();
     }
   };
   const showFrame = (index, revisiting = false, directSeek = false) => {
@@ -3340,8 +3289,8 @@ function startWalkPreview(context, choice) {
     }
     state.timer = setTimeout(() => {
       if (!valid() || !state.loading) return;
-      unavailable(state.english ? 'Street view took too long. Check the map.' : '거리뷰 응답이 늦어요. 지도를 확인해 주세요.', true);
-    }, WALK_PANORAMA_TIMEOUT_MS);
+      unavailable(state.english ? 'Street view took too long. Check the map.' : '거리뷰 응답이 늦어요. 지도를 확인해 주세요.');
+    }, 9000);
     try {
       {
         state.disposeLayer(state.pendingLayer);
@@ -3371,7 +3320,6 @@ function startWalkPreview(context, choice) {
           if (!valid() || state.arrivalComplete || state.panorama !== instance || !state.loading || layer.readyStarted) return;
           layer.readyStarted = true;
           clearTimeout(state.timer);
-          state.consecutiveTimeouts = 0;
           const frameNow = frames[state.index];
           const capture = state.panorama.getLocation()?.coord;
           const capturePoint = capture && [capture.lng(), capture.lat()];
@@ -3567,7 +3515,6 @@ function startWalkPreview(context, choice) {
   const beginScrub = () => {
     if (!valid() || !state.history.length) return;
     leaveArrivalForReview();
-    state.previewEnded = false;
     clearTimeout(state.timer);
     clearTimeout(state.seekTimer);
     state.playing = false;
@@ -3656,8 +3603,6 @@ function startWalkPreview(context, choice) {
     if (!valid()) return;
     if (state.arrivalComplete) {
       leaveArrivalForReview();
-      state.finishMessage = '';
-      state.previewEnded = false;
       state.playing = true;
       state.index = state.history[0]?.index ?? 0;
       state.cursor = 0;
@@ -3667,8 +3612,6 @@ function startWalkPreview(context, choice) {
       return;
     }
     if (state.finished && (state.freeSeek ? state.index === frames.length - 1 : state.cursor === state.history.length - 1) && !state.playing && !state.loading) {
-      state.finishMessage = '';
-      state.previewEnded = false;
       state.playing = true;
       state.finished = false;
       state.index = state.history[0]?.index ?? 0;
@@ -4212,6 +4155,7 @@ function goBack() {
 }
 
 render();
+
 
 
 
