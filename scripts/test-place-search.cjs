@@ -20,13 +20,6 @@ async function call(handler, body, method = 'POST') {
 
 async function main() {
   const mainSource = fs.readFileSync(require.resolve('../src/main.js'), 'utf8');
-  const placeClassifier = new Function('return (' + mainSource.slice(
-    mainSource.indexOf('function isPlaceSearchRequest'),mainSource.indexOf('\nfunction openNearbyPlaceSearch')) + ')')();
-  assert.equal(placeClassifier('동대문 근처 숙소'),true);
-  assert.equal(placeClassifier('안국역 숙소 찾아줘'),true);
-  assert.equal(placeClassifier('숙소 찾아줘'),true);
-  assert.equal(placeClassifier('호텔 다다'),false,'a named hotel goes to direct destination resolution');
-  assert.equal(placeClassifier('JW 메리어트 동대문 스퀘어 서울'),false);
   const styleSource = fs.readFileSync(require.resolve('../src/styles.css'), 'utf8');
   const placesScreenStart = mainSource.indexOf('function nearbyPlacesScreen()');
   const placesScreenEnd = mainSource.indexOf('\nfunction guideScreen()', placesScreenStart);
@@ -131,25 +124,12 @@ async function main() {
   const result = await call(search, { criteria });
   assert.equal(result.statusCode, 200);
   assert.equal(result.body.origin.name, '안국역');
-  assert.equal(result.body.origin.resolvedName, '안국역', 'retain the actual Naver starting point');
-  assert.equal(result.body.origin.originKind, 'manual');
   assert.equal(result.body.checkedCandidates, 2);
   assert.equal(result.body.places.length, 1, 'places over the requested walk-time limit are filtered out');
   assert.equal(result.body.places[0].name, '조용한 숙소 A', 'NAVER HTML markup is removed');
   assert.equal(result.body.places[0].walkingMinutes, 7);
   assert.deepEqual(result.body.places[0].route.paths[0], [[127.001, 37.57], [127.002, 37.571]]);
   assert.equal(requests.filter(({ url }) => url.hostname === 'apis.openapi.sk.com').length, 2);
-
-  const beforeNamedLookup = requests.filter(({ url }) => url.hostname === 'apis.openapi.sk.com').length;
-  const namedLodging = await call(search, {action:'resolve-lodging',query:'조용한 숙소 A'});
-  assert.equal(namedLodging.statusCode,200);
-  assert.equal(namedLodging.body.place.name,'조용한 숙소 A',
-    'direct lodging names retain their Naver category and actual coordinates');
-  assert.equal(requests.filter(({ url }) => url.hostname === 'apis.openapi.sk.com').length,beforeNamedLookup,
-    'resolving a place name does not request a walking route yet');
-  const gpsResult = await call(search, {criteria:{...criteria,originName:'',useCurrentLocation:true},
-    currentLocation:{latitude:37.57,longitude:127.001},regionName:'종로구'});
-  assert.equal(gpsResult.body.origin.originKind,'gps');
 
   const callsBeforeCachedRequest = requests.length;
   const cachedResult = await call(search, { criteria });
