@@ -42,7 +42,8 @@ module.exports = async function handler(req, res) {
         endY,
         reqCoordType: 'WGS84GEO',
         resCoordType: 'WGS84GEO',
-        totalValue: 2
+        searchOption: 2,
+        totalValue: 1
       })
     });
     const payload = await upstream.json().catch(() => null);

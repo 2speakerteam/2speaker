@@ -28,6 +28,9 @@ async function main() {
     assert.deepEqual(res.body.paths, [[[127, 37], [127.001, 37.001]]]);
     assert.equal(requests.length, 1);
     assert.match(requests[0].url, /tmap\/routes/);
+    const requestBody = JSON.parse(requests[0].options.body);
+    assert.equal(requestBody.totalValue, 1, 'request full road geometry rather than summary-only data');
+    assert.equal(requestBody.searchOption, 2, 'request TMAP minimum-time taxi route');
   } finally {
     global.fetch = previousFetch;
     if (previousKey === undefined) delete process.env.TMAP_CAR_API_KEY;
