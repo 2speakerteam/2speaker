@@ -53,6 +53,7 @@ let placesPanoramaMaps = null;
 let placesPanoramaRequestId = 0;
 let guideTransportRoutes = {};
 let guideTransportContext = null;
+let transportDetailReturnScrollY = 0;
 let walkPreviewState = null;
 const sentTextMessages = [];
 let activeRouteContext = null;
@@ -455,7 +456,8 @@ function initializePlacesMap() {
     if (currentPage !== 'places' || document.querySelector('#places-map') !== container) return;
     const map = new maps.Map(container, {
       center: new maps.LatLng(origin.latitude, origin.longitude), zoom: 15, minZoom: 3, maxZoom: 20,
-      mapTypeControl: false, zoomControl: true, scaleControl: false, logoControl: true, mapDataControl: false
+      mapTypeControl: false, zoomControl: true, zoomControlOptions: { position: maps.Position.TOP_RIGHT },
+      scaleControl: false, logoControl: true, logoControlOptions: { position: maps.Position.TOP_LEFT }, mapDataControl: false
     });
     placesMap = map;
     const bounds = new maps.LatLngBounds();
@@ -749,6 +751,7 @@ function guideScreen() {
         return `<button class="transport-option" type="button" data-transport="${mode}" disabled><strong>${label}</strong><small>${english ? 'Checking...' : '확인 중...'}</small></button>`;
       }).join('')}
     </section>
+    <section class="transport-detail-page" id="transport-detail-page" aria-label="${english ? 'Transport route details' : '교통 경로 상세'}" hidden></section>
     <section class="guide-dialogue">
       <p class="bubble question">${question}</p>
       <p class="bubble answer">${loading}</p>
@@ -1049,7 +1052,13 @@ function render() {
     });
   });
   document.querySelectorAll('[data-transport]').forEach((button) => {
-    button.addEventListener('click', () => selectGuideTransport(button.dataset.transport, true));
+    button.addEventListener('click', () => {
+      selectGuideTransport(button.dataset.transport, true);
+      openTransportDetail(button.dataset.transport);
+    });
+  });
+  document.querySelector('#transport-detail-page')?.addEventListener('click', (event) => {
+    if (event.target.closest('[data-action="transport-detail-back"]')) closeTransportDetail();
   });
   document.querySelector('.walk-action')?.addEventListener('click', () => selectGuideTransport('WALK', true));
   document.querySelectorAll('[data-action="back"]').forEach((button) => {
@@ -1530,6 +1539,7 @@ function createNaverMap(maps, container, scene, center) {
       zoomControlOptions: { position: maps.Position.TOP_RIGHT },
       scaleControl: false,
       logoControl: true,
+      logoControlOptions: { position: maps.Position.TOP_LEFT },
       mapDataControl: false
     });
   } else {
@@ -2081,6 +2091,97 @@ async function searchGoogleDestination(maps, query) {
     longitude: Number(location.lng()),
     country: result.address_components?.find((component) => component.types?.includes('country'))?.short_name || ''
   };
+}
+
+function fastestTransitItinerary(itineraries, mode) {
+  const wanted = mode === 'BUS' ? ['BUS'] : mode === 'SUBWAY' ? ['SUBWAY', 'TRAIN'] : [];
+  if (!wanted.length || !Array.isArray(itineraries)) return null;
+  return itineraries.filter((itinerary) => {
+    const modes = new Set((itinerary.legs ?? []).map((leg) => leg.mode));
+    return Number(itinerary.totalTime) > 0
+      && wanted.some((value) => modes.has(value))
+      && [...modes].every((value) => value === 'WALK' || wanted.includes(value));
+  }).sort((a, b) => Number(a.totalTime) - Number(b.totalTime)
+    || Number(a.transferCount || 0) - Number(b.transferCount || 0))[0] || null;
+}
+
+function transportDetailMarkup(mode, choice, context) {
+  const english = context.english;
+  const labels = english
+    ? { BUS: 'Bus', SUBWAY: 'Subway', TAXI: 'Taxi' }
+    : { BUS: '버스', SUBWAY: '지하철', TAXI: '택시' };
+  const origin = context.start.landmark?.label || routeOrigin?.trim() || (english ? 'Your location' : '현재 위치');
+  const target = destination.trim() || context.end.landmark?.label || (english ? 'Destination' : '목적지');
+  const itinerary = choice.itinerary;
+  const minutes = mode === 'TAXI' ? choice.minutes : Math.max(1, Math.ceil(Number(itinerary.totalTime) / 60));
+  const fare = mode === 'TAXI' ? choice.fare : Number(itinerary?.fare?.regular?.totalFare);
+  const fareLabel = Number.isFinite(fare) && fare >= 0
+    ? (english ? `₩${fare.toLocaleString()}` : `${fare.toLocaleString()}원`)
+    : (english ? 'Fare unavailable' : '요금 정보 없음');
+  const transferCount = Number(itinerary?.transferCount || 0);
+  const legs = (itinerary?.legs ?? []).map((leg, index) => {
+    const legMode = leg.mode === 'WALK' ? (english ? 'Walk' : '도보')
+      : leg.mode === 'BUS' ? labels.BUS : labels.SUBWAY;
+    const route = String(leg.route || leg.lane?.[0]?.route || '').split(':').at(-1).trim();
+    const routeLabel = route ? ` · ${escapeHtml(route)}` : '';
+    const start = leg.start?.name || (index === 0 ? origin : '');
+    const end = leg.end?.name || (index === itinerary.legs.length - 1 ? target : '');
+    const legMinutes = Math.max(1, Math.ceil(Number(leg.sectionTime || 0) / 60));
+    return `<li class="transport-leg"><span class="transport-leg-number">${index + 1}</span><div><strong>${legMode}${routeLabel}</strong><p>${escapeHtml(start)} → ${escapeHtml(end)}</p><small>${english ? `about ${legMinutes} min` : `약 ${legMinutes}분`}</small></div></li>`;
+  }).join('');
+  const taxiLeg = `<li class="transport-leg"><span class="transport-leg-number">1</span><div><strong>${english ? 'Taxi ride' : '택시 이동'}</strong><p>${escapeHtml(origin)} → ${escapeHtml(target)}</p><small>${english ? `about ${minutes} min` : `약 ${minutes}분`}</small></div></li>`;
+  const transferText = mode === 'TAXI' ? (english ? 'Estimated by TMAP' : 'TMAP 예상 경로')
+    : (english ? `${transferCount} transfers` : `환승 ${transferCount}회`);
+  return `<header class="transport-detail-header">
+    <button class="guide-control" type="button" data-action="transport-detail-back" aria-label="${english ? 'Back to route guide' : '길찾기 안내로 돌아가기'}">${icon('back', 34)}</button>
+    <strong>${labels[mode]} ${english ? 'route' : '경로'}</strong>
+    <span aria-hidden="true"></span>
+  </header>
+  <div class="transport-detail-content">
+    <p class="transport-detail-eyebrow">${english ? 'Fastest available route' : '가장 빠른 경로'}</p>
+    <h2>${escapeHtml(origin)} → ${escapeHtml(target)}</h2>
+    <div class="transport-detail-summary">
+      <div><small>${english ? 'Estimated time' : '예상 시간'}</small><strong>${english ? `about ${minutes} min` : `약 ${minutes}분`}</strong></div>
+      <div><small>${mode === 'TAXI' ? (english ? 'Estimated fare' : '예상 요금') : (english ? 'Fare' : '요금')}</small><strong>${fareLabel}</strong></div>
+    </div>
+    <p class="transport-detail-meta">${transferText}</p>
+    <ol class="transport-legs">${mode === 'TAXI' ? taxiLeg : legs}</ol>
+    <p class="transport-detail-note">${english
+      ? 'Times and fares may change with traffic and service conditions. Check signs and live service information before traveling.'
+      : '시간·요금은 교통 및 운행 상황에 따라 달라질 수 있어요. 출발 전 현장 안내와 실시간 운행 정보를 확인해 주세요.'}</p>
+  </div>`;
+}
+
+function openTransportDetail(mode) {
+  const choice = guideTransportRoutes[mode];
+  const context = guideTransportContext;
+  const panel = document.querySelector('#transport-detail-page');
+  const screen = document.querySelector('.guide-screen');
+  const visual = screen?.querySelector('.route-visual');
+  if (!choice || !context || !panel || !screen || !visual || context.requestId !== routeRequestToken || currentPage !== 'guide') return;
+  transportDetailReturnScrollY = window.scrollY;
+  panel.innerHTML = transportDetailMarkup(mode, choice, context);
+  panel.querySelector('.transport-detail-header').after(visual);
+  panel.hidden = false;
+  screen.classList.add('transport-detail-open');
+  context.maps?.Event?.trigger(context.map, 'resize');
+  window.scrollTo({ top: 0, behavior: 'instant' });
+  panel.querySelector('[data-action="transport-detail-back"]')?.focus({ preventScroll: true });
+}
+
+function closeTransportDetail() {
+  const screen = document.querySelector('.guide-screen');
+  const panel = document.querySelector('#transport-detail-page');
+  if (!screen || !panel || panel.hidden) return;
+  const mode = guideTransportContext?.userSelectedMode;
+  const visual = panel.querySelector('.route-visual');
+  if (visual) screen.querySelector('.guide-header')?.after(visual);
+  panel.hidden = true;
+  panel.replaceChildren();
+  screen.classList.remove('transport-detail-open');
+  guideTransportContext?.maps?.Event?.trigger(guideTransportContext.map, 'resize');
+  window.scrollTo({ top: transportDetailReturnScrollY, behavior: 'instant' });
+  document.querySelector(`[data-transport="${mode}"]`)?.focus({ preventScroll: true });
 }
 
 function transportText(mode, itinerary, english) {
@@ -3655,13 +3756,21 @@ function selectGuideTransport(mode, userInitiated = false) {
     if (choice.distance > 0) summary += ` · ${Math.round(choice.distance)}m`;
     if (userInitiated) startWalkPreview(context, choice);
   } else if (mode === 'TAXI') {
-    // A separate car-routing entitlement supplies the taxi estimate. Do not fabricate one.
+    // Draw only the road geometry returned by the entitled TMAP car-routing API.
     clearRouteOverlays();
     const bounds = new maps.LatLngBounds();
     const startPoint = new maps.LatLng(start.latitude, start.longitude);
     const endPoint = new maps.LatLng(end.latitude, end.longitude);
     bounds.extend(startPoint);
     bounds.extend(endPoint);
+    for (const coordinates of choice.paths ?? []) {
+      const path = coordinates.map(([longitude, latitude]) => new maps.LatLng(latitude, longitude));
+      if (path.length < 2) continue;
+      path.forEach((point) => bounds.extend(point));
+      routeMapOverlays.push(new maps.Polyline({
+        map, path, strokeColor: '#20d5ff', strokeOpacity: .96, strokeWeight: 6
+      }));
+    }
     routeMapOverlays.push(new maps.Marker({ map, position: startPoint, title: '출발지' }));
     routeMapOverlays.push(new maps.Marker({ map, position: endPoint, title: destination.trim() }));
     map.fitBounds(bounds, 36);
@@ -3762,19 +3871,9 @@ async function requestNaverTransitRoute(maps, map, start, end, isCurrent, instru
     if (!isCurrent()) return;
     if (response.ok) {
       const itineraries = payload?.metaData?.plan?.itineraries ?? [];
-      const modesOf = (itinerary) => new Set((itinerary.legs ?? []).map((leg) => leg.mode));
-      // Only place a single-mode itinerary in its matching card.
-      // A mixed bus + subway trip must not be advertised as either pure option.
-      const bus = itineraries.find((itinerary) => Number(itinerary.pathType) === 2)
-        || itineraries.find((itinerary) => {
-          const modes = modesOf(itinerary);
-          return modes.has('BUS') && !modes.has('SUBWAY') && !modes.has('TRAIN');
-        });
-      const subway = itineraries.find((itinerary) => Number(itinerary.pathType) === 1)
-        || itineraries.find((itinerary) => {
-          const modes = modesOf(itinerary);
-          return (modes.has('SUBWAY') || modes.has('TRAIN')) && !modes.has('BUS');
-        });
+      // Compare real single-mode itineraries by travel time; a mixed route is not a bus-only or rail-only route.
+      const bus = fastestTransitItinerary(itineraries, 'BUS');
+      const subway = fastestTransitItinerary(itineraries, 'SUBWAY');
       if (bus) {
         guideTransportRoutes.BUS = { itinerary: bus };
         updateTransportChoice('BUS', transportText('BUS', bus, english), true);
@@ -3804,7 +3903,7 @@ async function requestNaverTransitRoute(maps, map, start, end, isCurrent, instru
         ? (english ? ` · est. ₩${fare.toLocaleString()}` : ` · 예상 ${fare.toLocaleString()}원`)
         : '';
       const summary = english ? `Taxi · about ${minutes} min${fareText}` : `택시 · 약 ${minutes}분${fareText}`;
-      guideTransportRoutes.TAXI = { summary };
+      guideTransportRoutes.TAXI = { summary, minutes, fare, paths: Array.isArray(payload.paths) ? payload.paths : [] };
       updateTransportChoice('TAXI', english ? `about ${minutes} min${fareText}` : `약 ${minutes}분${fareText}`, true);
     } else {
       updateTransportChoice('TAXI', response.status === 503
