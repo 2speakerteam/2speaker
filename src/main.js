@@ -80,7 +80,7 @@ function escapeHtml(value) {
   })[character]);
 }
 
-function resolveNaverPlace(query, places) {
+function resolveNaverPlace(query, places, originTitle = '') {
   const name = (value) => String(value || '').toLowerCase().replace(/\s+/g, '');
   const term = name(query);
   const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
@@ -95,18 +95,17 @@ function resolveNaverPlace(query, places) {
   if (best.score === 100 && scored.filter((candidate) => candidate.score === 100).length === 1) {
     return { selected: best.place };
   }
-  const distanceMeters = (a, b) => {
-    const latRadians = Math.PI / 180;
-    const dLat = (a.lat - b.lat) * latRadians;
-    const dLng = (a.lng - b.lng) * latRadians;
-    const arc = Math.sin(dLat / 2) ** 2
-      + Math.cos(a.lat * latRadians) * Math.cos(b.lat * latRadians) * Math.sin(dLng / 2) ** 2;
-    return 12742000 * Math.asin(Math.min(1, Math.sqrt(arc)));
-  };
-  const station = /역$/.test(term) && scored.every(({ place }) =>
-    name(place.title).startsWith(term) && /(지하철|전철|정차역)/.test(place.category || '')
-    && distanceMeters(best.place, place) <= 600);
-  if (station) return { selected: best.place };
+  if (/역$/.test(term)) {
+    const stations = scored.filter(({ place }) => /(지하철|전철|정차역)/.test(place.category || ''));
+    if (stations.length === 1) return { selected: stations[0].place };
+    if (stations.length > 1) {
+      const originLine = originTitle.match(/역\s+([^()]+)$/)?.[1]?.trim();
+      const sameLine = originLine ? stations.filter(({ place }) =>
+        place.title.endsWith(`역 ${originLine}`)) : [];
+      if (sameLine.length === 1) return { selected: sameLine[0].place };
+      return { choices: stations.map(({ place }) => place) };
+    }
+  }
   const attractions = scored.filter(({ place }) =>
     place.category?.startsWith('여행,명소>') && name(place.title).startsWith(term));
   if (attractions.length === 1 && best.score === 80) return { selected: attractions[0].place };
@@ -176,7 +175,7 @@ function routeScreen() {
         <input id="route-destination" name="destination-query" type="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="어디로 가세요?" inputmode="search">
         ${routeEntryMode === 'dual' ? `<button class="route-voice-button" type="button" aria-label="음성으로 목적지 말하기" disabled>${icon('mic', 27)}</button>
         <button class="route-text-button" type="button" data-action="route-text" aria-label="문자로 목적지 입력">${icon('message', 27)}</button>` : `<button class="route-submit" type="submit" aria-label="목적지 검색" hidden>${icon('arrow', 25)}</button>`}
-      </div></form>
+      </div><p class="route-search-feedback" role="status" aria-live="polite"></p></form>
     </section>
     ${bottomNav()}
   </main>`;
@@ -339,6 +338,7 @@ function initializeNaverRouteMap() {
     activeWalkPanorama = walkPanorama;
     let currentLocation = null;
     let startTitle = '';
+    let startIsStation = false;
     let destinationLocation = null;
     let destinationMarker = null;
     let locationStatus = routeStartQuery ? '출발지를 검색하고 있습니다.' : '현재 위치를 확인하고 있습니다.';
@@ -488,7 +488,7 @@ function initializeNaverRouteMap() {
       fetch('/api/transit/subway', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ start, end }),
+        body: JSON.stringify({ start, end, startIsStation }),
         signal: controller.signal
       }).then(async (response) => {
         const payload = await response.json().catch(() => ({}));
@@ -835,6 +835,7 @@ function initializeNaverRouteMap() {
     const markStart = (place) => {
       currentLocation = new maps.LatLng(place.lat, place.lng);
       startTitle = place.title || routeStartQuery;
+      startIsStation = /(지하철|전철)/.test(place.category || '') && /역(?:\s|$)/.test(startTitle);
       new maps.Marker({
         map,
         position: currentLocation,
@@ -875,7 +876,7 @@ function initializeNaverRouteMap() {
         const validPlaces = Array.isArray(places) ? places.filter((place) => (
           place && Number.isFinite(Number(place.lat)) && Number.isFinite(Number(place.lng))
         )).map((place) => ({ ...place, lat: Number(place.lat), lng: Number(place.lng) })) : [];
-        const result = resolveNaverPlace(query, validPlaces);
+        const result = resolveNaverPlace(query, validPlaces, role === '목적지' ? startTitle : '');
         if (result.selected) {
           onSelect(result.selected);
         } else if (result.choices.length) {
@@ -1320,6 +1321,11 @@ if (currentPage === 'user-language-list' && !supportedUserLanguagesLoaded && !su
   });
   routeInput?.addEventListener('input', (event) => {
     routeInput.setCustomValidity('');
+    const feedback = document.querySelector('.route-search-feedback');
+    if (feedback) {
+      feedback.textContent = '';
+      feedback.classList.remove('is-error');
+    }
     const routeSubmit = document.querySelector('.route-submit');
     if (routeSubmit) routeSubmit.hidden = !event.target.value.trim();
     routeTextAction?.setAttribute('aria-label', event.target.value.trim() ? '입력한 장소 검색' : '문자로 목적지 입력');
@@ -1328,6 +1334,11 @@ if (currentPage === 'user-language-list' && !supportedUserLanguagesLoaded && !su
     event.preventDefault();
     const query = routeInput?.value.trim();
     if (!query || routeInput.readOnly) return;
+    const feedback = document.querySelector('.route-search-feedback');
+    if (feedback) {
+      feedback.textContent = '요청을 확인하고 있습니다.';
+      feedback.classList.remove('is-error');
+    }
     const requestId = ++routeIntentRequestId;
     routeInput.readOnly = true;
     routeInput.setAttribute('aria-busy', 'true');
@@ -1355,8 +1366,10 @@ if (currentPage === 'user-language-list' && !supportedUserLanguagesLoaded && !su
       navigate('guide');
     } catch (error) {
       if (requestId !== routeIntentRequestId || currentPage !== 'route' || !routeInput.isConnected) return;
-      routeInput.setCustomValidity(error instanceof Error ? error.message : '길찾기 요청을 처리하지 못했습니다.');
-      routeInput.reportValidity();
+      if (feedback) {
+        feedback.textContent = error instanceof Error ? error.message : '길찾기 요청을 처리하지 못했습니다.';
+        feedback.classList.add('is-error');
+      }
     } finally {
       if (routeInput.isConnected) {
         routeInput.readOnly = false;

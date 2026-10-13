@@ -271,6 +271,7 @@ module.exports = async function handler(req, res) {
   }
   const start = point(req.body?.start);
   const end = point(req.body?.end);
+  const startIsStation = req.body?.startIsStation === true;
   if (!start || !end || samePoint(start, end)) {
     return res.status(400).json({ error: '출발지와 목적지 좌표를 확인해 주세요.' });
   }
@@ -330,7 +331,7 @@ module.exports = async function handler(req, res) {
       else return [parsed];
       return [];
     });
-    if (!routes.length) {
+    if (!routes.length && !startIsStation) {
       let fallbackError = '';
       const stations = await findNearbyStations(itineraries, start, controller.signal);
       for (const station of stations) {

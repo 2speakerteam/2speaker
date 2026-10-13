@@ -72,6 +72,9 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .route-entry-body .large-input { height: clamp(58px, 7vh, 114px); padding-inline: clamp(24px, 4vw, 42px); border-radius: 38px; background: rgba(0, 31, 56, .3); }
 .large-input input { min-width: 0; flex: 1; border: 0; outline: 0; color: white; background: transparent; font-size: 28px; text-size-adjust: 100%; -webkit-text-size-adjust: 100%; }
 .route-form { display: grid; gap: 18px; }
+.route-search-feedback { margin: 0 12px; color: var(--muted); font-size: 15px; }
+.route-search-feedback:empty { display: none; }
+.route-search-feedback.is-error { color: #ffb8ad; }
 .route-voice-button, .route-text-button, .route-submit { width: 42px; height: 42px; flex: 0 0 42px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; color: var(--cyan); background: rgba(8, 118, 157, .24); cursor: pointer; }
 .route-text-button { background: transparent; }
 .route-text-button svg { display: block; }
