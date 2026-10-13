@@ -316,9 +316,9 @@ export function createWalkPanorama(maps, section) {
     }
     const current = frames[selected];
     const upcoming = frames[selected + 1];
-    const sameTurn = current.decisionProgress !== null
-      && current.decisionProgress === upcoming.decisionProgress
-      && current.action !== '직진' && current.phase !== 'departure';
+    const sameTurn = current.decisionProgress !== null && upcoming.decisionProgress !== null
+      && current.action !== '직진' && upcoming.action !== '직진'
+      && upcoming.progress - current.progress <= 45;
     timer = window.setTimeout(() => { void showFrame(selected + 1); },
       sameTurn ? TURN_FRAME_INTERVAL_MS : FRAME_INTERVAL_MS);
   };
