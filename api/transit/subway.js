@@ -175,7 +175,10 @@ module.exports = async function handler(req, res) {
     let missingShape = false;
     let missingDetails = false;
     const shapeIssues = new Set();
-    const routes = itineraries.flatMap((itinerary) => {
+    const subwayItineraries = itineraries.filter((itinerary) =>
+      itinerary.legs?.some((leg) => leg.mode === 'SUBWAY')
+      && itinerary.legs.every((leg) => leg.mode === 'WALK' || leg.mode === 'SUBWAY'));
+    const routes = subwayItineraries.flatMap((itinerary) => {
       const parsed = parseItinerary(itinerary);
       if (!parsed) return [];
       if (parsed.incompleteShape) {
@@ -187,18 +190,15 @@ module.exports = async function handler(req, res) {
       return [];
     });
     if (!routes.length) {
-      const subwayOptions = itineraries.filter((itinerary) => itinerary.legs?.some(
-        (leg) => leg.mode === 'SUBWAY'
-      ));
       const error = missingShape
         ? 'TMAP 지하철 경로에 지도 표시용 실제 형상 좌표가 부족합니다.'
         : missingDetails
           ? 'TMAP 지하철 경로의 노선·역·시간 정보가 부족합니다.'
-          : subwayOptions.length && subwayOptions.every((itinerary) => itinerary.legs?.some(
+          : subwayItineraries.length && subwayItineraries.every((itinerary) => itinerary.legs.some(
             (leg) => leg.mode === 'SUBWAY' && Number(leg.service) === 0
           ))
             ? 'TMAP이 반환한 지하철 구간의 운행이 종료됐습니다.'
-            : '이 출발지와 목적지 사이에 지하철이 포함된 경로가 없습니다.';
+            : '이 출발지와 목적지 사이에 버스 탑승이 없는 지하철 경로가 없습니다.';
       return res.status(422).json({ error, shapeIssues: [...shapeIssues],
         availablePathTypes: [...new Set(itineraries.map((itinerary) => Number(itinerary.pathType)))] });
     }
