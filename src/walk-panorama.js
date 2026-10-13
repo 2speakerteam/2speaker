@@ -431,14 +431,16 @@ export function createWalkPanorama(maps, section) {
       if (distanceMeters(found.camera, candidate) > CAMERA_TO_REQUEST_LIMIT_METERS
         || routePosition.distance > CAMERA_TO_ROUTE_LIMIT_METERS
         || Math.abs(routePosition.progress - candidate.progress) > ROUTE_PROGRESS_LIMIT_METERS) continue;
-      const from = candidateAt(edges, Math.min(edges.at(-1).to, routePosition.progress + 2));
-      const ahead = candidateAt(edges, Math.min(edges.at(-1).to, routePosition.progress + 16));
-      if (distanceMeters(from, ahead) < 3) continue;
+      const from = candidateAt(edges, candidate.phase === 'approach'
+        ? Math.max(0, candidate.decisionProgress - 8) : candidate.decisionProgress + 1);
+      const ahead = candidateAt(edges, candidate.phase === 'approach'
+        ? candidate.decisionProgress - 1 : Math.min(edges.at(-1).to, candidate.decisionProgress + 5));
+      if (distanceMeters(from, ahead) < 2) continue;
       const projected = panorama.getProjection()?.fromCoordToPov(new maps.LatLng(ahead.lat, ahead.lng));
       const routeHeading = headingDegrees(from, ahead);
       if (!Number.isFinite(projected?.pan)
         || angleDifference(projected.pan, headingDegrees(found.camera, ahead)) > 25
-        || angleDifference(projected.pan, routeHeading) > 65) continue;
+        || angleDifference(projected.pan, routeHeading) > 80) continue;
       ids.add(found.panoId);
       verified.push({
         ...found,
