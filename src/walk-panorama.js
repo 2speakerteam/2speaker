@@ -118,47 +118,75 @@ function routeCandidates(route, edges) {
   for (const decision of decisions.sort((a, b) => b.priority - a.priority)) {
     if (selected.some((item) => Math.abs(item.progress - decision.progress) < 6)) continue;
     selected.push(decision);
-    if (selected.length * 12 >= MAX_PROBES) break;
+    if (selected.length >= 7) break;
   }
   const ordered = selected.sort((a, b) => a.progress - b.progress);
-  return ordered.flatMap((decision, index) => {
-    const previous = ordered[index - 1];
-    const next = ordered[index + 1];
-    const lower = previous ? (previous.progress + decision.progress) / 2 : 0;
-    const upper = next ? (decision.progress + next.progress) / 2 : total;
-    return [-30, -25, -20, -15, -10, -5, -1, 4, 10, 17, 25, 33]
-      .map((offset) => decision.progress + offset)
-      .filter((progress) => progress >= Math.max(0, lower)
-        && progress <= Math.min(total - 2, upper))
-      .map((progress) => ({
-        ...candidateAt(edges, progress),
-        priority: decision.priority,
-        action: decision.action,
-        crossing: decision.crossing,
-        decisionProgress: decision.progress,
-        windowEnd: upper,
-        phase: progress < decision.progress ? 'approach' : 'after'
-      }));
-  });
-}
-
-function selectFrames(verified) {
-  const groups = new Map();
-  for (const frame of verified) {
-    if (!groups.has(frame.decisionProgress)) groups.set(frame.decisionProgress, []);
-    groups.get(frame.decisionProgress).push(frame);
-  }
-  const orderedGroups = [...groups].sort((a, b) => a[0] - b[0]).map(([, group]) =>
-    group.sort((a, b) => Math.abs(a.progress - a.decisionProgress)
-      - Math.abs(b.progress - b.decisionProgress)));
-  const selected = [];
-  while (selected.length < MAX_FRAMES && orderedGroups.some((group) => group.length)) {
-    for (const group of orderedGroups) {
-      if (selected.length >= MAX_FRAMES) break;
-      if (group.length) selected.push(group.shift());
+  const probes = [];
+  const addProbe = (progress, decision = null) => {
+    const point = candidateAt(edges, progress);
+    probes.push({
+      ...point,
+      priority: decision?.priority || 0,
+      action: decision?.action || '',
+      crossing: decision?.crossing || false,
+      decisionProgress: decision?.progress ?? null,
+      windowEnd: decision && point.progress < decision.progress ? decision.progress : total,
+      phase: !decision ? 'route' : point.progress < decision.progress ? 'approach' : 'after'
+    });
+  };
+  // Probe the whole real route before adding denser samples around actual decisions.
+  for (let index = 0; index <= 20; index += 1) addProbe(total * index / 20);
+  for (const decision of ordered) {
+    for (const offset of [-12, -3, 8]) {
+      if (decision.progress + offset > 0 && decision.progress + offset < total) {
+        addProbe(decision.progress + offset, decision);
+      }
     }
   }
-  return selected.sort((a, b) => a.progress - b.progress);
+  return probes.sort((a, b) => b.priority - a.priority)
+    .filter((probe, index, all) => !all.slice(0, index).some((other) =>
+      Math.abs(other.progress - probe.progress) < 3))
+    .sort((a, b) => a.progress - b.progress)
+    .slice(0, MAX_PROBES);
+}
+
+function selectFrames(verified, total) {
+  if (!verified.length) return [];
+  const ordered = [...verified].sort((a, b) => a.progress - b.progress);
+  const endpointZone = Math.min(65, Math.max(30, total * .08));
+  const first = ordered.find((frame) => frame.progress <= endpointZone);
+  const last = [...ordered].reverse().find((frame) => frame.progress >= total - endpointZone);
+  // An endpoint scene must really be near that end of the route. Never label
+  // a mid-route photograph as departure or arrival to make up the count.
+  if (!first || !last || first.panoId === last.panoId) return [];
+  const middle = ordered.filter((frame) => frame.progress > endpointZone
+    && frame.progress < total - endpointZone);
+  const chosen = [first, last];
+  const minimumSpacing = Math.min(24, Math.max(8, total / 55));
+  const targetGap = (last.progress - first.progress) / (MAX_FRAMES - 1);
+  for (let index = 1; index < MAX_FRAMES - 1; index += 1) {
+    const target = first.progress + targetGap * index;
+    const candidate = middle
+      .filter((frame) => !chosen.includes(frame)
+        && chosen.every((item) => Math.abs(item.progress - frame.progress) >= minimumSpacing))
+      .sort((a, b) => (Math.abs(a.progress - target) - (a.priority ? 6 : 0))
+        - (Math.abs(b.progress - target) - (b.priority ? 6 : 0)))[0];
+    if (candidate && Math.abs(candidate.progress - target) <= targetGap * .7) chosen.push(candidate);
+  }
+  // Fill genuine gaps first; do not spend the remaining slots on repeated
+  // photographs clustered around either station.
+  while (chosen.length < MAX_FRAMES) {
+    const candidate = middle.filter((frame) => !chosen.includes(frame)
+      && chosen.every((item) => Math.abs(item.progress - frame.progress) >= minimumSpacing))
+      .sort((a, b) => Math.min(...chosen.map((item) => Math.abs(b.progress - item.progress)))
+        - Math.min(...chosen.map((item) => Math.abs(a.progress - item.progress))))[0];
+    if (!candidate) break;
+    chosen.push(candidate);
+  }
+  return chosen.sort((a, b) => a.progress - b.progress).map((frame, index, all) => ({
+    ...frame,
+    phase: index === 0 ? 'departure' : index === all.length - 1 ? 'arrival' : frame.phase
+  }));
 }
 
 export function createWalkPanorama(maps, section) {
@@ -288,23 +316,49 @@ export function createWalkPanorama(maps, section) {
   const showGroundGuide = (frame) => {
     ground.replaceChildren();
     if (!routeEdges.length || frame.routeOffset > CAMERA_TO_ROUTE_LIMIT_METERS || !panorama) return;
+    if (routeEdges.at(-1).to - frame.progress < 8) return;
     const pov = panorama.getPov();
     if (!Number.isFinite(pov?.pan) || !Number.isFinite(pov?.fov)) return;
-    const points = [[150, 198]];
-    for (const [meters, y] of [[5, 174], [9, 145], [15, 113], [23, 78]]) {
+    const points = [[150, 199]];
+    for (const [meters, y] of [[6, 177], [12, 151], [19, 121], [28, 87]]) {
       const point = candidateAt(routeEdges, frame.progress + meters);
       const difference = signedAngle(pov.pan, headingDegrees(frame.camera, point));
       if (Math.abs(difference) > Math.min(48, pov.fov / 2)) {
         if (points.length > 1) break;
         continue;
       }
-      points.push([Math.max(14, Math.min(286, 150 + difference * 2.35)), y]);
+      points.push([Math.max(22, Math.min(278, 150 + difference * 2.1)), y]);
     }
     if (points.length < 3) return;
-    const path = points.map(([x, y], index) => `${index ? 'L' : 'M'}${x.toFixed(1)} ${y}`).join(' ');
+    const sides = points.map(([x, y], index) => {
+      const before = points[Math.max(0, index - 1)];
+      const after = points[Math.min(points.length - 1, index + 1)];
+      const length = Math.hypot(after[0] - before[0], after[1] - before[1]) || 1;
+      const normal = [-(after[1] - before[1]) / length, (after[0] - before[0]) / length];
+      const halfWidth = 19 - index * 2.5;
+      return {
+        left: [x + normal[0] * halfWidth, y + normal[1] * halfWidth],
+        right: [x - normal[0] * halfWidth, y - normal[1] * halfWidth]
+      };
+    });
+    const formatPoint = ([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`;
+    const ribbon = [...sides.map((side) => side.left), ...sides.map((side) => side.right).reverse()]
+      .map(formatPoint).join(' ');
+    const arrows = points.slice(1, -1).map(([x, y], index) => {
+      const before = points[index];
+      const after = points[index + 2];
+      const length = Math.hypot(after[0] - before[0], after[1] - before[1]) || 1;
+      const tangent = [(after[0] - before[0]) / length, (after[1] - before[1]) / length];
+      const normal = [-tangent[1], tangent[0]];
+      const tip = [x + tangent[0] * 8, y + tangent[1] * 8];
+      const left = [x - tangent[0] * 5 + normal[0] * 7, y - tangent[1] * 5 + normal[1] * 7];
+      const notch = [x - tangent[0], y - tangent[1]];
+      const right = [x - tangent[0] * 5 - normal[0] * 7, y - tangent[1] * 5 - normal[1] * 7];
+      return `<polygon points="${[left, tip, right, notch].map(formatPoint).join(' ')}" fill="rgba(221,239,255,.9)"/>`;
+    }).join('');
     ground.innerHTML = `<svg viewBox="0 0 300 200" preserveAspectRatio="none" aria-hidden="true">
-      <path d="${path}" fill="none" stroke="rgba(0,31,50,.48)" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="${path}" fill="none" stroke="rgba(27,210,231,.82)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+      <polygon points="${ribbon}" fill="rgba(27,76,225,.72)" stroke="rgba(20,48,151,.65)" stroke-width="2" stroke-linejoin="round"/>
+      ${arrows}
     </svg>`;
   };
 
@@ -356,14 +410,18 @@ export function createWalkPanorama(maps, section) {
     }
     selected = index;
     canvas.hidden = false;
-    const beforeTurnMeters = Math.round(Math.max(0, frame.decisionProgress - frame.progress));
-    turn.textContent = frame.phase === 'approach'
-      ? `${frame.crossing ? '갈림길 · ' : ''}${beforeTurnMeters > 12
-        ? `약 ${beforeTurnMeters}m 앞 ${frame.action}` : frame.action}`
-      : `${frame.action} 후 진행`;
+    const beforeTurnMeters = frame.decisionProgress === null
+      ? 0 : Math.round(Math.max(0, frame.decisionProgress - frame.progress));
+    turn.textContent = frame.phase === 'departure' ? '출발 지점 주변'
+      : frame.phase === 'arrival' ? '도착 지점 주변'
+        : frame.phase === 'route' ? '실제 도보 경로 진행'
+          : frame.phase === 'approach'
+            ? `${frame.crossing ? '갈림길 · ' : ''}${beforeTurnMeters > 12
+              ? `약 ${beforeTurnMeters}m 앞 ${frame.action}` : frame.action}`
+            : `${frame.action} 후 진행`;
     turn.hidden = false;
     showGroundGuide(frame);
-    setStatus(`판단 지점 로드뷰 ${index + 1}/${frames.length} · ${frame.title || '도보 경로'} · ${frame.photodate.slice(0, 10)} 촬영`);
+    setStatus(`실제 도보 경로 로드뷰 ${index + 1}/${frames.length} · ${frame.title || '도보 경로'} · ${frame.photodate.slice(0, 10)} 촬영`);
     section.dataset.panoramaId = frame.panoId;
     section.dataset.cameraLat = frame.camera.lat.toFixed(7);
     section.dataset.cameraLng = frame.camera.lng.toFixed(7);
@@ -485,9 +543,9 @@ export function createWalkPanorama(maps, section) {
     }
     if (run !== generation) return;
     section.classList.remove('is-loading');
-    frames = selectFrames(verified);
+    frames = selectFrames(verified, edges.at(-1).to);
     if (!frames.length) {
-      fallback('실제 경로와 방향이 확인된 로드뷰가 없습니다.');
+      fallback('출발지와 도착지 주변 모두에서 실제 경로와 방향이 확인된 로드뷰가 부족합니다.');
       return;
     }
     await showFrame(0);
