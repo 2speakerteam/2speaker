@@ -158,10 +158,10 @@ function guideScreen() {
       </div>
     </section>
     <section class="transport-options" role="group" aria-label="이동 수단">
-      <button class="transport-option" type="button" data-mode="walk" aria-pressed="${routeTransportMode === 'walk'}"><strong>도보</strong></button>
+      <button class="transport-option" type="button" data-mode="walk" aria-pressed="false"><strong>도보</strong></button>
       <button class="transport-option" type="button" data-mode="subway" aria-pressed="${routeTransportMode === 'subway'}"><strong>지하철</strong></button>
       <button class="transport-option" type="button" data-mode="bus" aria-pressed="${routeTransportMode === 'bus'}"><strong>버스</strong></button>
-      <button class="transport-option" type="button" data-mode="taxi" aria-pressed="${routeTransportMode === 'taxi'}"><strong>택시</strong></button>
+      <button class="transport-option" type="button" data-mode="taxi" aria-pressed="false"><strong>택시</strong></button>
     </section>
     <section class="guide-dialogue" aria-label="길찾기 내용"></section>
     </div>
@@ -948,7 +948,7 @@ function render() {
 
   document.querySelectorAll('.transport-option').forEach((button) => {
     button.addEventListener('click', () => {
-      routeTransportMode = button.dataset.mode;
+      routeTransportMode = button.dataset.mode === 'bus' ? 'bus' : 'subway';
       document.querySelectorAll('.transport-option').forEach((option) => {
         option.setAttribute('aria-pressed', String(option === button));
       });
