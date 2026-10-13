@@ -2,8 +2,8 @@ const CAMERA_TO_ROUTE_LIMIT_METERS = 15;
 const CAMERA_TO_REQUEST_LIMIT_METERS = 25;
 const ROUTE_PROGRESS_LIMIT_METERS = 25;
 const MAX_FIRST_STAGE_ROUTE_METERS = 2000;
-const MAX_PROBES = 18;
-const MAX_FRAMES = 12;
+const MAX_PROBES = 40;
+const MAX_FRAMES = 15;
 const FRAME_INTERVAL_MS = 1500;
 const PANORAMA_TIMEOUT_MS = 6000;
 const ARRIVAL_RADIUS_METERS = 30;
@@ -116,23 +116,48 @@ function routeCandidates(route, edges) {
   }
   const selected = [];
   for (const decision of decisions.sort((a, b) => b.priority - a.priority)) {
-    if (selected.some((item) => Math.abs(item.progress - decision.progress) < 18)) continue;
+    if (selected.some((item) => Math.abs(item.progress - decision.progress) < 6)) continue;
     selected.push(decision);
-    if (selected.length * 2 >= MAX_PROBES) break;
+    if (selected.length * 10 >= MAX_PROBES) break;
   }
-  return selected.sort((a, b) => a.progress - b.progress).flatMap((decision) => [
-    { ...candidateAt(edges, decision.progress - 8), priority: decision.priority,
-      action: decision.action, crossing: decision.crossing,
-      decisionProgress: decision.progress, phase: 'approach' },
-    { ...candidateAt(edges, Math.min(total - 2, decision.progress + 5)), priority: decision.priority,
-      action: decision.action, crossing: decision.crossing,
-      decisionProgress: decision.progress, phase: 'after' }
-  ]);
+  const ordered = selected.sort((a, b) => a.progress - b.progress);
+  return ordered.flatMap((decision, index) => {
+    const previous = ordered[index - 1];
+    const next = ordered[index + 1];
+    const lower = previous ? (previous.progress + decision.progress) / 2 : 0;
+    const upper = next ? (decision.progress + next.progress) / 2 : total;
+    return [-30, -25, -20, -15, -10, -5, -1, 4, 10, 17]
+      .map((offset) => decision.progress + offset)
+      .filter((progress) => progress >= Math.max(0, lower)
+        && progress <= Math.min(total - 2, upper))
+      .map((progress) => ({
+        ...candidateAt(edges, progress),
+        priority: decision.priority,
+        action: decision.action,
+        crossing: decision.crossing,
+        decisionProgress: decision.progress,
+        phase: progress < decision.progress ? 'approach' : 'after'
+      }));
+  });
 }
 
 function selectFrames(verified) {
-  const ordered = [...verified].sort((a, b) => a.progress - b.progress);
-  return ordered.slice(0, MAX_FRAMES);
+  const groups = new Map();
+  for (const frame of verified) {
+    if (!groups.has(frame.decisionProgress)) groups.set(frame.decisionProgress, []);
+    groups.get(frame.decisionProgress).push(frame);
+  }
+  const orderedGroups = [...groups].sort((a, b) => a[0] - b[0]).map(([, group]) =>
+    group.sort((a, b) => Math.abs(a.progress - a.decisionProgress)
+      - Math.abs(b.progress - b.decisionProgress)));
+  const selected = [];
+  while (selected.length < MAX_FRAMES && orderedGroups.some((group) => group.length)) {
+    for (const group of orderedGroups) {
+      if (selected.length >= MAX_FRAMES) break;
+      if (group.length) selected.push(group.shift());
+    }
+  }
+  return selected.sort((a, b) => a.progress - b.progress);
 }
 
 export function createWalkPanorama(maps, section) {
@@ -330,8 +355,11 @@ export function createWalkPanorama(maps, section) {
     }
     selected = index;
     canvas.hidden = false;
+    const beforeTurnMeters = Math.round(Math.max(0, frame.decisionProgress - frame.progress));
     turn.textContent = frame.phase === 'approach'
-      ? `${frame.crossing ? '갈림길 · ' : ''}${frame.action}` : `${frame.action} 후 진행`;
+      ? `${frame.crossing ? '갈림길 · ' : ''}${beforeTurnMeters > 12
+        ? `약 ${beforeTurnMeters}m 앞 ${frame.action}` : frame.action}`
+      : `${frame.action} 후 진행`;
     turn.hidden = false;
     showGroundGuide(frame);
     setStatus(`판단 지점 로드뷰 ${index + 1}/${frames.length} · ${frame.title || '도보 경로'} · ${frame.photodate.slice(0, 10)} 촬영`);
@@ -432,9 +460,10 @@ export function createWalkPanorama(maps, section) {
         || routePosition.distance > CAMERA_TO_ROUTE_LIMIT_METERS
         || Math.abs(routePosition.progress - candidate.progress) > ROUTE_PROGRESS_LIMIT_METERS) continue;
       const from = candidateAt(edges, candidate.phase === 'approach'
-        ? Math.max(0, candidate.decisionProgress - 8) : candidate.decisionProgress + 1);
+        ? Math.max(0, candidate.progress - 2) : candidate.decisionProgress + 1);
       const ahead = candidateAt(edges, candidate.phase === 'approach'
-        ? candidate.decisionProgress - 1 : Math.min(edges.at(-1).to, candidate.decisionProgress + 5));
+        ? Math.min(candidate.decisionProgress, candidate.progress + 6)
+        : Math.min(edges.at(-1).to, candidate.decisionProgress + 5));
       if (distanceMeters(from, ahead) < 2) continue;
       const projected = panorama.getProjection()?.fromCoordToPov(new maps.LatLng(ahead.lat, ahead.lng));
       const routeHeading = headingDegrees(from, ahead);
