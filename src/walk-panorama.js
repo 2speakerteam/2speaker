@@ -474,6 +474,7 @@ export function createWalkPanorama(maps, section) {
       verified.push({
         ...found,
         progress: routePosition.progress,
+        decisionProgress: candidate.decisionProgress,
         routeOffset: routePosition.distance,
         priority: candidate.priority,
         action: candidate.action,
