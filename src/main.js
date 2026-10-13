@@ -276,12 +276,12 @@ function initializeNaverRouteMap() {
       setStatus(message, hasError ? 'error' : bothReady ? 'success' : 'info');
     };
     const currentLocationIcon = {
-      content: '<div style="width:24px;height:24px;display:grid;place-items:center;border:2px solid #fff;border-radius:50%;background:rgba(36,166,255,.24);box-shadow:0 1px 8px rgba(0,26,52,.72);"><span style="width:12px;height:12px;border:1px solid #fff;border-radius:50%;background:#168cff;"></span></div>',
+      content: '<div role="img" aria-label="현재 위치" style="width:24px;height:24px;display:grid;place-items:center;border:2px solid #fff;border-radius:50%;background:rgba(36,166,255,.24);box-shadow:0 1px 8px rgba(0,26,52,.72);"><span style="width:12px;height:12px;border:1px solid #fff;border-radius:50%;background:#168cff;"></span></div>',
       size: new maps.Size(28, 28),
       anchor: new maps.Point(14, 14)
     };
     const destinationPinIcon = {
-      content: '<svg width="36" height="44" viewBox="0 0 36 44" aria-hidden="true" style="display:block;filter:drop-shadow(0 2px 4px rgba(0,20,38,.7))"><path d="M18 2C9.72 2 3 8.72 3 17c0 10.6 15 25 15 25s15-14.4 15-25C33 8.72 26.28 2 18 2Z" fill="#ffc36d" stroke="#fff" stroke-width="2"/><circle cx="18" cy="17" r="6" fill="#07334d" stroke="#fff" stroke-width="2"/></svg>',
+      content: '<svg role="img" aria-label="목적지 위치" width="36" height="44" viewBox="0 0 36 44" style="display:block;filter:drop-shadow(0 2px 4px rgba(0,20,38,.7))"><path d="M18 2C9.72 2 3 8.72 3 17c0 10.6 15 25 15 25s15-14.4 15-25C33 8.72 26.28 2 18 2Z" fill="#ffc36d" stroke="#fff" stroke-width="2"/><circle cx="18" cy="17" r="6" fill="#07334d" stroke="#fff" stroke-width="2"/></svg>',
       size: new maps.Size(36, 44),
       anchor: new maps.Point(18, 42)
     };
@@ -328,7 +328,10 @@ function initializeNaverRouteMap() {
         map,
         position: destinationLocation,
         title,
-        icon: destinationPinIcon,
+        icon: {
+          ...destinationPinIcon,
+          content: destinationPinIcon.content.replace('aria-label="목적지 위치"', `aria-label="목적지: ${escapeHtml(title)}"`)
+        },
         zIndex: 130
       });
       destinationTitle = title;
@@ -366,7 +369,9 @@ function initializeNaverRouteMap() {
         }
       }).catch((error) => {
         if (session !== routeMapSession || currentPage !== 'guide') return;
-        destinationStatus = error instanceof Error ? error.message : '네이버 장소 검색에 실패했습니다.';
+        destinationStatus = error instanceof Error && error.message.includes('네이버 장소 검색')
+          ? error.message
+          : '네이버 장소 검색에 실패했습니다. 다시 입력해 주세요.';
         destinationState = 'error';
         updateStatus();
       });
