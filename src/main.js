@@ -80,14 +80,6 @@ function escapeHtml(value) {
   })[character]);
 }
 
-function parseRouteQuery(value) {
-  const query = value.trim();
-  const route = query.match(/^(.+?)에서\s*(.+?)(?:까지|으로|로)$/);
-  return route && route[1].trim() && route[2].trim()
-    ? { start: route[1].trim(), destination: route[2].trim() }
-    : { start: '', destination: query };
-}
-
 function resolveNaverPlace(query, places) {
   const name = (value) => String(value || '').toLowerCase().replace(/\s+/g, '');
   const term = name(query);
@@ -103,8 +95,17 @@ function resolveNaverPlace(query, places) {
   if (best.score === 100 && scored.filter((candidate) => candidate.score === 100).length === 1) {
     return { selected: best.place };
   }
+  const distanceMeters = (a, b) => {
+    const latRadians = Math.PI / 180;
+    const dLat = (a.lat - b.lat) * latRadians;
+    const dLng = (a.lng - b.lng) * latRadians;
+    const arc = Math.sin(dLat / 2) ** 2
+      + Math.cos(a.lat * latRadians) * Math.cos(b.lat * latRadians) * Math.sin(dLng / 2) ** 2;
+    return 12742000 * Math.asin(Math.min(1, Math.sqrt(arc)));
+  };
   const station = /역$/.test(term) && scored.every(({ place }) =>
-    name(place.title).startsWith(term) && /(지하철|전철|정차역)/.test(place.category || ''));
+    name(place.title).startsWith(term) && /(지하철|전철|정차역)/.test(place.category || '')
+    && distanceMeters(best.place, place) <= 600);
   if (station) return { selected: best.place };
   const attractions = scored.filter(({ place }) =>
     place.category?.startsWith('여행,명소>') && name(place.title).startsWith(term));
@@ -1345,7 +1346,7 @@ if (currentPage === 'user-language-list' && !supportedUserLanguagesLoaded && !su
         throw new Error('Gemini 길찾기 결과를 확인할 수 없습니다.');
       }
       if (intent.mode === 'taxi') throw new Error('택시 경로는 아직 제공하지 않습니다.');
-      if (requestId !== routeIntentRequestId || currentPage !== 'route') return;
+      if (requestId !== routeIntentRequestId || currentPage !== 'route' || !routeInput.isConnected) return;
       routeStartQuery = intent.start.trim();
       routeDestinationQuery = intent.destination.trim();
       if (intent.mode !== 'unspecified') routeTransportMode = intent.mode;
@@ -1353,7 +1354,7 @@ if (currentPage === 'user-language-list' && !supportedUserLanguagesLoaded && !su
       if (routeIntentHistory.length > 4) routeIntentHistory.shift();
       navigate('guide');
     } catch (error) {
-      if (requestId !== routeIntentRequestId || currentPage !== 'route') return;
+      if (requestId !== routeIntentRequestId || currentPage !== 'route' || !routeInput.isConnected) return;
       routeInput.setCustomValidity(error instanceof Error ? error.message : '길찾기 요청을 처리하지 못했습니다.');
       routeInput.reportValidity();
     } finally {
