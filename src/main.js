@@ -362,6 +362,10 @@ function initializeNaverRouteMap() {
       if (!destinationChoicesElement) return;
       const minutes = Math.ceil(route.totalSeconds / 60);
       const transportLabel = route.busBoardings ? '버스 + 지하철' : '지하철';
+      const accessWalk = route.accessWalk && Number.isFinite(route.accessWalk.seconds)
+        && Number.isFinite(route.accessWalk.distanceMeters)
+        ? `<li><strong>도보 접근 · ${escapeHtml(route.accessWalk.station)}</strong><span>현재 위치 → ${escapeHtml(route.accessWalk.station)} · ${Math.ceil(route.accessWalk.seconds / 60)}분 · ${Math.round(route.accessWalk.distanceMeters)}m</span></li>`
+        : '';
       const legs = route.transportLegs.map((leg) => `<li><strong>${leg.mode === 'BUS' ? '버스' : '지하철'} · ${escapeHtml(leg.route)}</strong><span>${escapeHtml(leg.board)} 탑승 → ${escapeHtml(leg.alight)} 하차 · ${Math.ceil(leg.seconds / 60)}분</span></li>`).join('');
       const transfers = route.transfers.length
         ? `<p class="subway-transfer">환승: ${route.transfers.map((transfer) => escapeHtml(transfer.from === transfer.to ? transfer.from : `${transfer.from} → ${transfer.to}`)).join(' · ')}</p>`
@@ -373,7 +377,7 @@ function initializeNaverRouteMap() {
       destinationChoicesElement.innerHTML = `<div class="subway-route-panel" role="status" aria-label="TMAP 지하철 경로">
         <strong>${transportLabel} 약 ${minutes}분 · 환승 ${route.transferCount}회</strong>
         <p class="subway-transfer">대중교통 탑승시간 중 지하철 ${Math.round(route.subwayShare * 100)}% · 버스 탑승 ${route.busBoardings}회</p>
-        <ol>${legs}</ol>${transfers}${geometryNotice}
+        <ol>${accessWalk}${legs}</ol>${transfers}${geometryNotice}
       </div>`;
     };
     const requestSubwayRoute = () => {
