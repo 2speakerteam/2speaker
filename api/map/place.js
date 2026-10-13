@@ -34,7 +34,7 @@ module.exports = async function handler(req, res) {
 
   const endpoint = new URL('https://naverapihub.apigw.ntruss.com/search/v1/local');
   endpoint.searchParams.set('query', query);
-  endpoint.searchParams.set('display', '1');
+  endpoint.searchParams.set('display', '5');
   endpoint.searchParams.set('start', '1');
   endpoint.searchParams.set('sort', 'random');
   endpoint.searchParams.set('format', 'json');
@@ -57,22 +57,22 @@ module.exports = async function handler(req, res) {
       return res.status(502).json({ error: message });
     }
 
-    const item = payload.items?.[0];
-    if (!item) return res.status(200).json({ place: null });
+    const places = (Array.isArray(payload.items) ? payload.items : []).flatMap((item) => {
+      const lng = coordinate(item.mapx, 180);
+      const lat = coordinate(item.mapy, 90);
+      if (lat === null || lng === null) return [];
 
-    const lng = coordinate(item.mapx, 180);
-    const lat = coordinate(item.mapy, 90);
-    if (lat === null || lng === null) {
-      return res.status(200).json({ place: null });
-    }
-
-    return res.status(200).json({
-      place: {
+      return [{
         title: plainText(item.title, query),
+        category: plainText(item.category, ''),
+        address: plainText(item.address, ''),
+        roadAddress: plainText(item.roadAddress, ''),
         lat,
         lng
-      }
+      }];
     });
+
+    return res.status(200).json({ places, place: places[0] || null });
   } catch {
     return res.status(502).json({ error: '네이버 장소 검색에 연결하지 못했습니다.' });
   }
