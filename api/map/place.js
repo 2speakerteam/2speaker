@@ -4,6 +4,16 @@ function plainText(value, fallback) {
   return text.slice(0, 160) || fallback;
 }
 
+function coordinate(value, limit) {
+  if (value === null || value === undefined || String(value).trim() === '') return null;
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+
+  // NAVER local search returns WGS84 longitude/latitude as integers scaled by 10^7.
+  const normalized = Math.abs(parsed) <= limit ? parsed : parsed / 10_000_000;
+  return Math.abs(normalized) <= limit ? normalized : null;
+}
+
 module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') {
@@ -50,9 +60,9 @@ module.exports = async function handler(req, res) {
     const item = payload.items?.[0];
     if (!item) return res.status(200).json({ place: null });
 
-    const lng = Number(item.mapx);
-    const lat = Number(item.mapy);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    const lng = coordinate(item.mapx, 180);
+    const lat = coordinate(item.mapy, 90);
+    if (lat === null || lng === null) {
       return res.status(200).json({ place: null });
     }
 
@@ -67,3 +77,4 @@ module.exports = async function handler(req, res) {
     return res.status(502).json({ error: '네이버 장소 검색에 연결하지 못했습니다.' });
   }
 };
+
