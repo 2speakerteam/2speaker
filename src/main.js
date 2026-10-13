@@ -358,15 +358,18 @@ function initializeNaverRouteMap() {
     const showSubwayRoute = (route) => {
       if (!destinationChoicesElement) return;
       const minutes = Math.ceil(route.totalSeconds / 60);
-      const legs = route.subwayLegs.map((leg) => `<li><strong>${escapeHtml(leg.route)}</strong><span>${escapeHtml(leg.board)} → ${escapeHtml(leg.alight)} · ${Math.ceil(leg.seconds / 60)}분</span></li>`).join('');
+      const transportLabel = route.busBoardings ? '버스 + 지하철' : '지하철';
+      const legs = route.transportLegs.map((leg) => `<li><strong>${leg.mode === 'BUS' ? '버스' : '지하철'} · ${escapeHtml(leg.route)}</strong><span>${escapeHtml(leg.board)} 탑승 → ${escapeHtml(leg.alight)} 하차 · ${Math.ceil(leg.seconds / 60)}분</span></li>`).join('');
       const transfers = route.transfers.length
         ? `<p class="subway-transfer">환승: ${route.transfers.map((transfer) => escapeHtml(transfer.from === transfer.to ? transfer.from : `${transfer.from} → ${transfer.to}`)).join(' · ')}</p>`
         : '';
-      const geometryNotice = route.walkingGeometryIncomplete
-        ? '<p class="subway-transfer">TMAP이 일부 도보 연결 구간의 형상 좌표를 제공하지 않아 확인된 구간만 지도에 표시했습니다.</p>'
+      const missingModes = Array.isArray(route.missingGeometryModes) ? route.missingGeometryModes : [];
+      const geometryNotice = missingModes.length
+        ? `<p class="subway-transfer">TMAP이 일부 ${missingModes.map((mode) => mode === 'BUS' ? '버스' : '도보').join('·')} 구간 좌표를 제공하지 않아 확인된 구간만 지도에 표시했습니다.</p>`
         : '';
       destinationChoicesElement.innerHTML = `<div class="subway-route-panel" role="status" aria-label="TMAP 지하철 경로">
-        <strong>지하철 약 ${minutes}분 · 환승 ${route.transferCount}회</strong>
+        <strong>${transportLabel} 약 ${minutes}분 · 환승 ${route.transferCount}회</strong>
+        <p class="subway-transfer">대중교통 탑승시간 중 지하철 ${Math.round(route.subwayShare * 100)}% · 버스 탑승 ${route.busBoardings}회</p>
         <ol>${legs}</ol>${transfers}${geometryNotice}
       </div>`;
     };
@@ -420,7 +423,7 @@ function initializeNaverRouteMap() {
           map,
           path: segment.points,
           strokeColor: segment.color,
-          strokeWeight: segment.mode === 'SUBWAY' ? 5 : 3,
+          strokeWeight: segment.mode === 'SUBWAY' ? 5 : segment.mode === 'BUS' ? 4 : 2,
           strokeOpacity: segment.mode === 'SUBWAY' ? 0.95 : 0.75,
           strokeStyle: segment.mode === 'SUBWAY' ? 'solid' : 'shortdash',
           zIndex: 60

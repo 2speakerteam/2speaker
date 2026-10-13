@@ -45,43 +45,54 @@ function matchRequestEcho(parameters, start, end) {
 function parseItinerary(itinerary) {
   if (!itinerary || !Array.isArray(itinerary.legs) || itinerary.legs.length === 0) return null;
   const legs = itinerary.legs;
-  if (Number(itinerary.pathType) !== 1 || !legs.some((leg) => leg.mode === 'SUBWAY')) return null;
-  if (!legs.every((leg) => leg.mode === 'WALK' || leg.mode === 'SUBWAY')) return null;
-  if (legs.some((leg) => leg.mode === 'SUBWAY' && Number(leg.service) === 0)) return null;
+  if (!legs.some((leg) => leg.mode === 'SUBWAY')) return null;
+  if (!legs.every((leg) => ['WALK', 'BUS', 'SUBWAY'].includes(leg.mode))) return null;
+  if (legs.some((leg) => leg.mode !== 'WALK' && Number(leg.service) === 0)) return null;
 
   const subwayLegs = [];
+  const transportLegs = [];
   const segments = [];
-  let walkingGeometryIncomplete = false;
+  const missingGeometryModes = new Set();
+  let subwaySeconds = 0;
+  let busSeconds = 0;
   for (const leg of legs) {
-    if (leg.mode === 'SUBWAY') {
+    if (leg.mode === 'SUBWAY' || leg.mode === 'BUS') {
       const coordinates = linePoints(leg.passShape?.linestring);
-      if (!coordinates) return { incompleteShape: 'subway' };
+      if (!coordinates && leg.mode === 'SUBWAY') return { incompleteShape: 'subway' };
+      if (!coordinates) missingGeometryModes.add('BUS');
       const stations = Array.isArray(leg.passStopList?.stationList)
         ? leg.passStopList.stationList.map((station) => text(station.stationName)).filter(Boolean)
         : [];
+      const seconds = leg.sectionTime === null || leg.sectionTime === undefined
+        ? NaN : Number(leg.sectionTime);
       const detail = {
-        route: text(leg.route),
+        mode: leg.mode,
+        route: text(leg.route || leg.Lane?.[0]?.route || leg.lane?.[0]?.route),
         board: text(leg.start?.name),
         alight: text(leg.end?.name),
-        seconds: Number.isFinite(Number(leg.sectionTime)) ? Number(leg.sectionTime) : null,
+        seconds,
         stations
       };
-      if (!detail.route || !detail.board || !detail.alight || detail.seconds === null || detail.seconds < 0) {
+      if (!detail.route || !detail.board || !detail.alight || !Number.isFinite(seconds) || seconds < 0) {
         return { incompleteDetails: true };
       }
-      subwayLegs.push(detail);
+      transportLegs.push(detail);
+      if (leg.mode === 'SUBWAY') {
+        subwayLegs.push(detail);
+        subwaySeconds += seconds;
+      } else busSeconds += seconds;
       const routeColor = /^[0-9a-fA-F]{6}$/.test(leg.routeColor || '')
-        ? `#${leg.routeColor}` : '#20c8e7';
-      segments.push({ mode: 'SUBWAY', route: detail.route, color: routeColor, coordinates });
+        ? `#${leg.routeColor}` : leg.mode === 'BUS' ? '#f3a35e' : '#20c8e7';
+      if (coordinates) segments.push({ mode: leg.mode, route: detail.route, color: routeColor, coordinates });
     } else if (Number(leg.distance) > 0) {
       if (!Array.isArray(leg.steps) || leg.steps.length === 0) {
-        walkingGeometryIncomplete = true;
+        missingGeometryModes.add('WALK');
         continue;
       }
       for (const step of leg.steps) {
         const coordinates = linePoints(step.linestring);
         if (!coordinates) {
-          walkingGeometryIncomplete = true;
+          missingGeometryModes.add('WALK');
           continue;
         }
         segments.push({ mode: 'WALK', color: '#d4e9f1', coordinates });
@@ -94,11 +105,21 @@ function parseItinerary(itinerary) {
   if (!Number.isFinite(totalSeconds) || totalSeconds <= 0 || !Number.isInteger(transferCount) || transferCount < 0) {
     return { incompleteDetails: true };
   }
-  const transfers = subwayLegs.slice(1).map((leg, index) => ({
-    from: subwayLegs[index].alight,
+  if (subwaySeconds <= 0) return { incompleteDetails: true };
+  const transfers = transportLegs.slice(1).map((leg, index) => ({
+    from: transportLegs[index].alight,
     to: leg.board
   }));
-  return { totalSeconds, transferCount, subwayLegs, transfers, segments, walkingGeometryIncomplete };
+  const busBoardings = transportLegs.filter((leg) => leg.mode === 'BUS').length;
+  const busTransfers = Math.max(0, busBoardings - 1);
+  const subwayShare = subwaySeconds / (subwaySeconds + busSeconds);
+  // Compare time in minutes, favoring more subway travel and fewer bus boardings/transfers.
+  const priorityScore = totalSeconds / 60 - subwayShare * 40 + busBoardings * 8 + busTransfers * 5;
+  return {
+    totalSeconds, transferCount, subwayLegs, transportLegs, transfers, segments,
+    missingGeometryModes: [...missingGeometryModes],
+    subwayShare, busBoardings, busTransfers, priorityScore
+  };
 }
 
 module.exports = async function handler(req, res) {
@@ -166,8 +187,9 @@ module.exports = async function handler(req, res) {
       return [];
     });
     if (!routes.length) {
-      const subwayOptions = itineraries.filter((itinerary) => Number(itinerary.pathType) === 1);
-      const mixedOptions = itineraries.some((itinerary) => Number(itinerary.pathType) === 3);
+      const subwayOptions = itineraries.filter((itinerary) => itinerary.legs?.some(
+        (leg) => leg.mode === 'SUBWAY'
+      ));
       const error = missingShape
         ? 'TMAP 지하철 경로에 지도 표시용 실제 형상 좌표가 부족합니다.'
         : missingDetails
@@ -175,14 +197,15 @@ module.exports = async function handler(req, res) {
           : subwayOptions.length && subwayOptions.every((itinerary) => itinerary.legs?.some(
             (leg) => leg.mode === 'SUBWAY' && Number(leg.service) === 0
           ))
-            ? 'TMAP 지하철 전용 경로의 운행이 종료됐습니다.'
-            : mixedOptions
-              ? 'TMAP은 이 위치에서 버스와 지하철을 함께 이용하는 경로만 반환했습니다. 지하철 전용 경로는 없습니다.'
-          : '이 출발지와 목적지 사이에 지하철 경로가 없습니다.';
+            ? 'TMAP이 반환한 지하철 구간의 운행이 종료됐습니다.'
+            : '이 출발지와 목적지 사이에 지하철이 포함된 경로가 없습니다.';
       return res.status(422).json({ error, shapeIssues: [...shapeIssues],
         availablePathTypes: [...new Set(itineraries.map((itinerary) => Number(itinerary.pathType)))] });
     }
-    routes.sort((a, b) => a.totalSeconds - b.totalSeconds);
+    routes.sort((a, b) => a.priorityScore - b.priorityScore
+      || b.subwayShare - a.subwayShare
+      || a.busTransfers - b.busTransfers
+      || a.totalSeconds - b.totalSeconds);
     return res.status(200).json({ route: routes[0], coordinateMatch: true });
   } catch {
     return res.status(502).json({ error: controller.signal.aborted
