@@ -170,6 +170,7 @@ function guideScreen() {
     <section class="walk-panorama" aria-label="네이버 도보 로드뷰" hidden>
       <p class="walk-panorama-status" role="status" aria-live="polite"></p>
       <div class="walk-panorama-canvas" aria-label="네이버 실제 로드뷰"></div>
+      <p class="walk-panorama-arrival" role="status" aria-live="polite"></p>
       <div class="walk-panorama-controls">
         <button type="button" data-panorama-action="previous">이전</button>
         <button type="button" data-panorama-action="playback">재생</button>
@@ -728,7 +729,7 @@ function initializeNaverRouteMap() {
         ]);
         updateWalkMapView();
         showWalkRoute(route);
-        void walkPanorama.start(route);
+        void walkPanorama.start(route, end);
       }).catch((error) => {
         if (controller.signal.aborted || session !== routeMapSession || currentPage !== 'guide'
           || !walkRequested || requestId !== routeRequestId) return;

@@ -125,8 +125,10 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .walk-panorama { max-width: 620px; margin: 16px auto 0; padding: 12px; border: 1px solid rgba(49, 206, 255, .3); border-radius: 18px; background: rgba(3, 33, 54, .78); color: #e9f8ff; }
 .walk-panorama[hidden], .walk-panorama-canvas[hidden], .walk-panorama-canvas[hidden] ~ .walk-panorama-controls { display: none; }
 .walk-panorama-status { margin: 0 0 10px; color: #d9f8ff; font-size: 13px; line-height: 1.4; }
-.walk-panorama-canvas { width: 100%; height: clamp(210px, 37vh, 330px); overflow: hidden; border-radius: 13px; background: #12384d; }
+.walk-panorama-canvas { width: 100%; height: clamp(210px, 37vh, 330px); overflow: hidden; border-radius: 13px; background: #12384d; opacity: 1; transition: opacity .22s ease; }
 .walk-panorama.is-loading .walk-panorama-canvas { visibility: hidden; }
+.walk-panorama.is-switching .walk-panorama-canvas { opacity: .55; }
+.walk-panorama-arrival { margin: 9px 0 0; color: #a7c8d6; font-size: 12px; line-height: 1.4; }
 .walk-panorama-controls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
 .walk-panorama-controls button { min-height: 42px; border: 1px solid rgba(72, 198, 226, .38); border-radius: 12px; background: #0b354c; color: #e9f8ff; font: inherit; font-size: 14px; cursor: pointer; }
 .walk-panorama-controls button:disabled { opacity: .45; cursor: default; }

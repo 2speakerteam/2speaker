@@ -94,6 +94,15 @@ module.exports = async function handler(req, res) {
       .filter((description) => typeof description === 'string' && description.trim())
       .slice(0, 300)
       .map((description) => description.trim().slice(0, 200));
+    const guidePoints = features.filter((feature) => feature.geometry?.type === 'Point')
+      .slice(0, 300)
+      .map((feature) => {
+        const [lng, lat] = feature.geometry.coordinates || [];
+        const position = point({ lat, lng });
+        const turnType = Number(feature.properties?.turnType);
+        return position && Number.isInteger(turnType)
+          ? { ...position, turnType } : null;
+      }).filter(Boolean);
     if (!segments.length || segments.some((segment) => !segment)) {
       return res.status(502).json({ error: 'TMAP 도보 경로의 실제 지도 좌표가 부족합니다.' });
     }
@@ -112,7 +121,7 @@ module.exports = async function handler(req, res) {
     }
 
     return res.status(200).json({
-      route: { totalSeconds, distanceMeters: distance, segments, directions },
+      route: { totalSeconds, distanceMeters: distance, segments, directions, guidePoints },
       coordinateMatch: true
     });
   } catch {
