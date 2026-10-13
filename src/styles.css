@@ -128,6 +128,14 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .place-choice small { overflow: hidden; color: #a9c7e5; font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
 .place-choice:focus-visible { outline: 2px solid #66e7ff; outline-offset: -2px; }
 .place-choice:hover { color: #8befff; }
+.subway-route-panel { padding: 14px 16px; border: 1px solid rgba(49, 206, 255, .3); border-radius: 18px; background: rgba(3, 33, 54, .78); color: #e9f8ff; font-size: 14px; line-height: 1.5; }
+.subway-route-panel.is-error { border-color: rgba(255, 163, 130, .42); color: #ffe3d8; }
+.subway-route-panel > strong { display: block; font-size: 16px; }
+.subway-route-panel ol { margin: 10px 0 0; padding-left: 22px; }
+.subway-route-panel li { padding: 4px 0; }
+.subway-route-panel li strong, .subway-route-panel li span { display: block; }
+.subway-route-panel li span, .subway-transfer { color: #b9d4e7; }
+.subway-transfer { margin: 9px 0 0; }
 
 
 .conversation-screen { padding-bottom: calc(94px + env(safe-area-inset-bottom)); }
