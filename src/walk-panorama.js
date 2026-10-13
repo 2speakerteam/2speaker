@@ -262,16 +262,16 @@ export function createWalkPanorama(maps, section) {
   const showGroundGuide = (frame) => {
     ground.replaceChildren();
     if (!routeEdges.length || frame.routeOffset > CAMERA_TO_ROUTE_LIMIT_METERS || !panorama) return;
-    const projection = panorama.getProjection();
     const pov = panorama.getPov();
-    if (!projection || !Number.isFinite(pov?.pan)) return;
+    if (!Number.isFinite(pov?.pan) || !Number.isFinite(pov?.fov)) return;
     const points = [[150, 198]];
-    for (const [meters, y] of [[3, 174], [7, 145], [12, 113], [20, 78]]) {
+    for (const [meters, y] of [[5, 174], [9, 145], [15, 113], [23, 78]]) {
       const point = candidateAt(routeEdges, frame.progress + meters);
-      const projected = projection.fromCoordToPov(new maps.LatLng(point.lat, point.lng));
-      if (!Number.isFinite(projected?.pan)) break;
-      const difference = signedAngle(pov.pan, projected.pan);
-      if (Math.abs(difference) > Math.min(48, pov.fov / 2)) break;
+      const difference = signedAngle(pov.pan, headingDegrees(frame.camera, point));
+      if (Math.abs(difference) > Math.min(48, pov.fov / 2)) {
+        if (points.length > 1) break;
+        continue;
+      }
       points.push([Math.max(14, Math.min(286, 150 + difference * 2.35)), y]);
     }
     if (points.length < 3) return;
