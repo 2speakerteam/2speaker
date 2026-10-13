@@ -2,13 +2,13 @@
 
 **One AI. Two ways to speak.**
 
-- **Speaks to you** — 실시간 길찾기·환승·출구·상황 안내
+- **Speaks to you** — 실시간 통역·회화 연습·표현 설명
 - **Speaks for you** — 사용자의 의도를 상대방 언어로 전달하는 대화 통역
 
 ## 현재 구현 범위
 
 - 반응형 PC·모바일 UI
-- 메인, 길찾기 입력 및 안내
+- 메인, 길찾기 화면 뼈대
 - 음성·문자 통역 화면
 - 로그인·회원가입, 앱 언어
 - 도움말, 서비스 정보
@@ -17,7 +17,7 @@
 
 ## AI 및 번역 서버 설정
 
-Vercel 서버리스 API는 `api/`에서 실행됩니다. 일반 한국어·영어 통역은 의도 분류 뒤 Google Cloud Translation API를 사용하며 AI 모델을 호출하지 않습니다. 표현 설명, 회화 연습, 경로 맥락 응답만 `AI_PROVIDER`가 지정한 AI 공급자로 전달합니다. 기본값은 `vertex`이며, Vertex 요청 실패 시 다른 유료 공급자로 자동 전환하지 않습니다.
+Vercel 서버리스 API는 `api/`에서 실행됩니다. 일반 한국어·영어 통역은 의도 분류 뒤 Google Cloud Translation API를 사용하며 AI 모델을 호출하지 않습니다. 표현 설명과 회화 연습만 `AI_PROVIDER`가 지정한 AI 공급자로 전달합니다. 기본값은 `vertex`이며, Vertex 요청 실패 시 다른 유료 공급자로 자동 전환하지 않습니다.
 
 Google Cloud 연결은 장기 서비스 계정 JSON 키가 아닌 Vercel OIDC + Google Workload Identity Federation을 사용합니다. Vercel Function 요청의 `x-vercel-oidc-token`을 Google STS에서 교환하고, 제한된 서비스 계정을 가장해 단기 액세스 토큰을 발급받습니다. 토큰 원문은 저장소나 브라우저로 보내지 않습니다.
 
@@ -29,6 +29,6 @@ Google Cloud 연결은 장기 서비스 계정 JSON 키가 아닌 Vercel OIDC + 
 4. Vertex AI API, Cloud Translation API, Security Token Service API, IAM Service Account Credentials API가 활성화되어 있는지 확인합니다.
 5. `.env.example`의 WIF 변수와 모델 ID를 Vercel의 서버 환경 변수에 추가합니다. 이들은 서비스 계정 개인 키가 아니며, Vercel UI의 OIDC 토큰 헤더를 별도 환경 변수로 복사하지 않습니다.
 
-현재 Gemini Flash 모델 ID는 `gemini-3.8-flash`입니다. 기존 Vercel 값 `gemini-3-flash-preview`도 서버에서 최신 Flash ID로 호환 처리합니다. 추후 GPT Luna로 바꾸기로 결정하면 서버에서 `AI_PROVIDER=openai`와 `OPENAI_API_KEY`를 직접 설정하고 재배포합니다. GPT adapter는 같은 의도·대화·경로 컨텍스트 입력을 사용하며, 키를 넣거나 provider를 바꾸기 전에는 전혀 호출되지 않습니다. 통역은 계속 Google Translation API를 사용합니다.
+현재 Gemini Flash 모델 ID는 `gemini-3.8-flash`입니다. 기존 Vercel 값 `gemini-3-flash-preview`도 서버에서 최신 Flash ID로 호환 처리합니다. 추후 GPT Luna로 바꾸기로 결정하면 서버에서 `AI_PROVIDER=openai`와 `OPENAI_API_KEY`를 직접 설정하고 재배포합니다. GPT adapter는 같은 의도와 대화 입력을 사용하며, 키를 넣거나 provider를 바꾸기 전에는 전혀 호출되지 않습니다. 통역은 계속 Google Translation API를 사용합니다.
 
-경로 질문은 앱에서 실제로 성공한 경로 응답의 요약 정보만 전달합니다. 해당 경로 데이터에 없는 회전·출구·거리 정보는 생성하지 않도록 제한합니다. 이 연결 작업에서는 TMAP API를 호출하지 않습니다.
+길찾기 화면은 현재 입력·화면 틀만 남아 있으며 경로 계산이나 지도 안내를 제공하지 않습니다. 관련 지도·교통 API 호출도 제거했습니다.

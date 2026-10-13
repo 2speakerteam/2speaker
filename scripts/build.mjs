@@ -14,7 +14,7 @@ await cp(resolve(projectRoot, 'index.html'), resolve(outputDirectory, 'index.htm
 await cp(resolve(projectRoot, 'src'), resolve(outputDirectory, 'src'), { recursive: true });
 await cp(resolve(projectRoot, 'public'), resolve(outputDirectory, 'public'), { recursive: true });
 
-// Give each client build a unique script URL so browsers cannot keep an old route matcher.
+// Give each client build a unique script URL to avoid stale browser bundles.
 const mainSource = await readFile(resolve(projectRoot, 'src/main.js'));
 const mainHash = createHash('sha256').update(mainSource).digest('hex').slice(0, 12);
 await writeFile(resolve(outputDirectory, 'src', `main-${mainHash}.js`), mainSource);
