@@ -827,20 +827,37 @@ function initializeNaverRouteMap() {
     const markSelectedDestination = (place) => {
       markDestination(place.lat, place.lng, place.title || routeDestinationQuery);
     };
+    const fetchNaverPlaces = async (query) => {
+      const response = await fetch('/api/map/place', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query })
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || '네이버 장소 검색에 연결하지 못했습니다.');
+      return Array.isArray(payload.places) ? payload.places : [];
+    };
     const searchNaverPlace = (query, role, onSelect) => {
       if (role === '목적지') {
         destinationStatus = '목적지를 검색하고 있습니다.';
         destinationState = 'pending';
         updateStatus();
       }
-      fetch('/api/map/place', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query })
-      }).then(async (response) => {
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(payload.error || '네이버 장소 검색에 연결하지 못했습니다.');
-        return payload.places;
+      fetchNaverPlaces(query).then(async (places) => {
+        if (session !== routeMapSession || currentPage !== 'guide') return [];
+        const term = query.replace(/\s+/g, ' ').trim().toLowerCase();
+        const matchesName = (place) => {
+          const title = String(place?.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
+          return title === term || title.startsWith(`${term} `) || title.startsWith(`${term}(`);
+        };
+        if (places.some(matchesName)) return places;
+        try {
+          const alternatives = await fetchNaverPlaces(`${query} 명소`);
+          const matchingAlternatives = alternatives.filter(matchesName);
+          return matchingAlternatives.length ? matchingAlternatives : places;
+        } catch {
+          return places;
+        }
       }).then((places) => {
         if (session !== routeMapSession || currentPage !== 'guide') return;
         const validPlaces = Array.isArray(places) ? places.filter((place) => (
@@ -1278,7 +1295,11 @@ if (currentPage === 'user-language-list' && !supportedUserLanguagesLoaded && !su
   }
 
   const routeInput = document.querySelector('#route-destination');
-  document.querySelector('[data-action="route-text"]')?.addEventListener('click', () => routeInput?.focus());
+  const routeTextAction = document.querySelector('[data-action="route-text"]');
+  routeTextAction?.addEventListener('click', () => {
+    if (routeInput?.value.trim()) routeInput.form.requestSubmit();
+    else routeInput?.focus();
+  });
 
   document.querySelector('#home-search')?.addEventListener('click', () => {
     routeEntryMode = 'simple';
@@ -1288,6 +1309,7 @@ if (currentPage === 'user-language-list' && !supportedUserLanguagesLoaded && !su
   routeInput?.addEventListener('input', (event) => {
     const routeSubmit = document.querySelector('.route-submit');
     if (routeSubmit) routeSubmit.hidden = !event.target.value.trim();
+    routeTextAction?.setAttribute('aria-label', event.target.value.trim() ? '입력한 장소 검색' : '문자로 목적지 입력');
   });
   routeInput?.addEventListener('keydown', (event) => {
     if (event.key === 'Enter') {
