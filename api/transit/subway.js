@@ -51,6 +51,7 @@ function parseItinerary(itinerary) {
 
   const subwayLegs = [];
   const segments = [];
+  let walkingGeometryIncomplete = false;
   for (const leg of legs) {
     if (leg.mode === 'SUBWAY') {
       const coordinates = linePoints(leg.passShape?.linestring);
@@ -73,10 +74,16 @@ function parseItinerary(itinerary) {
         ? `#${leg.routeColor}` : '#20c8e7';
       segments.push({ mode: 'SUBWAY', route: detail.route, color: routeColor, coordinates });
     } else if (Number(leg.distance) > 0) {
-      if (!Array.isArray(leg.steps) || leg.steps.length === 0) return { incompleteShape: 'walking steps absent' };
+      if (!Array.isArray(leg.steps) || leg.steps.length === 0) {
+        walkingGeometryIncomplete = true;
+        continue;
+      }
       for (const step of leg.steps) {
         const coordinates = linePoints(step.linestring);
-        if (!coordinates) return { incompleteShape: 'walking step shape invalid' };
+        if (!coordinates) {
+          walkingGeometryIncomplete = true;
+          continue;
+        }
         segments.push({ mode: 'WALK', color: '#d4e9f1', coordinates });
       }
     }
@@ -91,7 +98,7 @@ function parseItinerary(itinerary) {
     from: subwayLegs[index].alight,
     to: leg.board
   }));
-  return { totalSeconds, transferCount, subwayLegs, transfers, segments };
+  return { totalSeconds, transferCount, subwayLegs, transfers, segments, walkingGeometryIncomplete };
 }
 
 module.exports = async function handler(req, res) {

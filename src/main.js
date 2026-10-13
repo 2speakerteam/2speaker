@@ -362,9 +362,12 @@ function initializeNaverRouteMap() {
       const transfers = route.transfers.length
         ? `<p class="subway-transfer">환승: ${route.transfers.map((transfer) => escapeHtml(transfer.from === transfer.to ? transfer.from : `${transfer.from} → ${transfer.to}`)).join(' · ')}</p>`
         : '';
+      const geometryNotice = route.walkingGeometryIncomplete
+        ? '<p class="subway-transfer">TMAP이 일부 도보 연결 구간의 형상 좌표를 제공하지 않아 확인된 구간만 지도에 표시했습니다.</p>'
+        : '';
       destinationChoicesElement.innerHTML = `<div class="subway-route-panel" role="status" aria-label="TMAP 지하철 경로">
         <strong>지하철 약 ${minutes}분 · 환승 ${route.transferCount}회</strong>
-        <ol>${legs}</ol>${transfers}
+        <ol>${legs}</ol>${transfers}${geometryNotice}
       </div>`;
     };
     const requestSubwayRoute = () => {
