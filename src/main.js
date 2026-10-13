@@ -145,10 +145,11 @@ function guideScreen() {
       <button class="guide-control" data-page="language" aria-label="설정">${icon('settings', 30)}</button>
     </header>
     <section class="route-visual" aria-label="길찾기 화면"><div class="route-scene" style="background:#12384d" aria-hidden="true"></div></section>
-    <section class="transport-options" role="tablist" aria-label="이동 수단">
-      <button class="transport-option" type="button" role="tab" aria-selected="true" disabled><strong>지하철</strong></button>
-      <button class="transport-option" type="button" role="tab" aria-selected="false" disabled><strong>버스</strong></button>
-      <button class="transport-option" type="button" role="tab" aria-selected="false" disabled><strong>택시</strong></button>
+    <section class="transport-options" role="group" aria-label="이동 수단">
+      <button class="transport-option" type="button" aria-pressed="false"><strong>도보</strong></button>
+      <button class="transport-option" type="button" aria-pressed="true"><strong>지하철</strong></button>
+      <button class="transport-option" type="button" aria-pressed="false"><strong>버스</strong></button>
+      <button class="transport-option" type="button" aria-pressed="false"><strong>택시</strong></button>
     </section>
     <section class="guide-dialogue" aria-label="길찾기 내용"></section>
     ${bottomNav()}
@@ -393,6 +394,14 @@ function render() {
     ])
   };
   root.innerHTML = `<div class="app-shell">${screens[currentPage]()}</div>`;
+
+  document.querySelectorAll('.transport-option').forEach((button) => {
+    button.addEventListener('click', () => {
+      document.querySelectorAll('.transport-option').forEach((option) => {
+        option.setAttribute('aria-pressed', String(option === button));
+      });
+    });
+  });
 
   if (currentPage === 'text') {
     const dialogue = document.querySelector('.text-dialogue');
