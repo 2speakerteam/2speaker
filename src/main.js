@@ -146,8 +146,8 @@ function guideScreen() {
     </header>
     <section class="route-visual" aria-label="길찾기 화면"><div class="route-scene" style="background:#12384d" aria-hidden="true"></div></section>
     <section class="transport-options" role="tablist" aria-label="이동 수단">
-      <button class="transport-option" type="button" role="tab" aria-selected="true" disabled><strong>도보</strong></button>
-      <button class="transport-option" type="button" role="tab" aria-selected="false" disabled><strong>대중교통</strong></button>
+      <button class="transport-option" type="button" role="tab" aria-selected="true" disabled><strong>지하철</strong></button>
+      <button class="transport-option" type="button" role="tab" aria-selected="false" disabled><strong>버스</strong></button>
       <button class="transport-option" type="button" role="tab" aria-selected="false" disabled><strong>택시</strong></button>
     </section>
     <section class="guide-dialogue" aria-label="길찾기 내용"></section>
