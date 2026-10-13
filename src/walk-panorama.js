@@ -313,7 +313,12 @@ export function createWalkPanorama(maps, section) {
     section.dataset.headingDegrees = applied.pan.toFixed(1);
     arrivalRequest += 1;
     if (index === frames.length - 1) verifyArrival(run);
-    else arrival.textContent = '경로 미리보기 · 실제 도착 판정과는 별개입니다.';
+    else {
+      const gap = frames[index + 1].progress - frame.progress;
+      arrival.textContent = gap > 75
+        ? `다음 실제 로드뷰까지 경로 약 ${Math.round(gap)}m · 중간 구간은 지도에서 확인해 주세요.`
+        : '경로 미리보기 · 실제 도착 판정과는 별개입니다.';
+    }
     updateControls();
     scheduleNext();
   }
