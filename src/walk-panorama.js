@@ -346,27 +346,25 @@ export function createWalkPanorama(maps, section) {
       const point = candidateAt(routeEdges, frame.progress + meters);
       const difference = signedAngle(pov.pan, headingDegrees(frame.camera, point));
       if (Math.abs(difference) > Math.min(100, pov.fov / 2 + 40)) break;
-      points.push([Math.max(18, Math.min(282, 150 + difference * 2.1)), y]);
+      const projectedX = Math.max(18, Math.min(282, 150 + difference * 2.1));
+      const previousX = points.at(-1)[0];
+      points.push([Math.max(previousX - 35, Math.min(previousX + 35, projectedX)), y]);
     }
     if (points.length < 2) return;
     const formatPoint = ([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`;
     const path = points.map(([x, y], index) => `${index ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join(' ');
-    const arrows = points.slice(1).map(([x, y], index) => {
-      const before = points[index];
-      const length = Math.hypot(x - before[0], y - before[1]) || 1;
-      if (length < 15 && points.length > 2) return '';
-      const tangent = [(x - before[0]) / length, (y - before[1]) / length];
-      const normal = [-tangent[1], tangent[0]];
-      const center = [(x + before[0]) / 2, (y + before[1]) / 2];
-      const tip = [center[0] + tangent[0] * 10, center[1] + tangent[1] * 10];
-      const left = [center[0] - tangent[0] * 5 + normal[0] * 8, center[1] - tangent[1] * 5 + normal[1] * 8];
-      const right = [center[0] - tangent[0] * 5 - normal[0] * 8, center[1] - tangent[1] * 5 - normal[1] * 8];
-      return `<polygon points="${[left, tip, right].map(formatPoint).join(' ')}" fill="#35d477" stroke="rgba(5,55,31,.72)" stroke-width="1.5" stroke-linejoin="round"/>`;
-    }).join('');
+    const tip = points.at(-1);
+    const before = points.at(-2);
+    const length = Math.hypot(tip[0] - before[0], tip[1] - before[1]) || 1;
+    const tangent = [(tip[0] - before[0]) / length, (tip[1] - before[1]) / length];
+    const normal = [-tangent[1], tangent[0]];
+    const base = [tip[0] - tangent[0] * 16, tip[1] - tangent[1] * 16];
+    const left = [base[0] + normal[0] * 10, base[1] + normal[1] * 10];
+    const right = [base[0] - normal[0] * 10, base[1] - normal[1] * 10];
     ground.innerHTML = `<svg viewBox="0 0 300 200" preserveAspectRatio="none" aria-hidden="true">
       <path d="${path}" fill="none" stroke="rgba(5,55,31,.72)" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
       <path d="${path}" fill="none" stroke="#35d477" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
-      ${arrows}
+      <polygon points="${[left, tip, right].map(formatPoint).join(' ')}" fill="#35d477" stroke="rgba(5,55,31,.72)" stroke-width="1.5" stroke-linejoin="round"/>
     </svg>`;
   };
 
