@@ -3,8 +3,8 @@ const CAMERA_TO_REQUEST_LIMIT_METERS = 25;
 const ROUTE_PROGRESS_LIMIT_METERS = 25;
 const MAX_FIRST_STAGE_ROUTE_METERS = 2000;
 const MAX_PROBES = 18;
-const MAX_FRAMES = 8;
-const FRAME_INTERVAL_MS = 1250;
+const MAX_FRAMES = 12;
+const FRAME_INTERVAL_MS = 1500;
 const PANORAMA_TIMEOUT_MS = 6000;
 const ARRIVAL_RADIUS_METERS = 30;
 const ARRIVAL_MAX_ACCURACY_METERS = 20;
@@ -78,17 +78,23 @@ function angleDifference(a, b) {
   return Math.abs((((a - b) % 360) + 540) % 360 - 180);
 }
 
+function signedAngle(a, b) {
+  return (((b - a) % 360) + 540) % 360 - 180;
+}
+
 function routeCandidates(route, edges) {
   const total = edges.at(-1).to;
-  const targets = [];
-  const add = (progress, priority) => {
-    if (progress >= 4 && progress <= total - 4) targets.push({ progress, priority });
+  const decisions = [];
+  const addDecision = (progress, priority, crossing = false) => {
+    if (progress < 10 || progress > total - 6) return;
+    const before = candidateAt(edges, progress - 8);
+    const at = candidateAt(edges, progress);
+    const after = candidateAt(edges, Math.min(total, progress + 10));
+    const turn = signedAngle(headingDegrees(before, at), headingDegrees(at, after));
+    const action = turn < -25 ? '좌회전' : turn > 25 ? '우회전' : '직진';
+    if (!crossing && action === '직진') return;
+    decisions.push({ progress, priority, action, crossing });
   };
-  const evenCount = Math.min(11, Math.max(8, Math.ceil(total / 45)));
-  for (let index = 0; index < evenCount; index += 1) {
-    add(total * (index + 0.5) / evenCount,
-      index === 0 || index === evenCount - 1 ? 4 : 1);
-  }
   for (const guide of Array.isArray(route.guidePoints) ? route.guidePoints : []) {
     if (![guide.lat, guide.lng].every(Number.isFinite)) continue;
     const crossing = guide.turnType >= 211 && guide.turnType <= 217;
@@ -96,8 +102,7 @@ function routeCandidates(route, edges) {
     if (!crossing && !turning) continue;
     const near = closestRoutePosition(guide, edges);
     if (near.distance > 8) continue;
-    add(near.progress - 9, crossing ? 3 : 2.5);
-    add(near.progress + 7, crossing ? 3 : 2.5);
+    addDecision(near.progress, crossing ? 3 : 4, crossing);
   }
   for (let index = 0; index < edges.length - 1; index += 1) {
     const progress = edges[index].to;
@@ -105,46 +110,41 @@ function routeCandidates(route, edges) {
     const before = candidateAt(edges, progress - 8);
     const at = candidateAt(edges, progress);
     const after = candidateAt(edges, progress + 8);
-    if (angleDifference(headingDegrees(before, at), headingDegrees(at, after)) >= 40) {
-      add(progress - 9, 2);
-      add(progress + 7, 2);
+    if (angleDifference(headingDegrees(before, at), headingDegrees(at, after)) >= 50) {
+      addDecision(progress, 2);
     }
   }
   const selected = [];
-  for (const target of targets.sort((a, b) => b.priority - a.priority)) {
-    if (selected.some((item) => Math.abs(item.progress - target.progress) < 9)) continue;
-    selected.push(target);
-    if (selected.length === MAX_PROBES) break;
+  for (const decision of decisions.sort((a, b) => b.priority - a.priority)) {
+    if (selected.some((item) => Math.abs(item.progress - decision.progress) < 18)) continue;
+    selected.push(decision);
+    if (selected.length * 2 >= MAX_PROBES) break;
   }
-  return selected.sort((a, b) => a.progress - b.progress)
-    .map((target) => ({ ...candidateAt(edges, target.progress), priority: target.priority }));
+  return selected.sort((a, b) => a.progress - b.progress).flatMap((decision) => [
+    { ...candidateAt(edges, decision.progress - 8), priority: decision.priority,
+      action: decision.action, crossing: decision.crossing,
+      decisionProgress: decision.progress, phase: 'approach' },
+    { ...candidateAt(edges, Math.min(total - 2, decision.progress + 5)), priority: decision.priority,
+      action: decision.action, crossing: decision.crossing,
+      decisionProgress: decision.progress, phase: 'after' }
+  ]);
 }
 
 function selectFrames(verified) {
   const ordered = [...verified].sort((a, b) => a.progress - b.progress);
-  if (ordered.length <= MAX_FRAMES) return ordered;
-  const selected = [ordered[0], ordered.at(-1)];
-  while (selected.length < MAX_FRAMES) {
-    const ranked = ordered.filter((frame) => !selected.includes(frame))
-      .map((frame) => ({
-        frame,
-        spacing: Math.min(...selected.map((item) => Math.abs(item.progress - frame.progress)))
-      })).filter((item) => item.spacing >= 14)
-      .sort((a, b) => (b.spacing + b.frame.priority * 16) - (a.spacing + a.frame.priority * 16));
-    if (!ranked.length) break;
-    selected.push(ranked[0].frame);
-  }
-  return selected.sort((a, b) => a.progress - b.progress);
+  return ordered.slice(0, MAX_FRAMES);
 }
 
 export function createWalkPanorama(maps, section) {
   const canvas = section?.querySelector('.walk-panorama-canvas');
+  const ground = section?.querySelector('.walk-panorama-ground');
+  const turn = section?.querySelector('.walk-panorama-turn');
   const status = section?.querySelector('.walk-panorama-status');
   const arrival = section?.querySelector('.walk-panorama-arrival');
   const previous = section?.querySelector('[data-panorama-action="previous"]');
   const playback = section?.querySelector('[data-panorama-action="playback"]');
   const next = section?.querySelector('[data-panorama-action="next"]');
-  if (!section || !canvas || !status || !arrival || !previous || !playback || !next) {
+  if (!section || !canvas || !ground || !turn || !status || !arrival || !previous || !playback || !next) {
     return { start() {}, stop() {} };
   }
 
@@ -152,6 +152,7 @@ export function createWalkPanorama(maps, section) {
   let listeners = [];
   let pending = null;
   let frames = [];
+  let routeEdges = [];
   let destination = null;
   let selected = -1;
   let playing = false;
@@ -249,11 +250,36 @@ export function createWalkPanorama(maps, section) {
     pause();
     section.classList.remove('is-loading', 'is-switching');
     canvas.hidden = true;
+    ground.replaceChildren();
+    turn.hidden = true;
     section.hidden = false;
     arrival.textContent = '';
     setStatus(`${message} 기존 지도에서 도보 경로를 확인해 주세요.`);
     selected = -1;
     updateControls();
+  };
+
+  const showGroundGuide = (frame) => {
+    ground.replaceChildren();
+    if (!routeEdges.length || frame.routeOffset > CAMERA_TO_ROUTE_LIMIT_METERS || !panorama) return;
+    const projection = panorama.getProjection();
+    const pov = panorama.getPov();
+    if (!projection || !Number.isFinite(pov?.pan)) return;
+    const points = [[150, 198]];
+    for (const [meters, y] of [[3, 174], [7, 145], [12, 113], [20, 78]]) {
+      const point = candidateAt(routeEdges, frame.progress + meters);
+      const projected = projection.fromCoordToPov(new maps.LatLng(point.lat, point.lng));
+      if (!Number.isFinite(projected?.pan)) break;
+      const difference = signedAngle(pov.pan, projected.pan);
+      if (Math.abs(difference) > Math.min(48, pov.fov / 2)) break;
+      points.push([Math.max(14, Math.min(286, 150 + difference * 2.35)), y]);
+    }
+    if (points.length < 3) return;
+    const path = points.map(([x, y], index) => `${index ? 'L' : 'M'}${x.toFixed(1)} ${y}`).join(' ');
+    ground.innerHTML = `<svg viewBox="0 0 300 200" preserveAspectRatio="none" aria-hidden="true">
+      <path d="${path}" fill="none" stroke="rgba(0,31,50,.48)" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="${path}" fill="none" stroke="rgba(27,210,231,.82)" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>`;
   };
 
   const verifyArrival = (run) => {
@@ -304,7 +330,11 @@ export function createWalkPanorama(maps, section) {
     }
     selected = index;
     canvas.hidden = false;
-    setStatus(`실제 로드뷰 ${index + 1}/${frames.length} · ${frame.title || '도보 경로'} · ${frame.photodate.slice(0, 10)} 촬영`);
+    turn.textContent = frame.phase === 'approach'
+      ? `${frame.crossing ? '갈림길 · ' : ''}${frame.action}` : `${frame.action} 후 진행`;
+    turn.hidden = false;
+    showGroundGuide(frame);
+    setStatus(`판단 지점 로드뷰 ${index + 1}/${frames.length} · ${frame.title || '도보 경로'} · ${frame.photodate.slice(0, 10)} 촬영`);
     section.dataset.panoramaId = frame.panoId;
     section.dataset.cameraLat = frame.camera.lat.toFixed(7);
     section.dataset.cameraLng = frame.camera.lng.toFixed(7);
@@ -333,6 +363,8 @@ export function createWalkPanorama(maps, section) {
     panorama?.setVisible(false);
     panorama = null;
     canvas.replaceChildren();
+    ground.replaceChildren();
+    turn.hidden = true;
     canvas.hidden = false;
     section.hidden = true;
     section.classList.remove('is-loading', 'is-switching');
@@ -341,6 +373,7 @@ export function createWalkPanorama(maps, section) {
     }
     arrival.textContent = '';
     frames = [];
+    routeEdges = [];
     destination = null;
     selected = -1;
     busy = false;
@@ -364,6 +397,11 @@ export function createWalkPanorama(maps, section) {
       return;
     }
     const candidates = routeCandidates(route, edges);
+    if (!candidates.length) {
+      fallback('이 도보 경로에는 확인된 회전·갈림길 판단 지점이 없습니다.');
+      return;
+    }
+    routeEdges = edges;
     section.hidden = false;
     canvas.hidden = false;
     section.classList.add('is-loading');
@@ -407,6 +445,9 @@ export function createWalkPanorama(maps, section) {
         progress: routePosition.progress,
         routeOffset: routePosition.distance,
         priority: candidate.priority,
+        action: candidate.action,
+        crossing: candidate.crossing,
+        phase: candidate.phase,
         pov: { pan: routeHeading, tilt: 0, fov: 95 }
       });
     }

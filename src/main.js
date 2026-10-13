@@ -215,7 +215,11 @@ function guideScreen() {
     <section class="guide-dialogue" aria-label="길찾기 내용"></section>
     <section class="walk-panorama" aria-label="네이버 도보 로드뷰" hidden>
       <p class="walk-panorama-status" role="status" aria-live="polite"></p>
-      <div class="walk-panorama-canvas" aria-label="네이버 실제 로드뷰"></div>
+      <div class="walk-panorama-view">
+        <div class="walk-panorama-canvas" aria-label="네이버 실제 로드뷰"></div>
+        <div class="walk-panorama-ground" aria-hidden="true"></div>
+        <div class="walk-panorama-turn" role="status" aria-live="polite" hidden></div>
+      </div>
       <p class="walk-panorama-arrival" role="status" aria-live="polite"></p>
       <div class="walk-panorama-controls">
         <button type="button" data-panorama-action="previous">이전</button>
@@ -467,23 +471,22 @@ function initializeNaverRouteMap() {
     const showSubwayRoute = (route) => {
       if (!destinationChoicesElement) return;
       const minutes = Math.ceil(route.totalSeconds / 60);
-      const transportLabel = route.busBoardings ? '버스 + 지하철' : '지하철';
+      const transportLabel = '지하철';
       const accessWalk = route.accessWalk && Number.isFinite(route.accessWalk.seconds)
         && Number.isFinite(route.accessWalk.distanceMeters)
         ? `<li><strong>도보 접근 · ${escapeHtml(route.accessWalk.station)}</strong><span>${escapeHtml(startTitle || '현재 위치')} → ${escapeHtml(route.accessWalk.station)} · ${Math.ceil(route.accessWalk.seconds / 60)}분 · ${Math.round(route.accessWalk.distanceMeters)}m</span></li>`
         : '';
-      const legs = route.transportLegs.map((leg) => `<li><strong>${leg.mode === 'BUS' ? '버스' : '지하철'} · ${escapeHtml(leg.route)}</strong><span>${escapeHtml(leg.board)} 탑승 → ${escapeHtml(leg.alight)} 하차 · ${Math.ceil(leg.seconds / 60)}분</span></li>`).join('');
+      const legs = route.transportLegs.map((leg) => `<li><strong>지하철 · ${escapeHtml(leg.route)}</strong><span>${escapeHtml(leg.board)} 탑승 → ${escapeHtml(leg.alight)} 하차 · ${Math.ceil(leg.seconds / 60)}분</span></li>`).join('');
       const transfers = route.transfers.length
         ? `<p class="subway-transfer">환승: ${route.transfers.map((transfer) => escapeHtml(transfer.from === transfer.to ? transfer.from : `${transfer.from} → ${transfer.to}`)).join(' · ')}</p>`
         : '';
       const missingModes = Array.isArray(route.missingGeometryModes) ? route.missingGeometryModes : [];
       const geometryNotice = missingModes.length
-        ? `<p class="subway-transfer">TMAP이 일부 ${missingModes.map((mode) => mode === 'BUS' ? '버스' : '도보').join('·')} 구간 좌표를 제공하지 않아 확인된 구간만 지도에 표시했습니다.</p>`
+        ? '<p class="subway-transfer">TMAP이 일부 도보 접근 구간 좌표를 제공하지 않아 확인된 구간만 지도에 표시했습니다.</p>'
         : '';
       destinationChoicesElement.innerHTML = `<div class="subway-route-panel" role="status" aria-label="TMAP 지하철 경로">
         <strong>${transportLabel} 약 ${minutes}분 · 환승 ${route.transferCount}회</strong>
         ${route.departureBasis ? `<p class="subway-transfer">TMAP ${escapeHtml(route.departureBasis)} 출발 기준 경로입니다. 지금 출발 가능한 경로는 아닙니다.</p>` : ''}
-        <p class="subway-transfer">대중교통 탑승시간 중 지하철 ${Math.round(route.subwayShare * 100)}% · 버스 탑승 ${route.busBoardings}회</p>
         <ol>${accessWalk}${legs}</ol>${transfers}${geometryNotice}
       </div>`;
     };
@@ -522,7 +525,10 @@ function initializeNaverRouteMap() {
         if (session !== routeMapSession || currentPage !== 'guide' || !subwayRequested || requestId !== routeRequestId) return;
         const route = payload.route;
         if (!payload.coordinateMatch || !route || !Array.isArray(route.segments)
-          || !route.segments.some((segment) => segment.mode === 'SUBWAY')) {
+          || !route.segments.some((segment) => segment.mode === 'SUBWAY')
+          || route.segments.some((segment) => !['SUBWAY', 'WALK'].includes(segment.mode))
+          || !Array.isArray(route.transportLegs) || !route.transportLegs.length
+          || route.transportLegs.some((leg) => leg.mode !== 'SUBWAY')) {
           throw new Error('TMAP 경로 데이터와 요청 좌표를 확인할 수 없습니다.');
         }
         const segments = route.segments.map((segment) => {
@@ -540,7 +546,7 @@ function initializeNaverRouteMap() {
           map,
           path: segment.points,
           strokeColor: segment.color,
-          strokeWeight: segment.mode === 'SUBWAY' ? 5 : segment.mode === 'BUS' ? 4 : 2,
+          strokeWeight: segment.mode === 'SUBWAY' ? 5 : 2,
           strokeOpacity: segment.mode === 'SUBWAY' ? 0.95 : 0.75,
           strokeStyle: segment.mode === 'SUBWAY' ? 'solid' : 'shortdash',
           zIndex: 60
