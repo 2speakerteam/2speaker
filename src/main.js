@@ -103,6 +103,17 @@ function resolveNaverPlace(query, places, originTitle = '') {
       const sameLine = originLine ? stations.filter(({ place }) =>
         place.title.endsWith(`역 ${originLine}`)) : [];
       if (sameLine.length === 1) return { selected: sameLine[0].place };
+      const distanceMeters = (a, b) => {
+        const radians = Math.PI / 180;
+        const dLat = (a.lat - b.lat) * radians;
+        const dLng = (a.lng - b.lng) * radians;
+        const arc = Math.sin(dLat / 2) ** 2
+          + Math.cos(a.lat * radians) * Math.cos(b.lat * radians) * Math.sin(dLng / 2) ** 2;
+        return 12742000 * Math.asin(Math.min(1, Math.sqrt(arc)));
+      };
+      if (stations.every(({ place }) => distanceMeters(stations[0].place, place) <= 600)) {
+        return { selected: stations[0].place };
+      }
       return { choices: stations.map(({ place }) => place) };
     }
   }
