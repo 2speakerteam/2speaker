@@ -1,6 +1,11 @@
 const root = document.querySelector('#root');
 let currentPage = 'home';
 let routeEntryMode = 'dual';
+let routeDestinationQuery = '';
+let routeMapLoaderPromise = null;
+let routeMapSession = 0;
+let routeMapAuthError = '';
+let routeMapAuthFailureInstalled = false;
 let selectedAppLanguage = '한국어';
 let selectedUserLanguage = '한국어';
 let selectedUserLanguageCode = 'ko';
@@ -144,7 +149,12 @@ function guideScreen() {
       <strong>2SPEAKER</strong>
       <button class="guide-control" data-page="language" aria-label="설정">${icon('settings', 30)}</button>
     </header>
-    <section class="route-visual" aria-label="길찾기 화면"><div class="route-scene" style="background:#12384d" aria-hidden="true"></div></section>
+    <section class="route-visual" aria-label="네이버 지도">
+      <div class="route-scene route-map-scene">
+        <div id="route-map" class="route-map-canvas" role="application" aria-label="확대·축소 및 이동할 수 있는 지도"></div>
+        <p id="route-map-status" class="route-map-status" role="status" aria-live="polite">네이버 지도를 불러오는 중입니다.</p>
+      </div>
+    </section>
     <section class="transport-options" role="group" aria-label="이동 수단">
       <button class="transport-option" type="button" aria-pressed="false"><strong>도보</strong></button>
       <button class="transport-option" type="button" aria-pressed="true"><strong>지하철</strong></button>
@@ -154,6 +164,184 @@ function guideScreen() {
     <section class="guide-dialogue" aria-label="길찾기 내용"></section>
     ${bottomNav()}
   </main>`;
+}
+
+function loadNaverMaps() {
+  const clientId = window.__2SPEAKER_CONFIG__?.naverMapClientId?.trim();
+  if (!clientId) return Promise.reject(new Error('네이버 지도 인증 정보가 설정되지 않았습니다.'));
+  if (window.naver?.maps?.Map && window.naver?.maps?.Service?.geocode) return Promise.resolve(window.naver.maps);
+  if (routeMapLoaderPromise) return routeMapLoaderPromise;
+
+  routeMapLoaderPromise = new Promise((resolve, reject) => {
+    const callbackName = `__2speakerNaverReady_${Date.now()}`;
+    const script = document.createElement('script');
+    let settled = false;
+    let timeoutId;
+    const finish = (error, maps) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeoutId);
+      delete window[callbackName];
+      if (error) reject(error);
+      else resolve(maps);
+    };
+
+    if (!routeMapAuthFailureInstalled) {
+      const previousAuthFailure = window.navermap_authFailure;
+      window.navermap_authFailure = (...args) => {
+        try {
+          if (typeof previousAuthFailure === 'function') previousAuthFailure(...args);
+        } catch {
+          // Keep the map's own authentication message visible if another handler fails.
+        }
+        routeMapAuthError = '네이버 지도 인증에 실패했습니다. Client ID와 웹 서비스 URL 설정을 확인해주세요.';
+        const status = document.querySelector('#route-map-status');
+        if (currentPage === 'guide' && status) status.textContent = routeMapAuthError;
+      };
+      routeMapAuthFailureInstalled = true;
+    }
+
+    window[callbackName] = () => {
+      const maps = window.naver?.maps;
+      if (maps?.Map && maps?.Service?.geocode) finish(null, maps);
+      else finish(new Error('네이버 지도 구성 요소를 불러오지 못했습니다.'));
+    };
+    script.async = true;
+    script.onerror = () => finish(new Error('네이버 지도 SDK를 불러오지 못했습니다.'));
+    script.src = `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${encodeURIComponent(clientId)}&submodules=geocoder&callback=${callbackName}`;
+    timeoutId = window.setTimeout(() => finish(new Error('네이버 지도 인증을 확인하지 못했습니다.')), 16000);
+    document.head.append(script);
+  });
+  return routeMapLoaderPromise;
+}
+
+function currentPositionOnce() {
+  return new Promise((resolve, reject) => {
+    if (!window.isSecureContext || !navigator.geolocation) {
+      reject(new Error('이 환경에서는 현재 위치를 확인할 수 없습니다.'));
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(resolve, reject, {
+      enableHighAccuracy: true,
+      timeout: 15000,
+      maximumAge: 30000
+    });
+  });
+}
+
+function initializeNaverRouteMap() {
+  const session = ++routeMapSession;
+  const mapElement = document.querySelector('#route-map');
+  const statusElement = document.querySelector('#route-map-status');
+  if (!mapElement || !statusElement) return;
+
+  const setStatus = (message) => {
+    if (session === routeMapSession && currentPage === 'guide') statusElement.textContent = routeMapAuthError || message;
+  };
+
+  loadNaverMaps().then((maps) => {
+    if (session !== routeMapSession || currentPage !== 'guide' || !mapElement.isConnected) return;
+
+    const map = new maps.Map(mapElement, {
+      center: new maps.LatLng(36.5, 127.8),
+      zoom: 7,
+      draggable: true,
+      pinchZoom: true,
+      scrollWheel: true,
+      zoomControl: true,
+      zoomControlOptions: { position: maps.Position.TOP_RIGHT }
+    });
+    let currentLocation = null;
+    let destinationLocation = null;
+    let locationStatus = '현재 위치를 확인하고 있습니다.';
+    let destinationStatus = routeDestinationQuery ? '목적지 위치를 확인하고 있습니다.' : '목적지를 입력해 주세요.';
+
+    const updateStatus = () => setStatus([locationStatus, destinationStatus].filter(Boolean).join(' · '));
+    const updateMapView = () => {
+      if (currentLocation && destinationLocation) {
+        const samePlace = Math.abs(currentLocation.lat() - destinationLocation.lat()) < 0.001
+          && Math.abs(currentLocation.lng() - destinationLocation.lng()) < 0.001;
+        if (samePlace) {
+          map.setCenter(destinationLocation);
+          map.setZoom(15);
+        } else {
+          map.fitBounds(maps.LatLngBounds.bounds(currentLocation, destinationLocation));
+        }
+      } else if (destinationLocation) {
+        map.setCenter(destinationLocation);
+        map.setZoom(15);
+      } else if (currentLocation) {
+        map.setCenter(currentLocation);
+        map.setZoom(15);
+      }
+    };
+
+    currentPositionOnce().then((position) => {
+      if (session !== routeMapSession || currentPage !== 'guide') return;
+      const { latitude, longitude, accuracy } = position.coords;
+      currentLocation = new maps.LatLng(latitude, longitude);
+      new maps.Marker({
+        map,
+        position: currentLocation,
+        title: '현재 위치',
+        zIndex: 100
+      });
+      if (Number.isFinite(accuracy) && accuracy > 0) {
+        new maps.Circle({
+          map,
+          center: currentLocation,
+          radius: accuracy,
+          fillColor: '#27d5e8',
+          fillOpacity: 0.13,
+          strokeColor: '#48e3f2',
+          strokeOpacity: 0.72,
+          strokeWeight: 1
+        });
+      }
+      locationStatus = '현재 위치를 표시했습니다.';
+      updateMapView();
+      updateStatus();
+    }).catch((error) => {
+      if (session !== routeMapSession || currentPage !== 'guide') return;
+      locationStatus = error?.code === 1
+        ? '위치 권한이 없어 현재 위치를 표시하지 않습니다.'
+        : '현재 위치를 확인하지 못해 위치 표시는 생략했습니다.';
+      updateStatus();
+    });
+
+    if (routeDestinationQuery) {
+      maps.Service.geocode({ query: routeDestinationQuery }, (status, response) => {
+        if (session !== routeMapSession || currentPage !== 'guide') return;
+        const result = response?.v2?.addresses?.[0];
+        if (status !== maps.Service.Status.OK || !result) {
+          destinationStatus = '목적지 위치를 찾지 못했습니다.';
+          updateStatus();
+          return;
+        }
+        const longitude = Number(result.x);
+        const latitude = Number(result.y);
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+          destinationStatus = '목적지 위치를 확인하지 못했습니다.';
+          updateStatus();
+          return;
+        }
+        destinationLocation = new maps.LatLng(latitude, longitude);
+        new maps.Marker({
+          map,
+          position: destinationLocation,
+          title: result.roadAddress || result.jibunAddress || routeDestinationQuery,
+          zIndex: 110
+        });
+        destinationStatus = `목적지를 표시했습니다: ${result.roadAddress || result.jibunAddress || routeDestinationQuery}`;
+        updateMapView();
+        updateStatus();
+      });
+    }
+    updateStatus();
+  }).catch((error) => {
+    const message = error instanceof Error ? error.message : '네이버 지도를 불러오지 못했습니다.';
+    setStatus(message);
+  });
 }
 
 function translationScreen() {
@@ -394,6 +582,8 @@ function render() {
     ])
   };
   root.innerHTML = `<div class="app-shell">${screens[currentPage]()}</div>`;
+  if (currentPage === 'guide') initializeNaverRouteMap();
+  else routeMapSession += 1;
 
   document.querySelectorAll('.transport-option').forEach((button) => {
     button.addEventListener('click', () => {
@@ -505,7 +695,11 @@ if (currentPage === 'user-language-list' && !supportedUserLanguagesLoaded && !su
   });
   document.querySelector('#route-form')?.addEventListener('submit', (event) => {
     event.preventDefault();
-    if (routeInput?.value.trim()) navigate('guide');
+    const destination = routeInput?.value.trim();
+    if (destination) {
+      routeDestinationQuery = destination;
+      navigate('guide');
+    }
   });
   document.querySelector('.message-composer')?.addEventListener('submit', (event) => {
     event.preventDefault();
