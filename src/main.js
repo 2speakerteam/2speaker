@@ -848,7 +848,7 @@ function initializeNaverRouteMap() {
         const term = query.replace(/\s+/g, ' ').trim().toLowerCase();
         const matchesName = (place) => {
           const title = String(place?.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
-          return title === term || title.startsWith(`${term} `) || title.startsWith(`${term}(`);
+          return title.startsWith(term);
         };
         if (places.some(matchesName)) return places;
         try {
