@@ -1,452 +1,60 @@
-:root {
-  font-family: Pretendard, "Noto Sans KR", "Apple SD Gothic Neo", system-ui, sans-serif;
-  color: #f7fbff;
-  background: #001426;
-  font-synthesis: none;
-  --bg-top: #002c4d;
-  --bg: #001c34;
-  --bg-deep: #001426;
-  --cyan: #21d6ff;
-  --line: rgba(35, 202, 255, .62);
-  --muted: #a9c7e5;
-  --surface: rgba(4, 44, 74, .62);
-}
-
-* { box-sizing: border-box; }
-html, body, #root { width: 100%; min-height: 100%; margin: 0; }
-button, input { font: inherit; }
-button { color: inherit; }
-button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
-  outline: 2px solid var(--cyan);
-  outline-offset: 3px;
-}
-
-body {
-  min-width: 320px;
-  min-height: 100vh;
-  background:
-    radial-gradient(circle at 78% 21%, rgba(0, 156, 226, .22), transparent 31%),
-    linear-gradient(145deg, #00101f, #002e4d 48%, #001522);
-}
-
-.app-shell {
-  position: relative;
-  width: 100%;
-  min-height: 100dvh;
-  margin: auto;
-  overflow: hidden;
-  background: linear-gradient(150deg, var(--bg-top) 0%, var(--bg) 43%, var(--bg-deep) 100%);
-}
-
-.screen { position: relative; min-height: 100dvh; padding: max(28px, env(safe-area-inset-top)) 24px calc(110px + env(safe-area-inset-bottom)); }
-.screen::before { content: ""; position: fixed; inset: 0; pointer-events: none; background: radial-gradient(circle at 75% 30%, rgba(0, 173, 231, .12), transparent 30%); }
-
-.brand-block { display: grid; justify-items: center; padding-top: clamp(18px, 4vh, 64px); }
-.brand-mark { display: block; width: clamp(124px, 21vh, 192px); height: auto; overflow: visible; filter: drop-shadow(0 0 13px rgba(0, 245, 250, .22)); }
-.brand-block h1 { margin: 8px 0 0; font-size: clamp(27px, 5vh, 40px); line-height: 1; letter-spacing: -.025em; }
-
-.destination-search { width: 100%; height: 66px; display: flex; align-items: center; gap: 14px; margin: clamp(22px, 4.5vh, 58px) auto 0; padding: 7px 9px 7px 20px; border: 1.5px solid var(--line); border-radius: 40px; background: rgba(0, 31, 56, .42); max-width: 620px; text-align: left; cursor: pointer; }
-.destination-prompt { min-width: 0; flex: 1; color: var(--muted); font-size: clamp(20px, 5vw, 28px); }
-input::placeholder { color: var(--muted); opacity: 1; }
-.search-arrow { display: grid; place-items: center; width: 50px; height: 50px; flex: 0 0 50px; padding: 0; border: 0; border-radius: 50%; background: linear-gradient(135deg, #08a6ce, #0b7fa8); cursor: pointer; }
-
-.feature-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; max-width: 620px; margin: clamp(18px, 3.5vh, 38px) auto 0; }
-.feature-card { min-height: clamp(150px, 27vh, 242px); display: flex; flex-direction: column; align-items: center; justify-content: center; border: 1.3px solid var(--line); border-radius: 24px; background: rgba(0, 35, 63, .36); cursor: pointer; }
-.feature-card:active, .mode-card:active { transform: scale(.985); }
-.feature-icon { color: var(--cyan); filter: drop-shadow(0 0 13px rgba(0, 207, 255, .22)); }
-.feature-card strong { margin-top: 17px; font-size: clamp(24px, 5vw, 32px); }
-.feature-card > span:last-child { margin-top: 7px; color: var(--muted); font-size: clamp(16px, 3.5vw, 21px); }
-
-.bottom-nav { position: fixed; z-index: 10; left: 0; right: 0; bottom: 0; height: calc(94px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: 1fr 1fr; padding-bottom: env(safe-area-inset-bottom); border: 1px solid rgba(26, 176, 226, .7); border-bottom: 0; border-radius: 40px 40px 0 0; background: rgba(0, 31, 56, .95); backdrop-filter: blur(18px); }
-.home-screen .bottom-nav { position: absolute; }
-.nav-item { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 16px; }
-.nav-item.active { color: white; }
-
-.page-header { position: relative; height: 76px; display: grid; grid-template-columns: 48px 1fr 48px; align-items: center; max-width: 680px; margin: 0 auto; }
-.page-header h1 { margin: 0; text-align: center; font-size: clamp(28px, 7vw, 38px); }
-.icon-button { width: 48px; height: 48px; display: grid; place-items: center; border: 0; background: transparent; cursor: pointer; }
-.header-spacer { width: 48px; }
-.page-body { max-width: 620px; margin: 74px auto 0; }
-.route-entry-body { margin-top: clamp(54px, 8vh, 125px); }
-.large-input { display: flex; width: 100%; min-width: 0; height: 80px; padding: 0 28px; border: 1.5px solid var(--cyan); border-radius: 32px; align-items: center; }
-.route-entry-body .large-input { height: clamp(58px, 7vh, 114px); padding-inline: clamp(24px, 4vw, 42px); border-radius: 38px; background: rgba(0, 31, 56, .3); }
-.large-input input { min-width: 0; flex: 1; border: 0; outline: 0; color: white; background: transparent; font-size: 28px; text-size-adjust: 100%; -webkit-text-size-adjust: 100%; }
-.route-form { display: grid; gap: 18px; }
-.route-voice-button, .route-text-button, .route-submit { width: 42px; height: 42px; flex: 0 0 42px; display: grid; place-items: center; padding: 0; border: 0; border-radius: 50%; color: var(--cyan); background: rgba(8, 118, 157, .24); cursor: pointer; }
-.route-text-button { background: transparent; }
-.route-text-button svg { display: block; }
-.route-submit { color: white; background: linear-gradient(135deg, #08a6ce, #0b7fa8); }
-.route-submit[hidden] { display: none; }
-.places-body { margin-top: 22px; padding-bottom: 112px; }
-.places-status { min-height: 44px; margin: 15px 4px 12px; color: #c7e7f6; font-size: 15px; line-height: 1.5; }
-.places-map { width: 100%; height: clamp(210px, 32vh, 310px); overflow: hidden; border: 1px solid rgba(31, 168, 219, .55); border-radius: 20px; background: rgba(4, 48, 78, .6); }
-.places-result-summary { margin: 12px 4px 16px; color: #c7e7f6; font-size: 16px; line-height: 1.5; }
-.places-roadview { margin: 0 0 14px; overflow: hidden; border: 1px solid rgba(31, 168, 219, .55); border-radius: 20px; background: rgba(2, 39, 61, .96); scroll-margin-top: 12px; }
-.places-roadview[hidden] { display: none; }
-.places-roadview-view { width: 100%; height: clamp(250px, 42vh, 420px); overflow: hidden; background: #071d2d; }
-.places-roadview-controls { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; }
-.places-roadview-heading { min-width: 0; display: grid; gap: 4px; margin: 0; }
-.places-roadview-heading strong { font-size: 16px; line-height: 1.35; overflow-wrap: anywhere; }
-.places-roadview-heading span { color: var(--muted); font-size: 12px; line-height: 1.4; }
-.places-roadview-controls > div { flex: 0 0 auto; display: flex; gap: 7px; }
-.places-roadview-controls button { min-height: 38px; padding: 6px 11px; border: 1px solid rgba(49, 206, 255, .65); border-radius: 12px; color: white; background: rgba(4, 69, 100, .8); font-size: 13px; cursor: pointer; white-space: nowrap; }
-.places-roadview-controls button:last-child { color: #00283c; background: var(--cyan); }
-.places-meter-note { margin: 10px 4px 8px; color: var(--muted); font-size: 12px; }
-.place-results { display: grid; gap: 10px; }
-.place-result { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 16px; border: 1px solid rgba(31, 168, 219, .48); border-radius: 18px; color: white; background: rgba(4, 48, 78, .5); text-align: left; cursor: pointer; }
-.place-result:active { border-color: var(--cyan); background: rgba(7, 85, 120, .62); }
-.place-result-main { min-width: 0; display: grid; gap: 5px; }
-.place-result-main strong { font-size: 18px; line-height: 1.35; }
-.place-result-main small, .place-result-main > span { color: var(--muted); font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
-.place-result-distance { flex: 0 0 auto; display: grid; justify-items: end; gap: 4px; color: var(--cyan); }
-.place-result-distance strong { font-size: 19px; }
-.place-result-distance small { color: var(--muted); font-size: 13px; }
-.places-empty { padding: 22px 18px; border: 1px dashed rgba(31, 168, 219, .5); border-radius: 18px; color: var(--muted); text-align: center; line-height: 1.55; }
-.places-retry { width: 100%; min-height: 52px; margin-top: 14px; border: 1px solid var(--cyan); border-radius: 16px; color: white; background: rgba(4, 63, 99, .8); font-size: 17px; cursor: pointer; }
-.voice-search-overlay { position: fixed; z-index: 30; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(0, 9, 23, .76); }
-.voice-search-dialog { position: relative; width: min(100%, 420px); padding: 42px 24px 28px; border: 1px solid var(--line); border-radius: 30px; background: linear-gradient(150deg, #003251, #001b32); text-align: center; box-shadow: 0 20px 70px rgba(0, 0, 0, .4); }
-.voice-search-close { position: absolute; top: 12px; right: 18px; border: 0; background: transparent; color: var(--muted); font-size: 32px; line-height: 1; cursor: pointer; }
-.voice-search-mic { width: 94px; height: 94px; display: grid; place-items: center; margin: 0 auto 20px; border: 1px solid var(--line); border-radius: 50%; color: var(--cyan); background: rgba(13, 125, 160, .23); }
-.voice-search-mic.listening { animation: mic-pulse 1.5s ease-in-out infinite; }
-.voice-search-dialog h2 { margin: 0; font-size: 28px; }
-.voice-search-dialog p { min-height: 48px; margin: 15px 0 0; color: var(--muted); font-size: 17px; line-height: 1.4; }
-.voice-search-actions { display: flex; justify-content: center; gap: 10px; margin-top: 18px; }
-.voice-search-actions button { min-height: 44px; padding: 0 14px; border: 1px solid var(--line); border-radius: 16px; background: rgba(4, 63, 99, .8); cursor: pointer; }
-.voice-search-actions button:first-child { color: #001b32; background: var(--cyan); }
-@keyframes mic-pulse { 50% { box-shadow: 0 0 0 12px rgba(33, 214, 255, .11); } }
-.route-start { min-height: 58px; display: flex; align-items: center; justify-content: center; gap: 10px; border: 1px solid rgba(38, 216, 255, .8); border-radius: 20px; color: white; background: linear-gradient(135deg, #078bb5, #06527b); cursor: pointer; font-weight: 700; font-size: 19px; }
-
-.translation-body { margin-top: 46px; }
-.language-row { width: 100%; min-height: 84px; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; border: 1px solid rgba(31, 168, 219, .48); border-radius: 19px; background: rgba(5, 48, 79, .56); cursor: pointer; }
-.language-row strong { font-size: 25px; }
-.language-row span { display: flex; align-items: center; gap: 10px; color: #c2d7ea; font-size: 20px; }
-.supporting-copy { margin: 16px 12px 60px; color: var(--muted); font-size: 17px; }
-.translation-body h2 { margin: 0 0 24px 4px; font-size: 27px; }
-.mode-card { width: 100%; min-height: 124px; display: grid; grid-template-columns: 72px 1fr 30px; gap: 18px; align-items: center; margin-bottom: 14px; padding: 20px 22px; border: 1px solid rgba(31, 168, 219, .55); border-radius: 19px; background: rgba(4, 43, 72, .54); text-align: left; cursor: pointer; }
-.mode-icon { width: 68px; height: 68px; display: grid; place-items: center; border: 1px solid rgba(32, 171, 219, .28); border-radius: 17px; color: #42d7ff; background: rgba(9, 77, 111, .58); }
-.mode-copy { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
-.mode-copy strong { font-size: 24px; font-weight: 600; }
-.mode-copy small { color: var(--muted); font-size: 17px; }
-.mode-card > svg { color: #8eb8db; }
-.conversation-brand-row { height: 42px; display: grid; place-items: center; }
-.conversation-brand-row strong { padding: 7px 22px; border-radius: 24px; color: white; background: #02060b; font-size: 16px; letter-spacing: .03em; }
-.conversation-title { height: 58px; }
-.guide-screen { padding-inline: 20px; padding-bottom: 28px; }
-.guide-screen .bottom-nav { position: relative; z-index: 1; left: auto; right: auto; bottom: auto; width: auto; transform: none; margin: 28px -20px -28px; border-radius: 40px 40px 42px 42px; }
-.guide-header { height: 54px; display: grid; grid-template-columns: 48px 1fr 48px; align-items: center; text-align: center; }
-.guide-header strong { width: max-content; justify-self: center; padding: 8px 22px; border-radius: 24px; color: white; background: #02060b; font-size: 18px; letter-spacing: .03em; }
-.guide-control { width: 44px; height: 44px; display: grid; place-items: center; border: 0; color: var(--cyan); background: transparent; cursor: pointer; }
-.guide-control svg { display: block; width: 30px; height: 30px; flex: 0 0 30px; aspect-ratio: 1; }
-.route-visual { max-width: 620px; margin: 12px auto 0; overflow: visible; }
-.route-scene { position: relative; height: clamp(200px, 33vh, 410px); overflow: hidden; border: 1px solid rgba(49, 206, 255, .24); border-radius: 23px; isolation: isolate; }
-.station-scene { background: url('/public/route-guides/subway-transfer.svg') center 54% / cover no-repeat, #12384d; }
-.walk-scene { background: url('/public/route-guides/gyeongbokgung-walk.svg') center 57% / cover no-repeat, #12384d; }
-.naver-map { position: absolute; z-index: 0; inset: 0; width: 100%; height: 100%; }
-.route-scene.map-ready::after { background: transparent; }
-.route-scene.map-failed .naver-map { display: none; }
-.route-scene::after { content: ""; position: absolute; z-index: 1; inset: 0; pointer-events: none; background: linear-gradient(180deg, rgba(0, 15, 28, .12), transparent 42%, rgba(0, 15, 28, .2)); }
-.transfer-banner { position: absolute; z-index: 2; inset: 14px 12px auto; min-height: 58px; display: flex; align-items: center; gap: clamp(5px, 1.5vw, 12px); padding: 7px 10px; border-radius: 10px; color: white; background: rgba(0, 0, 0, .82); }
-.line-badge { width: 38px; height: 38px; flex: 0 0 38px; display: grid; place-items: center; border-radius: 50%; color: white; font-size: 25px; font-weight: 700; }
-.line-two { background: #08aa75; }
-.line-four { background: #1767f6; }
-.line-name { display: grid; gap: 1px; font-size: clamp(13px, 3.5vw, 19px); white-space: nowrap; }
-.line-name small, .transfer-label small { font-size: 11px; }
-.transfer-arrow { font-size: 30px; }
-.transfer-label { display: flex; align-items: center; gap: 5px; margin-left: auto; padding-left: 8px; border-left: 1px solid rgba(255, 255, 255, .5); font-size: 12px; white-space: nowrap; }
-.transfer-label > span { display: grid; gap: 2px; }
-.station-sign { position: absolute; z-index: 2; top: 45%; left: 50%; display: flex; align-items: center; gap: 8px; padding: 7px 12px; transform: translateX(-50%); border-radius: 4px; color: white; background: rgba(0, 0, 0, .86); font-size: 15px; white-space: nowrap; }
-.station-sign .line-badge { width: 24px; height: 24px; flex-basis: 24px; font-size: 16px; }
-.station-sign span:last-child { color: #e9edbb; font-size: 12px; }
-.destination-sign { position: absolute; z-index: 2; top: 13%; right: 7%; display: grid; justify-items: center; gap: 3px; padding: 9px 12px; border-radius: 5px; color: #ff9db8; background: rgba(4, 17, 30, .66); text-align: center; }
-.destination-sign strong { font-size: 29px; line-height: 1; }
-.destination-sign span { font-size: 17px; font-weight: 700; }
-.destination-sign small { display: block; font-size: 9px; }
-.direction-arrow { position: absolute; z-index: 3; left: 50%; bottom: 20%; transform: translateX(-50%); color: #20d5ff; font-size: 58px; line-height: 1; text-shadow: 0 0 12px #0ec8f1; }
-.direction-arrow.turn-left { left: 27%; bottom: 37%; }
-.route-instruction { position: relative; z-index: 4; display: flex; align-items: center; gap: 13px; min-height: 62px; margin: -36px 0 0; padding: 12px 18px; border: 1px solid #20d7ff; border-radius: 27px; color: white; background: rgba(3, 38, 59, .96); font-size: clamp(15px, 3.7vw, 20px); }
-.guide-screen .route-visual > .route-instruction { margin-top: 10px; }
-.route-instruction span { min-width: 0; }
-.walk-action { width: 100%; font-family: inherit; text-align: left; cursor: pointer; }
-.walk-action:hover:not(:disabled), .walk-action:focus-visible, .walk-action:active:not(:disabled) { border-color: #66e7ff; background: rgba(4, 92, 126, .98); box-shadow: inset 0 0 0 1px rgba(32, 215, 255, .35); }
-.walk-action:focus-visible { outline: 2px solid #66e7ff; outline-offset: 3px; }
-.walk-action:disabled { cursor: default; }
-.walk-preview { max-width: 620px; margin: 16px auto 0; overflow: hidden; border: 1px solid rgba(49, 206, 255, .6); border-radius: 20px; background: rgba(2, 39, 61, .98); scroll-margin-top: 12px; }
-.walk-preview[hidden], .walk-preview-scene[hidden] { display: none; }
-.walk-preview-open .naver-map, .walk-preview-open .destination-sign { visibility: hidden; }
-.walk-preview-open .route-instruction { margin-top: 10px; }
-.route-visual { scroll-margin-top: 12px; }
-.walk-preview-header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; padding: 14px 16px; }
-.walk-preview-header small { color: #91dfff; font-size: 12px; }
-.walk-preview-header h2 { margin: 4px 0 0; font-size: clamp(16px, 3.8vw, 21px); line-height: 1.3; overflow-wrap: anywhere; }
-.walk-preview-origin { margin: 6px 0 0; color: #bdeaff; font-size: 12px; line-height: 1.4; }
-.walk-preview-map-button, .walk-preview-controls button { border: 1px solid rgba(49, 206, 255, .65); border-radius: 12px; background: rgba(4, 69, 100, .8); color: white; cursor: pointer; }
-.walk-preview-map-button { position: absolute; z-index: 3; top: 10px; right: 10px; min-height: 38px; padding: 6px 12px; font-size: 13px; background: #02273d; white-space: nowrap; transform: translateZ(0); backface-visibility: hidden; }
-.walk-preview-map-button:hover, .walk-preview-map-button:focus-visible { background: #04658b; }
-.walk-preview-scene { position: absolute; z-index: 3; inset: 0; overflow: hidden; background: #071d2d; }
-/* Keep SDK canvases/controls and both fading views in their own stacking context.
-   Their internal z-indexes must never paint over the persistent Show map button. */
-.walk-preview-panorama { position: absolute; inset: 0; z-index: 0; isolation: isolate; contain: paint; overflow: hidden; width: 100%; height: 100%; }
-.walk-preview-message { min-height: 38px; margin: 0; padding: 9px 14px; background: rgba(0, 26, 43, .9); color: white; font-size: 13px; line-height: 1.4; }
-.walk-preview-controls { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 12px 14px 8px; }
-.walk-preview-controls button { min-height: 38px; font-size: 14px; }
-.walk-preview-controls button:disabled { opacity: .4; cursor: default; }
-.walk-preview-controls button:hover:not(:disabled), .walk-preview-controls button:focus-visible { background: rgba(4, 101, 139, .9); }
-.walk-preview-progress { padding: 0 14px 9px; color: #b2d2e6; font-size: 13px; }
-.walk-preview-seek { --seek-fill: 0%; display: block; appearance: none; -webkit-appearance: none; width: 100%; height: 36px; margin: 0; padding: 0; border: 0; background: transparent; cursor: grab; touch-action: pan-y; }
-.walk-preview-seek:active { cursor: grabbing; }
-.walk-preview-seek::-webkit-slider-runnable-track { height: 6px; border-radius: 6px; background: linear-gradient(to right, #20d7ff 0 var(--seek-fill), rgba(155, 207, 227, .23) var(--seek-fill) 100%); }
-.walk-preview-seek::-webkit-slider-thumb { appearance: none; -webkit-appearance: none; width: 22px; height: 22px; margin-top: -8px; border: 3px solid #e8fbff; border-radius: 50%; background: #20d7ff; box-shadow: 0 0 0 3px rgba(32, 215, 255, .18); }
-.walk-preview-seek::-moz-range-track { height: 6px; border-radius: 6px; background: rgba(155, 207, 227, .23); }
-.walk-preview-seek::-moz-range-progress { height: 6px; border-radius: 6px; background: #20d7ff; }
-.walk-preview-seek::-moz-range-thumb { width: 16px; height: 16px; border: 3px solid #e8fbff; border-radius: 50%; background: #20d7ff; }
-.walk-preview-seek:focus-visible { outline: 2px solid #8beaff; outline-offset: 2px; border-radius: 6px; }
-.walk-preview-seek:disabled { opacity: .45; cursor: default; }
-.walk-preview-progress small { display: block; color: #91dfff; font-size: 11px; line-height: 1.5; }
-.walk-preview-note { margin: 0; padding: 0 14px 13px; color: #b2d2e6; font-size: 12px; line-height: 1.5; }
-.transport-options { max-width: 620px; margin: 14px auto 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; }
-.transport-option { min-width: 0; min-height: 68px; padding: 10px 8px; display: grid; align-content: center; gap: 3px; border: 1px solid rgba(49, 206, 255, .35); border-radius: 16px; background: rgba(2, 39, 61, .9); color: #a9c7e5; text-align: center; cursor: pointer; }
-.transport-option strong { font-size: clamp(15px, 3.5vw, 19px); }
-.transport-option small { color: #b2d2e6; font-size: clamp(11px, 2.7vw, 14px); line-height: 1.25; overflow-wrap: anywhere; }
-.transport-option:active:not(:disabled) { border-color: #20d7ff; background: rgba(4, 101, 139, .8); color: #fff; box-shadow: inset 0 0 0 1px rgba(32, 215, 255, .35); }
-.transport-option:focus-visible { outline: 2px solid #66e7ff; outline-offset: 3px; }
-@media (hover: hover) {
-  .transport-option:hover:not(:disabled) { border-color: #20d7ff; background: rgba(4, 101, 139, .8); color: #fff; box-shadow: inset 0 0 0 1px rgba(32, 215, 255, .35); }
-}
-.transport-option:disabled { cursor: default; }
-.transport-detail-page[hidden] { display: none; }
-.guide-screen.transport-detail-open > :not(.transport-detail-page) { display: none; }
-.transport-detail-page { min-height: calc(100dvh - 56px); }
-.transport-detail-page .route-visual { margin-top: 16px; }
-.transport-detail-page .route-instruction { display: none; }
-.transport-detail-header { height: 54px; display: grid; grid-template-columns: 48px 1fr 48px; align-items: center; text-align: center; }
-.transport-detail-header > strong { font-size: clamp(18px, 4vw, 23px); }
-.transport-detail-content { max-width: 620px; margin: 16px auto 0; }
-.transport-detail-eyebrow { margin: 0 0 8px; color: var(--cyan); font-size: 14px; }
-.transport-detail-content h2 { margin: 0 0 20px; font-size: clamp(21px, 5vw, 29px); line-height: 1.35; overflow-wrap: anywhere; }
-.transport-detail-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.transport-detail-summary > div { min-height: 90px; padding: 15px; display: grid; align-content: center; gap: 5px; border: 1px solid var(--line); border-radius: 17px; background: rgba(2, 39, 61, .9); }
-.transport-detail-summary small { color: var(--muted); font-size: 13px; }
-.transport-detail-summary strong { font-size: clamp(19px, 4.5vw, 25px); overflow-wrap: anywhere; }
-.transport-detail-meta { margin: 14px 0 18px; color: #a9dfff; }
-.transport-legs { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
-.transport-leg { display: flex; gap: 13px; padding: 16px; border: 1px solid rgba(49, 206, 255, .35); border-radius: 17px; background: rgba(2, 39, 61, .9); }
-.transport-leg-number { width: 28px; height: 28px; flex: 0 0 28px; display: grid; place-items: center; border-radius: 50%; color: #00243a; background: var(--cyan); font-weight: 700; }
-.transport-leg strong { font-size: 18px; }
-.transport-leg p { margin: 7px 0; line-height: 1.4; overflow-wrap: anywhere; }
-.transport-leg small { color: var(--muted); }
-.transport-detail-note { margin: 22px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
-.guide-dialogue { max-width: 620px; margin: 16px auto 0; display: grid; gap: 14px; }
-.bubble { width: min(84%, 460px); margin: 0; padding: 14px 19px; border: 1px solid; border-radius: 25px; font-size: clamp(16px, 3.8vw, 20px); line-height: 1.4; }
-.bubble.question { justify-self: start; border-color: #168cff; background: linear-gradient(135deg, rgba(14, 89, 177, .82), rgba(17, 70, 134, .6)); border-bottom-left-radius: 5px; }
-.bubble.answer { justify-self: end; border-color: #14f4dd; background: linear-gradient(135deg, rgba(0, 139, 145, .88), rgba(0, 84, 92, .7)); border-bottom-right-radius: 5px; }
-.places-dialogue { margin-top: 24px; gap: 18px; }
-.places-dialogue .bubble { width: min(92%, 540px); padding: 18px 24px; border-radius: 30px; font-size: clamp(19px, 4.4vw, 23px); line-height: 1.45; }
-.places-dialogue .bubble.question { border-bottom-left-radius: 6px; }
-.places-dialogue .bubble.answer { border-bottom-right-radius: 6px; }
-
-.nearby-panorama { max-width: 620px; margin: 16px auto 0; overflow: hidden; border: 1px solid rgba(49, 206, 255, .55); border-radius: 20px; background: rgba(2, 39, 61, .96); scroll-margin-top: 12px; }
-.nearby-panorama[hidden] { display: none; }
-.nearby-panorama-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 14px 16px; }
-.nearby-panorama-header small { color: #91dfff; font-size: 12px; }
-.nearby-panorama-header h2 { margin: 4px 0 0; font-size: clamp(16px, 3.8vw, 21px); line-height: 1.3; overflow-wrap: anywhere; }
-.nearby-panorama-header button { flex: 0 0 auto; padding: 6px 12px; border: 1px solid rgba(49, 206, 255, .65); border-radius: 12px; background: transparent; color: #fff; font-size: 13px; cursor: pointer; }
-.nearby-panorama-view { width: 100%; height: clamp(250px, 42vh, 420px); background: #071d2d; }
-.nearby-panorama-status, .nearby-panorama-note { margin: 0; padding: 9px 16px 0; color: #b2d2e6; font-size: 13px; line-height: 1.5; }
-.nearby-panorama-note { padding-bottom: 13px; }
-.nearby-results { max-width: 620px; margin: 16px auto 0; display: grid; gap: 14px; }
-.nearby-group { padding: 14px 16px; border: 1px solid rgba(49, 206, 255, .55); border-radius: 20px; background: rgba(2, 39, 61, .9); }
-.nearby-group h2 { margin: 0 0 10px; font-size: 19px; }
-.nearby-group ol { margin: 0; padding: 0; display: grid; gap: 10px; list-style: none; }
-.nearby-place { display: flex; align-items: flex-start; gap: 10px; width: 100%; min-width: 0; padding: 5px; border: 1px solid transparent; border-radius: 12px; background: transparent; color: #fff; text-align: left; cursor: pointer; }
-.nearby-place:hover, .nearby-place[aria-pressed="true"] { border-color: rgba(49, 206, 255, .7); background: rgba(32, 215, 255, .12); }
-.nearby-place:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
-.nearby-info { max-width: 240px; padding: 9px 11px; display: grid; gap: 3px; color: #05243a; font: 15px/1.35 Arial, sans-serif; }
-.nearby-info strong { font-size: 15px; }
-.nearby-info small { color: #33576a; font-size: 12px; }
-.nearby-place span:last-child { display: grid; gap: 2px; min-width: 0; }
-.nearby-place strong { font-size: 16px; overflow-wrap: anywhere; }
-.nearby-place small { color: #b2d2e6; font-size: 13px; overflow-wrap: anywhere; }
-.nearby-place-badge { width: 27px; height: 27px; flex: 0 0 27px; display: grid; place-items: center; border-radius: 50%; color: #fff; font-size: 14px; font-weight: 700; }
-.nearby-place-badge.taxi, .nearby-map-pin.taxi { background: #087ca6; }
-.nearby-place-badge.bus, .nearby-map-pin.bus { background: #08aa75; }
-.nearby-map-pin { display: grid; place-items: center; min-width: 55px; min-height: 31px; padding: 4px 7px; border: 2px solid #fff; border-radius: 16px; color: #fff; font: 700 13px Arial, sans-serif; white-space: nowrap; box-shadow: 0 2px 8px rgba(0, 0, 0, .38); }
-.nearby-status, .nearby-empty { margin: 0; color: #b2d2e6; font-size: 15px; line-height: 1.5; }
-.nearby-screen .destination-sign { max-width: 52%; overflow-wrap: anywhere; }
-
-.conversation-screen { padding-bottom: calc(94px + env(safe-area-inset-bottom)); }
-.conversation-body, .text-dialogue { max-width: 620px; margin: 8px auto 0; }
-.translating { margin: 0 0 48px; text-align: center; color: #b9cde0; font-size: 21px; }
-.speech-block { padding: 0 0 34px; border-bottom: 1px solid rgba(46, 162, 205, .56); }
-.speech-block + .speech-block { padding-top: 34px; border-bottom: 0; }
-.speech-block span, .text-bubble span { color: #a9c7e5; font-size: 17px; }
-.speech-block p { margin: 13px 0 8px; font-size: clamp(24px, 6vw, 34px); }
-.speech-block strong { color: #2bd9ff; font-size: clamp(27px, 7vw, 39px); }
-.speech-block.mine { text-align: right; }
-.voice-screen .conversation-body { width: 100%; max-height: calc(100dvh - 250px); overflow-y: auto; padding-bottom: 30px; scrollbar-width: none; }
-.voice-screen .conversation-body::-webkit-scrollbar { display: none; }
-.voice-empty { max-width: 420px; margin: 0 auto; color: var(--muted); text-align: center; font-size: 18px; line-height: 1.6; }
-.voice-text-fallback { position: fixed; left: 50%; bottom: calc(78px + env(safe-area-inset-bottom)); transform: translateX(-50%); border: 1px solid var(--line); border-radius: 20px; padding: 9px 18px; color: white; background: rgba(0, 35, 63, .94); }
-.pause-button { position: fixed; left: 50%; bottom: calc(36px + env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex; align-items: center; gap: 16px; border: 0; background: transparent; color: white; font-size: 22px; cursor: pointer; }
-.text-dialogue { display: grid; gap: 30px; }
-.text-screen { display: flex; flex-direction: column; height: 100dvh; min-height: 100dvh; padding-bottom: 0; overflow: hidden; }
-.text-screen .conversation-header { flex: 0 0 auto; }
-.text-screen .text-dialogue { width: 100%; min-height: 0; flex: 1 1 auto; overflow-y: auto; padding: 0 2px 16px; overscroll-behavior: contain; scrollbar-width: none; }
-.text-screen .text-dialogue::-webkit-scrollbar { display: none; }
-
-.text-bubble { width: min(78%, 450px); padding: 17px 22px; border: 1px solid rgba(28, 162, 224, .8); border-radius: 23px; background: rgba(4, 50, 82, .6); }
-.text-bubble p { margin: 12px 0 7px; font-size: clamp(21px, 5vw, 28px); font-weight: 700; }
-.text-bubble strong { color: #22d8ff; font-size: clamp(20px, 5vw, 26px); }
-.text-bubble.me { justify-self: end; }
-.message-composer { z-index: 3; width: 100%; max-width: 620px; height: 68px; flex: 0 0 68px; margin: auto auto calc(18px + env(safe-area-inset-bottom)); display: flex; align-items: center; padding: 7px 8px 7px 20px; border: 1px solid rgba(31, 168, 219, .7); border-radius: 25px; background: rgba(0, 35, 63, .94); }
-.message-composer input { min-width: 0; flex: 1; border: 0; outline: 0; color: white; background: transparent; font-size: 18px; }
-.message-composer button { width: 52px; height: 52px; display: grid; place-items: center; border: 0; border-radius: 50%; color: #4fdcff; background: #064c7f; cursor: pointer; }
-.translation-pending { display: block; margin-top: 12px; color: #a9c7e5; font-size: 13px; font-weight: 400; line-height: 1.5; }
-.menu-screen { position: absolute; z-index: 20; inset: 0; min-height: 100dvh; padding: 0; overflow: hidden; background: transparent; }
-.menu-underlay { position: absolute; inset: 0; overflow: hidden; }
-.menu-underlay > .screen { min-height: 100%; }
-.menu-scrim { position: absolute; z-index: 1; inset: 0; background: rgba(0, 10, 20, .62); }
-.menu-panel { position: relative; z-index: 2; width: clamp(240px, 60%, 360px); min-height: 100dvh; padding: max(70px, env(safe-area-inset-top)) 18px 40px; border-right: 1px solid rgba(44, 216, 255, .58); background: linear-gradient(145deg, #064368, #003557 55%, #00243d); box-shadow: 18px 0 50px rgba(0,0,0,.38); }
-.menu-close { width: 50px; height: 50px; margin-bottom: 20px; border: 0; color: white; background: transparent; font-size: 48px; font-weight: 200; line-height: 1; cursor: pointer; }
-.menu-list { border-top: 1px solid rgba(88, 186, 226, .48); }
-.menu-list button { width: 100%; min-height: 84px; display: grid; grid-template-columns: 30px minmax(0, 1fr) 20px; align-items: center; gap: 10px; border: 0; border-bottom: 1px solid rgba(88, 186, 226, .36); color: white; background: transparent; text-align: left; cursor: pointer; }
-.menu-list button > span { color: #16e3f4; }
-.menu-list strong { font-size: clamp(12px, 3.6vw, 18px); letter-spacing: -.025em; white-space: nowrap; }
-.account-body { display: grid; gap: 20px; min-width: 0; margin-top: 34px; }
-.account-notice { margin: 0 4px; color: #a8ecf8; font-size: 15px; line-height: 1.5; }
-.account-card { width: 100%; min-width: 0; padding: 25px 22px; border: 1px solid rgba(31, 168, 219, .5); border-radius: 22px; background: rgba(3, 45, 74, .5); }
-.account-card h2 { margin: 0 0 23px; font-size: 28px; }
-.account-card > p { color: var(--muted); }
-.account-input { min-height: 64px; display: flex; align-items: center; gap: 16px; margin: 12px 0; padding: 0 19px; border: 1px solid rgba(124, 186, 217, .48); border-radius: 18px; color: var(--muted); }
-.account-input input { min-width: 0; flex: 1; border: 0; outline: 0; color: white; background: transparent; font-size: 18px; }
-.primary-button { width: 100%; min-height: 62px; margin-top: 13px; border: 0; border-radius: 17px; color: white; background: linear-gradient(135deg, #13abd0, #0788ac); font-size: 20px; font-weight: 700; cursor: pointer; }
-.social-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; min-width: 0; margin-top: 20px; }
-.social-grid button { min-width: 0; min-height: 62px; display: flex; align-items: center; justify-content: center; gap: 9px; padding-inline: 4px; border: 1px solid rgba(124, 186, 217, .48); border-radius: 16px; background: rgba(2, 35, 59, .48); cursor: pointer; white-space: nowrap; }
-.social-grid b { font-size: 20px; }
-.google-mark { color: #55a3ff; }.naver-mark { color: #1dd15c; }
-.email-signup { width: 100%; display: flex; justify-content: center; align-items: center; gap: 5px; margin-top: 22px; padding-top: 22px; border: 0; border-top: 1px solid rgba(124, 186, 217, .38); color: #18e1f0; background: transparent; cursor: pointer; font-size: 17px; }
-.language-body { margin-top: 44px; }
-.setting-row { width: 100%; min-height: 90px; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; border: 1px solid rgba(31, 168, 219, .5); border-radius: 22px; background: rgba(4, 48, 78, .5); cursor: pointer; }
-.setting-row strong { font-size: 24px; }.setting-row span { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 20px; }
-.language-list, .list-card { overflow: hidden; margin-top: 42px; border: 1px solid rgba(31, 168, 219, .5); border-radius: 22px; background: rgba(4, 48, 78, .45); }
-.language-picker-body { margin-top: 36px; }
-.language-search { display: block; }
-.language-search input { width: 100%; min-height: 58px; padding: 0 18px; border: 1px solid rgba(31, 168, 219, .55); border-radius: 17px; outline: 0; color: white; background: rgba(0, 31, 56, .55); font-size: 18px; }
-.language-loading { min-height: 22px; margin: 12px 4px 0; color: var(--muted); font-size: 14px; }
-.language-picker-body .language-list { max-height: calc(100dvh - 270px); margin-top: 4px; overflow-y: auto; }
-.language-empty { margin: 0; padding: 20px 24px; color: var(--muted); }
-.language-list button, .list-card button { width: 100%; min-height: 72px; display: flex; align-items: center; justify-content: space-between; padding: 0 24px; border: 0; border-bottom: 1px solid rgba(124, 186, 217, .28); color: white; background: transparent; cursor: pointer; font-size: 21px; text-align: left; }
-.language-list button:last-child, .list-card button:last-child { border-bottom: 0; }
-.language-list button:first-child svg { color: #18e4f4; }
-.language-list button[aria-pressed="true"] svg { color: #18e4f4; }
-.list-card { margin-top: 38px; }
-.list-card button { min-height: 88px; font-size: 23px; }
-.list-card em { color: var(--muted); font-style: normal; font-size: 19px; }
-.service-body { margin-top: 42px; }
-.service-body > article { padding: 28px 25px; border: 1px solid rgba(31, 168, 219, .5); border-radius: 22px; background: rgba(4, 48, 78, .45); }
-.service-body article h2 { margin: 0; font-size: 30px; }.service-body article p { margin: 12px 0 0; color: var(--muted); font-size: 19px; }
-.service-body .list-card { margin-top: 20px; }
-.info-copy { padding: 24px; border: 1px solid rgba(31, 168, 219, .45); border-radius: 22px; color: #d9e9f5; background: rgba(4, 48, 78, .42); font-size: 18px; line-height: 1.75; }
-.version-card { margin-top: 42px; padding: 28px 24px; border: 1px solid rgba(31, 168, 219, .52); border-radius: 22px; color: var(--muted); background: rgba(4, 48, 78, .44); font-size: 20px; }
-.version-card p { margin: 18px 0; }
-.version-card p:first-child { font-size: 24px; }
-.version-card hr { border: 0; border-top: 1px solid rgba(31, 168, 219, .4); }
-.legal-body { margin-top: 32px; padding-inline: 8px; color: #d3e4f2; }
-.legal-body article { padding: 21px 8px; border-bottom: 1px solid rgba(31, 168, 219, .46); }
-.legal-body article:first-child { padding-top: 8px; }
-.legal-body article:last-child { border-bottom: 0; }
-.legal-body h2 { margin: 0 0 10px; color: white; font-size: 22px; }
-.legal-body p { margin: 0; font-size: 18px; line-height: 1.75; white-space: normal; overflow-wrap: anywhere; }
-.howto-card { margin-top: 36px; padding: 8px 24px; border: 1px solid rgba(31, 168, 219, .55); border-radius: 23px; background: rgba(4, 48, 78, .46); }
-.howto-step { min-height: 166px; display: grid; grid-template-columns: 82px 1fr; gap: 22px; align-items: center; padding: 24px 8px; border-bottom: 1px solid rgba(31, 168, 219, .38); }
-.howto-step:last-child { border-bottom: 0; }
-.howto-icon { width: 72px; height: 72px; display: grid; place-items: center; border: 1px solid rgba(31, 168, 219, .56); border-radius: 50%; color: var(--cyan); }
-.howto-step h2 { margin: 0 0 13px; font-size: 25px; }
-.howto-step p { margin: 0; color: #d9e9f5; font-size: clamp(16px, 4vw, 20px); line-height: 1.7; }
-.faq-list { display: grid; gap: 10px; margin-top: 38px; }
-.faq-item { overflow: hidden; border: 1px solid rgba(31, 168, 219, .56); border-radius: 21px; background: rgba(4, 48, 78, .46); }
-.faq-item.open { border-color: #18d8f8; box-shadow: 0 0 0 1px rgba(24, 216, 248, .12); }
-.faq-question { width: 100%; min-height: 74px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 22px; border: 0; color: white; background: transparent; text-align: left; font-size: clamp(17px, 4.5vw, 22px); cursor: pointer; }
-.faq-question span { min-width: 0; }
-.faq-question svg { flex: 0 0 auto; color: #e8f6ff; transition: transform .18s ease, color .18s ease; }
-.faq-item.open .faq-question svg { color: var(--cyan); transform: rotate(-90deg); }
-.faq-answer { margin: 0; padding: 20px 22px 24px; border-top: 1px solid rgba(31, 168, 219, .36); color: #d9e9f5; font-size: clamp(17px, 4.2vw, 21px); line-height: 1.7; }
-.faq-answer strong { margin-right: 8px; color: white; }
-.contact-card { margin-top: 40px; padding: 26px 24px 28px; border: 1px solid rgba(31, 168, 219, .55); border-radius: 23px; background: rgba(4, 48, 78, .46); }
-.contact-card form { display: grid; gap: 14px; }
-.contact-card label { margin-top: 4px; font-size: 21px; }
-.contact-card select, .contact-card textarea { width: 100%; border: 1px solid rgba(31, 168, 219, .56); border-radius: 18px; color: white; background: rgba(0, 35, 60, .58); font-size: 18px; }
-.contact-card select { min-height: 66px; padding: 0 20px; }
-.contact-card textarea { min-height: 210px; resize: vertical; padding: 20px; line-height: 1.6; }
-.contact-card textarea::placeholder { color: var(--muted); }
-.contact-submit { min-height: 66px; margin-top: 8px; border: 1px solid #17d9f8; border-radius: 18px; color: white; background: rgba(2, 54, 82, .62); font-size: 22px; font-weight: 700; cursor: pointer; }
-.contact-notice { min-height: 0; margin: 0; color: #a8ecf8; font-size: 15px; }
-.contact-notice:not(:empty) { min-height: 24px; }
-.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
-
-@media (min-width: 720px) {
-  .app-shell { max-width: 520px; min-height: calc(100dvh - 32px); margin: 16px auto; border: 1px solid rgba(92, 189, 228, .35); border-radius: 42px; box-shadow: 0 30px 90px rgba(0,0,0,.42); }
-  .screen { min-height: calc(100dvh - 34px); }
-  .text-screen { height: calc(100dvh - 34px); min-height: 0; }
-  .bottom-nav { left: 50%; right: auto; width: 520px; transform: translateX(-50%); bottom: 24px; border-radius: 36px 36px 42px 42px; }
-  .home-screen .bottom-nav { bottom: 0; width: 100%; border-radius: 36px 36px 40px 40px; }
-  .pause-button { bottom: 54px; }
-  .message-composer { margin-bottom: 42px; }
-}
-
-@media (max-width: 390px) {
-  .screen { padding-inline: 18px; }
-  .feature-card { min-height: clamp(150px, 27vh, 214px); }
-  .feature-icon svg { width: 58px; height: 58px; }
-  .mode-card { grid-template-columns: 62px 1fr 24px; padding: 16px; gap: 13px; }
-  .mode-icon { width: 60px; height: 60px; }
-  .howto-card, .contact-card { padding-inline: 17px; }
-  .howto-step { grid-template-columns: 62px 1fr; gap: 15px; padding-inline: 2px; }
-  .howto-icon { width: 58px; height: 58px; }
-  .howto-icon svg { width: 36px; height: 36px; }
-  .faq-question { padding-inline: 17px; }
-  .faq-answer { padding-inline: 18px; }
-  .guide-screen { padding-inline: 14px; }
-  .guide-screen .bottom-nav { margin-inline: -14px; }
-  .transfer-banner { inset-inline: 8px; gap: 5px; padding-inline: 7px; }
-  .line-badge { width: 30px; height: 30px; flex-basis: 30px; font-size: 20px; }
-  .line-name { font-size: 12px; }
-  .line-name small, .transfer-label small { font-size: 9px; }
-  .transfer-arrow { font-size: 22px; }
-  .transfer-label { gap: 3px; padding-left: 5px; font-size: 10px; }
-  .transfer-label svg { width: 21px; height: 21px; }
-  .bubble { width: min(90%, 460px); padding: 12px 15px; }
-}
-
-@media (max-width: 430px) {
-  .large-input input { font-size: 22px; }
-  .howto-card { padding-inline: 12px; }
-  .account-card { padding: 20px 16px; }
-  .account-card h2 { margin-bottom: 17px; font-size: clamp(22px, 6vw, 26px); }
-  .account-input { min-height: 56px; gap: 12px; padding-inline: 14px; border-radius: 16px; }
-  .account-input svg { width: 22px; height: 22px; flex: 0 0 auto; }
-  .account-input input { font-size: 16px; }
-  .primary-button { min-height: 56px; border-radius: 15px; font-size: 18px; }
-  .howto-step { min-height: 0; grid-template-columns: 46px minmax(0, 1fr); gap: 10px; padding: 18px 4px; }
-  .howto-icon { width: 46px; height: 46px; }
-  .howto-icon svg { width: 30px; height: 30px; }
-  .howto-step h2 { margin-bottom: 8px; font-size: 20px; }
-  .howto-step p { font-size: clamp(13px, 3.5vw, 15px); line-height: 1.6; }
-  .social-grid { gap: 6px; margin-top: 16px; }
-  .social-grid button { min-height: 56px; gap: 5px; font-size: clamp(12px, 3.6vw, 15px); }
-  .social-grid b { font-size: 18px; }
-  .email-signup { margin-top: 18px; padding-top: 18px; font-size: 15px; }
-  .mode-card { grid-template-columns: 56px minmax(0, 1fr) 22px; gap: 12px; min-height: 100px; padding: 14px 16px; }
-  .mode-icon { width: 54px; height: 54px; }
-  .mode-copy { gap: 6px; }
-  .mode-copy strong { font-size: 20px; line-height: 1.25; }
-  .mode-copy small { font-size: clamp(12px, 3.8vw, 15px); line-height: 1.3; letter-spacing: -.025em; white-space: nowrap; }
-  .mode-card > svg { width: 24px; height: 24px; }
-}
-
-
-
-
-
-/* Preserve the route as context when there is no trustworthy photograph at a junction. */
-.walk-preview-open.walk-preview-map-fallback .naver-map { visibility: visible; }
-.walk-preview-map-fallback .walk-preview-scene { background: transparent; }
+YªçŠx-®éÜj×¢ëiºÚ+Š§j[h‘éÜ¢éí×Žuá:-jZ.¶›­–)Þ³S§&ö÷B°Ð¢föçBÖfÖ–Ç“¢&WFVæF&BÂ$æ÷Fò6ç2µ""Â$ÆR4Bv÷F†–2æVò"Â7—7FVÒ×V’Â6ç2×6W&–c°Ð¢6öÆ÷#¢6cvf&fc°Ð¢&6¶w&÷VæC¢3C#c°Ð¢föçB×7–çF†W6—3¢æöæS°Ð¢ÒÖ&r×F÷¢3&3FC°Ð¢ÒÖ&s¢333C°Ð¢ÒÖ&rÖFVW¢3C#c°Ð¢ÒÖ7–ã¢3#Cffc°Ð¢ÒÖÆ–æS¢&v&ƒ3RÂ#"Â#SRÂãc"“°Ð¢ÒÖ×WFVC¢6–3vSS°Ð¢Ò×7W&f6S¢&v&ƒBÂCBÂsBÂãc"“°Ð§ÐÐ Ð¢¢²&÷‚×6—¦–æs¢&÷&FW"Ö&÷ƒ²ÐÐ¦‡FÖÂÂ&öG’Â7&ö÷B²v–GFƒ¢S²Ö–âÖ†V–v‡C¢S²Ö&v–ã¢²ÐÐ¦'WGFöâÂ–çWB²föçC¢–æ†W&—C²ÐÐ¦'WGFöâ²6öÆ÷#¢–æ†W&—C²ÐÐ¦'WGFöã¦fö7W2×f—6–&ÆRÂ–çWC¦fö7W2×f—6–&ÆRÂFW‡F&V¦fö7W2×f—6–&ÆRÂ6VÆV7C¦fö7W2×f—6–&ÆR°Ð¢÷WFÆ–æS¢'‚6öÆ–Bf"‚ÒÖ7–â“°Ð¢÷WFÆ–æRÖöfg6WC¢7ƒ°Ð§ÐÐ Ð¦&öG’°Ð¢Ö–â×v–GFƒ¢3#ƒ°Ð¢Ö–âÖ†V–v‡C¢fƒ°Ð¢&6¶w&÷VæC Ð¢&F–ÂÖw&F–VçB†6—&6ÆRBs‚R#RÂ&v&ƒÂSbÂ##bÂã#"’ÂG&ç7&VçB3R’ÀÐ¢Æ–æV"Öw&F–VçBƒCVFVrÂ3bÂ3&SFBC‚RÂ3S#"“°Ð§ÐÐ Ð¢æ×6†VÆÂ°Ð¢÷6—F–öã¢&VÆF—fS°Ð¢v–GFƒ¢S°Ð¢Ö–âÖ†V–v‡C¢Gfƒ°Ð¢Ö&v–ã¢WFó°Ð¢÷fW&fÆ÷s¢†–FFVã°Ð¢&6¶w&÷VæC¢Æ–æV"Öw&F–VçBƒSFVrÂf"‚ÒÖ&r×F÷’RÂf"‚ÒÖ&r’C2RÂf"‚ÒÖ&rÖFVW’R“°Ð§ÐÐ Ð¢ç67&VVâ²÷6—F–öã¢&VÆF—fS²Ö–âÖ†V–v‡C¢Gfƒ²FF–æs¢Ö‚ƒ#‡‚ÂVçb‡6fRÖ&VÖ–ç6WB×F÷’’#G‚6Æ2ƒ‚²Vçb‡6fRÖ&VÖ–ç6WBÖ&÷GFöÒ’“²ÐÐ¢ç67&VVã£¦&Vf÷&R²6öçFVçC¢"#²÷6—F–öã¢f—†VC²–ç6WC¢²ö–çFW"ÖWfVçG3¢æöæS²&6¶w&÷VæC¢&F–ÂÖw&F–VçB†6—&6ÆRBsRR3RÂ&v&ƒÂs2Â#3Âã"’ÂG&ç7&VçB3R“²ÐÐ Ð¢æ'&æBÖ&Æö6²²F—7Æ“¢w&–C²§W7F–g’Ö—FV×3¢6VçFW#²FF–ær×F÷¢6Æ×ƒ‡‚ÂGf‚ÂcG‚“²ÐÐ¢æ'&æBÖÖ&²²F—7Æ“¢&Æö6³²v–GFƒ¢6Æ×ƒ#G‚Â#f‚Â“'‚“²†V–v‡C¢WFó²÷fW&fÆ÷s¢f—6–&ÆS²f–ÇFW#¢G&÷×6†F÷rƒ7‚&v&ƒÂ#CRÂ#SÂã#"’“²ÐÐ¢æ'&æBÖ&Æö6²ƒ²Ö&v–ã¢‡‚²föçB×6—¦S¢6Æ×ƒ#w‚ÂWf‚ÂC‚“²Æ–æRÖ†V–v‡C¢²ÆWGFW"×76–æs¢Òã#VVÓ²ÐÐ Ð¢æFW7F–æF–öâ×6V&6‚²v–GFƒ¢S²†V–v‡C¢cgƒ²F—7Æ“¢fÆWƒ²Æ–vâÖ—FV×3¢6VçFW#²v¢Gƒ²Ö&v–ã¢6Æ×ƒ#'‚ÂBãWf‚ÂS‡‚’WFò²FF–æs¢w‚—‚w‚#ƒ²&÷&FW#¢ãW‚6öÆ–Bf"‚ÒÖÆ–æR“²&÷&FW"×&F—W3¢Cƒ²&6¶w&÷VæC¢&v&ƒÂ3ÂSbÂãC"“²Ö‚×v–GFƒ¢c#ƒ²FW‡BÖÆ–vã¢ÆVgC²7W'6÷#¢ö–çFW#²ÐÐ¢æFW7F–æF–öâ×&ö×B²Ö–â×v–GFƒ¢²fÆWƒ¢²6öÆ÷#¢f"‚ÒÖ×WFVB“²föçB×6—¦S¢6Æ×ƒ#‚ÂWgrÂ#‡‚“²ÐÐ¦–çWC£§Æ6V†öÆFW"²6öÆ÷#¢f"‚ÒÖ×WFVB“²÷6—G“¢²ÐÐ¢ç6V&6‚Ö'&÷r²F—7Æ“¢w&–C²Æ6RÖ—FV×3¢6VçFW#²v–GFƒ¢Sƒ²†V–v‡C¢Sƒ²fÆWƒ¢Sƒ²FF–æs¢²&÷&FW#¢²&÷&FW"×&F—W3¢SS²&6¶w&÷VæC¢Æ–æV"Öw&F–VçBƒ3VFVrÂ3†f6RÂ3#vf‚“²7W'6÷#¢ö–çFW#²ÐÐ Ð¢æfVGW&RÖw&–B²F—7Æ“¢w&–C²w&–B×FV×ÆFRÖ6öÇVÖç3¢&WVBƒ"ÂÖ–æÖ‚ƒÂg"’“²v¢Gƒ²Ö‚×v–GFƒ¢c#ƒ²Ö&v–ã¢6Æ×ƒ‡‚Â2ãWf‚Â3‡‚’WFò²ÐÐ¢æfVGW&RÖ6&B²Ö–âÖ†V–v‡C¢6Æ×ƒS‚Â#wf‚Â#C'‚“²F—7Æ“¢fÆWƒ²fÆW‚ÖF—&V7F–öã¢6öÇVÖã²Æ–vâÖ—FV×3¢6VçFW#²§W7F–g’Ö6öçFVçC¢6VçFW#²&÷&FW#¢ã7‚6öÆ–Bf"‚ÒÖÆ–æR“²&÷&FW"×&F—W3¢#Gƒ²&6¶w&÷VæC¢&v&ƒÂ3RÂc2Âã3b“²7W'6÷#¢ö–çFW#²ÐÐ¢æfVGW&RÖ6&C¦7F—fRÂæÖöFRÖ6&C¦7F—fR²G&ç6f÷&Ó¢66ÆR‚ã“ƒR“²ÐÐ¢æfVGW&RÖ–6öâ²6öÆ÷#¢f"‚ÒÖ7–â“²f–ÇFW#¢G&÷×6†F÷rƒ7‚&v&ƒÂ#rÂ#SRÂã#"’“²ÐÐ¢æfVGW&RÖ6&B7G&öær²Ö&v–â×F÷¢wƒ²föçB×6—¦S¢6Æ×ƒ#G‚ÂWgrÂ3'‚“²ÐÐ¢æfVGW&RÖ6&Bâ7ã¦Æ7BÖ6†–ÆB²Ö&v–â×F÷¢wƒ²6öÆ÷#¢f"‚ÒÖ×WFVB“²föçB×6—¦S¢6Æ×ƒg‚Â2ãWgrÂ#‚“²ÐÐ Ð¢æ&÷GFöÒÖæb²÷6—F–öã¢f—†VC²¢Ö–æFWƒ¢²ÆVgC¢²&–v‡C¢²&÷GFöÓ¢²†V–v‡C¢6Æ2ƒ“G‚²Vçb‡6fRÖ&VÖ–ç6WBÖ&÷GFöÒ’“²F—7Æ“¢w&–C²w&–B×FV×ÆFRÖ6öÇVÖç3¢g"g#²FF–ærÖ&÷GFöÓ¢Vçb‡6fRÖ&VÖ–ç6WBÖ&÷GFöÒ“²&÷&FW#¢‚6öÆ–B&v&ƒ#bÂsbÂ##bÂãr“²&÷&FW"Ö&÷GFöÓ¢²&÷&FW"×&F—W3¢C‚C‚²&6¶w&÷VæC¢&v&ƒÂ3ÂSbÂã“R“²&6¶G&÷Öf–ÇFW#¢&ÇW"ƒ‡‚“²ÐÐ¢æ†öÖR×67&VVâæ&÷GFöÒÖæb²÷6—F–öã¢'6öÇWFS²ÐÐ¢ææbÖ—FVÒ²F—7Æ“¢fÆWƒ²fÆW‚ÖF—&V7F–öã¢6öÇVÖã²Æ–vâÖ—FV×3¢6VçFW#²§W7F–g’Ö6öçFVçC¢6VçFW#²v¢Wƒ²&÷&FW#¢²&6¶w&÷VæC¢G&ç7&VçC²6öÆ÷#¢f"‚ÒÖ×WFVB“²7W'6÷#¢ö–çFW#²föçB×6—¦S¢gƒ²ÐÐ¢ææbÖ—FVÒæ7F—fR²6öÆ÷#¢v†—FS²ÐÐ Ð¢çvRÖ†VFW"²÷6—F–öã¢&VÆF—fS²†V–v‡C¢sgƒ²F—7Æ“¢w&–C²w&–B×FV×ÆFRÖ6öÇVÖç3¢C‡‚g"C‡ƒ²Æ–vâÖ—FV×3¢6VçFW#²Ö‚×v–GFƒ¢cƒƒ²Ö&v–ã¢WFó²ÐÐ¢çvRÖ†VFW"ƒ²Ö&v–ã¢²FW‡BÖÆ–vã¢6VçFW#²föçB×6—¦S¢6Æ×ƒ#‡‚ÂwgrÂ3‡‚“²ÐÐ¢æ–6öâÖ'WGFöâ²v–GFƒ¢C‡ƒ²†V–v‡C¢C‡ƒ²F—7Æ“¢w&–C²Æ6RÖ—FV×3¢6VçFW#²&÷&FW#¢²&6¶w&÷VæC¢G&ç7&VçC²7W'6÷#¢ö–çFW#²ÐÐ¢æ†VFW"×76W"²v–GFƒ¢C‡ƒ²ÐÐ¢çvRÖ&öG’²Ö‚×v–GFƒ¢c#ƒ²Ö&v–ã¢sG‚WFò²ÐÐ¢ç&÷WFRÖVçG'’Ö&öG’²Ö&v–â×F÷¢6Æ×ƒSG‚Â‡f‚Â#W‚“²ÐÐ¢æÆ&vRÖ–çWB²F—7Æ“¢fÆWƒ²v–GFƒ¢S²Ö–â×v–GFƒ¢²†V–v‡C¢ƒƒ²FF–æs¢#‡ƒ²&÷&FW#¢ãW‚6öÆ–Bf"‚ÒÖ7–â“²&÷&FW"×&F—W3¢3'ƒ²Æ–vâÖ—FV×3¢6VçFW#²ÐÐ¢ç&÷WFRÖVçG'’Ö&öG’æÆ&vRÖ–çWB²†V–v‡C¢6Æ×ƒS‡‚Âwf‚ÂG‚“²FF–ærÖ–æÆ–æS¢6Æ×ƒ#G‚ÂGgrÂC'‚“²&÷&FW"×&F—W3¢3‡ƒ²&6¶w&÷VæC¢&v&ƒÂ3ÂSbÂã2“²ÐÐ¢æÆ&vRÖ–çWB–çWB²Ö–â×v–GFƒ¢²fÆWƒ¢²&÷&FW#¢²÷WFÆ–æS¢²6öÆ÷#¢v†—FS²&6¶w&÷VæC¢G&ç7&VçC²föçB×6—¦S¢#‡ƒ²FW‡B×6—¦RÖF§W7C¢S²×vV&¶—B×FW‡B×6—¦RÖF§W7C¢S²ÐÐ¢ç&÷WFRÖf÷&Ò²F—7Æ“¢w&–C²v¢‡ƒ²ÐÐ¢ç&÷WFR×fö–6RÖ'WGFöâÂç&÷WFR×FW‡BÖ'WGFöâÂç&÷WFR×7V&Ö—B²v–GFƒ¢C'ƒ²†V–v‡C¢C'ƒ²fÆWƒ¢C'ƒ²F—7Æ“¢w&–C²Æ6RÖ—FV×3¢6VçFW#²FF–æs¢²&÷&FW#¢²&÷&FW"×&F—W3¢SS²6öÆ÷#¢f"‚ÒÖ7–â“²&6¶w&÷VæC¢&v&ƒ‚Â‚ÂSrÂã#B“²7W'6÷#¢ö–çFW#²ÐÐ¢ç&÷WFR×FW‡BÖ'WGFöâ²&6¶w&÷VæC¢G&ç7&VçC²ÐÐ¢ç&÷WFR×FW‡BÖ'WGFöâ7fr²F—7Æ“¢&Æö6³²ÐÐ¢ç&÷WFR×7V&Ö—B²6öÆ÷#¢v†—FS²&6¶w&÷VæC¢Æ–æV"Öw&F–VçBƒ3VFVrÂ3†f6RÂ3#vf‚“²ÐÐ¢ç&÷WFR×7V&Ö—E¶†–FFVåÒ²F—7Æ“¢æöæS²ÐÐ¢çÆ6W2Ö&öG’²Ö&v–â×F÷¢#'ƒ²FF–ærÖ&÷GFöÓ¢'ƒ²ÐÐ¢çÆ6W2×7FGW2²Ö–âÖ†V–v‡C¢CGƒ²Ö&v–ã¢W‚G‚'ƒ²6öÆ÷#¢63vSvcc²föçB×6—¦S¢Wƒ²Æ–æRÖ†V–v‡C¢ãS²ÐÐ¢çÆ6W2ÖÖ²v–GFƒ¢S²†V–v‡C¢6Æ×ƒ#‚Â3'f‚Â3‚“²÷fW&fÆ÷s¢†–FFVã²&÷&FW#¢‚6öÆ–B&v&ƒ3Âc‚Â#’ÂãSR“²&÷&FW"×&F—W3¢#ƒ²&6¶w&÷VæC¢&v&ƒBÂC‚Âs‚Âãb“²ÐÐ¢çÆ6W2×&W7VÇB×7VÖÖ'’²Ö&v–ã¢'‚G‚gƒ²6öÆ÷#¢63vSvcc²föçB×6—¦S¢gƒ²Æ–æRÖ†V–v‡C¢ãS²ÐÐ¢çÆ6W2×&öGf–Wr²Ö&v–ã¢Gƒ²÷fW&fÆ÷s¢†–FFVã²&÷&FW#¢‚6öÆ–B&v&ƒ3Âc‚Â#’ÂãSR“²&÷&FW"×&F—W3¢#ƒ²&6¶w&÷VæC¢&v&ƒ"Â3’ÂcÂã“b“²67&öÆÂÖÖ&v–â×F÷¢'ƒ²ÐÐ¢çÆ6W2×&öGf–Wu¶†–FFVåÒ²F—7Æ“¢æöæS²ÐÐ¢çÆ6W2×&öGf–Wr×f–Wr²v–GFƒ¢S²†V–v‡C¢6Æ×ƒ#S‚ÂC'f‚ÂC#‚“²÷fW&fÆ÷s¢†–FFVã²&6¶w&÷VæC¢3sC&C²ÐÐ¢çÆ6W2×&öGf–WrÖ6öçG&öÇ2²F—7Æ“¢fÆWƒ²Æ–vâÖ—FV×3¢6VçFW#²§W7F–g’Ö6öçFVçC¢76RÖ&WGvVVã²v¢'ƒ²FF–æs¢'‚Gƒ²ÐÐ¢çÆ6W2×&öGf–WrÖ†VF–ær²Ö–â×v–GFƒ¢²F—7Æ“¢w&–C²v¢Gƒ²Ö&v–ã¢²ÐÐ¢çÆ6W2×&öGf–WrÖ†VF–ær7G&öær²föçB×6—¦S¢gƒ²Æ–æRÖ†V–v‡C¢ã3S²÷fW&fÆ÷r×w&¢ç—v†W&S²ÐÐ¢çÆ6W2×&öGf–WrÖ†VF–ær7â²6öÆ÷#¢f"‚ÒÖ×WFVB“²föçB×6—¦S¢'ƒ²Æ–æRÖ†V–v‡C¢ãC²ÐÐ¢çÆ6W2×&öGf–WrÖ6öçG&öÇ2âF—b²fÆWƒ¢WFó²F—7Æ“¢fÆWƒ²v¢wƒ²ÐÐ¢çÆ6W2×&öGf–WrÖ6öçG&öÇ2'WGFöâ²Ö–âÖ†V–v‡C¢3‡ƒ²FF–æs¢g‚ƒ²&÷&FW#¢‚6öÆ–B&v&ƒC’Â#bÂ#SRÂãcR“²&÷&FW"×&F—W3¢'ƒ²6öÆ÷#¢v†—FS²&6¶w&÷VæC¢&v&ƒBÂc’ÂÂã‚“²föçB×6—¦S¢7ƒ²7W'6÷#¢ö–çFW#²v†—FR×76S¢æ÷w&²ÐÐ¢çÆ6W2×&öGf–WrÖ6öçG&öÇ2'WGFöã¦Æ7BÖ6†–ÆB²6öÆ÷#¢3#ƒ63²&6¶w&÷VæC¢f"‚ÒÖ7–â“²ÐÐ¢çÆ6W2ÖÖWFW"Öæ÷FR²Ö&v–ã¢‚G‚‡ƒ²6öÆ÷#¢f"‚ÒÖ×WFVB“²föçB×6—¦S¢'ƒ²ÐÐ¢çÆ6R×&W7VÇG2²F—7Æ“¢w&–C²v¢ƒ²ÐÐ¢çÆ6R×&W7VÇB²v–GFƒ¢S²F—7Æ“¢fÆWƒ²Æ–vâÖ—FV×3¢6VçFW#²§W7F–g’Ö6öçFVçC¢76RÖ&WGvVVã²v¢Gƒ²FF–æs¢gƒ²&÷&FW#¢‚6öÆ–B&v&ƒ3Âc‚Â#’ÂãC‚“²&÷&FW"×&F—W3¢‡ƒ²6öÆ÷#¢v†—FS²&6¶w&÷VæC¢&v&ƒBÂC‚Âs‚ÂãR“²FW‡BÖÆ–vã¢ÆVgC²7W'6÷#¢ö–çFW#²ÐÐ¢çÆ6R×&W7VÇC¦7F—fR²&÷&FW"Ö6öÆ÷#¢f"‚ÒÖ7–â“²&6¶w&÷VæC¢&v&ƒrÂƒRÂ#Âãc"“²ÐÐ¢çÆ6R×&W7VÇBÖÖ–â²Ö–â×v–GFƒ¢²F—7Æ“¢w&–C²v¢Wƒ²ÐÐ¢çÆ6R×&W7VÇBÖÖ–â7G&öær²föçB×6—¦S¢‡ƒ²Æ–æRÖ†V–v‡C¢ã3S²ÐÐ¢çÆ6R×&W7VÇBÖÖ–â6ÖÆÂÂçÆ6R×&W7VÇBÖÖ–ââ7â²6öÆ÷#¢f"‚ÒÖ×WFVB“²föçB×6—¦S¢7ƒ²Æ–æRÖ†V–v‡C¢ãC²÷fW&fÆ÷r×w&¢ç—v†W&S²ÐÐ¢çÆ6R×&W7VÇBÖF—7Fæ6R²fÆWƒ¢WFó²F—7Æ“¢w&–C²§W7F–g’Ö—FV×3¢VæC²v¢Gƒ²6öÆ÷#¢f"‚ÒÖ7–â“²ÐÐ¢çÆ6R×&W7VÇBÖF—7Fæ6R7G&öær²föçB×6—¦S¢—ƒ²ÐÐ¢çÆ6R×&W7VÇBÖF—7Fæ6R6ÖÆÂ²6öÆ÷#¢f"‚ÒÖ×WFVB“²föçB×6—¦S¢7ƒ²ÐÐ¢çÆ6W2ÖV×G’²FF–æs¢#'‚‡ƒ²&÷&FW#¢‚F6†VB&v&ƒ3Âc‚Â#’ÂãR“²&÷&FW"×&F—W3¢‡ƒ²6öÆ÷#¢f"‚ÒÖ×WFVB“²FW‡BÖÆ–vã¢6VçFW#²Æ–æRÖ†V–v‡C¢ãSS²ÐÐ¢çÆ6W2×&WG'’²v–GFƒ¢S²Ö–âÖ†V–v‡C¢S'ƒ²Ö&v–â×F÷¢Gƒ²&÷&FW#¢‚6öÆ–Bf"‚ÒÖ7–â“²&÷&FW"×&F—W3¢gƒ²6öÆ÷#¢v†—FS²&6¶w&÷VæC¢&v&ƒBÂc2Â“’Âã‚“²föçB×6—¦S¢wƒ²7W'6÷#¢ö–çFW#²ÐÐ¢çfö–6R×6V&6‚Ö÷fW&Æ’²÷6—F–öã¢f—†VC²¢Ö–æFWƒ¢3²–ç6WC¢²F—7Æ“¢w&–C²Æ6RÖ—FV×3¢6VçFW#²FF–æs¢#Gƒ²&6¶w&÷VæC¢&v&ƒÂ’Â#2Âãsb“²ÐÐ¢çfö–6R×6V&6‚ÖF–Æör²÷6—F–öã¢&VÆF—fS²v–GFƒ¢Ö–âƒRÂC#‚“²FF–æs¢C'‚#G‚#‡ƒ²&÷&FW#¢‚6öÆ–Bf"‚ÒÖÆ–æR“²&÷&FW"×&F—W3¢3ƒ²&6¶w&÷VæC¢Æ–æV"Öw&F–VçBƒSFVrÂ33#SÂ3#3"“²FW‡BÖÆ–vã¢6VçFW#²&÷‚×6†F÷s¢#‚s‚&v&ƒÂÂÂãB“²ÐÐ¢çfö–6R×6V&6‚Ö6Æ÷6R²÷6—F–öã¢'6öÇWFS²F÷¢'ƒ²&–v‡C¢‡ƒ²&÷&FW#¢²&6¶w&÷VæC¢G&ç7&VçC²6öÆ÷#¢f"‚ÒÖ×WFVB“²föçB×6—¦S¢3'ƒ²Æ–æRÖ†V–v‡C¢²7W'6÷#¢ö–çFW#²ÐÐ¢çfö–6R×6V&6‚ÖÖ–2²v–GFƒ¢“Gƒ²†V–v‡C¢“Gƒ²F—7Æ“¢w&–C²Æ6RÖ—FV×3¢6VçFW#²Ö&v–ã¢WFò#ƒ²&÷&FW#¢‚6öÆ–Bf"‚ÒÖÆ–æR“²&÷&FW"×&F—W3¢SS²6öÆ÷#¢f"‚ÒÖ7–â“²&6¶w&÷VæC¢&v&ƒ2Â#RÂcÂã#2“²ÐÐ¢çfö–6R×6V&6‚ÖÖ–2æÆ—7FVæ–ær²æ–ÖF–öã¢Ö–2×VÇ6RãW2V6RÖ–âÖ÷WB–æf–æ—FS²ÐÐ¢çfö–6R×6V&6‚ÖF–Æörƒ"²Ö&v–ã¢²föçB×6—¦S¢#‡ƒ²ÐÐ¢çfö–6R×6V&6‚ÖF–Æör²Ö–âÖ†V–v‡C¢C‡ƒ²Ö&v–ã¢W‚²6öÆ÷#¢f"‚ÒÖ×WFVB“²föçB×6—¦S¢wƒ²Æ–æRÖ†V–v‡C¢ãC²ÐÐ¢çfö–6R×6V&6‚Ö7F–öç2²F—7Æ“¢fÆWƒ²§W7F–g’Ö6öçFVçC¢6VçFW#²v¢ƒ²Ö&v–â×F÷¢‡ƒ²ÐÐ¢çfö–6R×6V&6‚Ö7F–öç2'WGFöâ²Ö–âÖ†V–v‡C¢CGƒ²FF–æs¢Gƒ²&÷&FW#¢‚6öÆ–Bf"‚ÒÖÆ–æR“²&÷&FW"×&F—W3¢gƒ²&6¶w&÷VæC¢&v&ƒBÂc2Â“’Âã‚“²7W'6÷#¢ö–çFW#²ÐÐ¢çfö–6R×6V&6‚Ö7F–öç2'WGFöã¦f—'7BÖ6†–ÆB²6öÆ÷#¢3#3#²&6¶w&÷VæC¢f"‚ÒÖ7–â“²ÐÐ¤¶W–g&ÖW2Ö–2×VÇ6R²SR²&÷‚×6†F÷s¢'‚&v&ƒ32Â#BÂ#SRÂã“²ÒÐÐ¢ç&÷WFR×7F'B²Ö–âÖ†V–v‡C¢S‡ƒ²F—7Æ“¢fÆWƒ²Æ–vâÖ—FV×3¢6VçFW#²§W7F–g’Ö6öçFVçC¢6VçFW#²v¢ƒ²&÷&FW#¢‚6öÆ–B&v&ƒ3‚Â#bÂ#SRÂã‚“²&÷&FW"×&F—W3¢#ƒ²6öÆ÷#¢v†—FS²&6¶w&÷VæC¢Æ–æV"Öw&F–VçBƒ3VFVrÂ3s†&#RÂ3cS#v"“²7W'6÷#¢ö–çFW#²föçB×vV–v‡C¢s²föçB×6—¦S¢—ƒ²ÐÐ Ð¢çG&ç6ÆF–öâÖ&öG’²Ö&v–â×F÷¢Cgƒ²ÐÐ¢æÆæwVvR×&÷r²v–GFƒ¢S²Ö–âÖ†V–v‡C¢ƒGƒ²F—7Æ“¢fÆWƒ²Æ–vâÖ—FV×3¢6VçFW#²§W7F–g’Ö6öçFVçC¢76RÖ&WGvVVã²FF–æs¢#Gƒ²&÷&FW#¢‚6öÆ–B&v&ƒ3Âc‚Â#’ÂãC‚“²&÷&FW"×&F—W3¢—ƒ²&6¶w&÷VæC¢&v&ƒRÂC‚Âs’ÂãSb“²7W'6÷#¢ö–çFW#²ÐÐ¢æÆæwVvR×&÷r7G&öær²föçB×6—¦S¢#Wƒ²ÐÐ¢æÆæwVvR×&÷r7â²F—7Æ“¢fÆWƒ²Æ–vâÖ—FV×3¢6VçFW#²v¢ƒ²6öÆ÷#¢63&CvV²föçB×6—¦S¢#ƒ²ÐÐ¢ç7W÷'F–ærÖ6÷’²Ö&v–ã¢g‚'‚cƒ²6öÆ÷#¢f"‚ÒÖ×WFVB“²föçB×6—¦S¢wƒ²ÐÐ¢çG&ç6ÆF–öâÖ&öG’ƒ"²Ö&v–ã¢#G‚Gƒ²föçB×6—¦S¢#wƒ²ÐÐ¢æÖöFRÖ6&B²v–GFƒ¢S²Ö–âÖ†V–v‡C¢#Gƒ²F—7Æ“¢w&–C²w&–B×FV×ÆFRÖ6öÇVÖç3¢s'‚g"3ƒ²v¢‡ƒ²Æ–vâÖ—FV×3¢6VçFW#²Ö&v–âÖ&÷GFöÓ¢Gƒ²FF–æs¢#‚#'ƒ²&÷&FW#¢‚6öÆ–B&v&ƒ3Âc‚Â#’ÂãSR“²&÷&FW"×&F—W3¢—ƒ²&6¶w&÷VæC¢&v&ƒBÂC2Âs"ÂãSB“²FW‡BÖÆ–vã¢ÆVgC²7W'6÷#¢ö–çFW#²ÐÐ¢æÖöFRÖ–6öâ²v–GFƒ¢c‡ƒ²†V–v‡C¢c‡ƒ²F—7Æ“¢w&–C²Æ6RÖ—FV×3¢6VçFW#²&÷&FW#¢‚6öÆ–B&v&ƒ3"ÂsÂ#’Âã#‚“²&÷&FW"×&F—W3¢wƒ²6öÆ÷#¢3C&Cvfc²&6¶w&÷VæC¢&v&ƒ’ÂsrÂÂãS‚“²ÐÐ¢æÖöFRÖ6÷’²Ö–â×v–GFƒ¢²F—7Æ“¢fÆWƒ²fÆW‚ÖF—&V7F–öã¢6öÇVÖã²v¢‡ƒ²ÐÐ¢æÖöFRÖ6÷’7G&öær²föçB×6—¦S¢#Gƒ²föçB×vV–v‡C¢c²ÐÐ¢æÖöFRÖ6÷’6ÖÆÂ²6öÆ÷#¢f"‚ÒÖ×WFVB“²föçB×6—¦S¢wƒ²ÐÐ¢æÖöFRÖ6&Bâ7fr²6öÆ÷#¢3†V#†F#²ÐÐ¢æ6öçfW'6F–öâÖ'&æB×&÷r²†V–v‡C¢C'ƒ²F—7Æ“¢w&–C²Æ6RÖ—FV×3¢6VçFW#²ÐÐ¢æ6öçfW'6F–öâÖ'&æB×&÷r7G&öær²FF–æs¢w‚#'ƒ²&÷&FW"×&F—W3¢#Gƒ²6öÆ÷#¢v†—FS²&6¶w&÷VæC¢3#c#²föçB×6—¦S¢gƒ²ÆWGFW"×76–æs¢ã6VÓ²ÐÐ¢æ6öçfW'6F–öâ×F—FÆR²†V–v‡C¢S‡ƒ²ÐÐ¢æwV–FR×67&VVâ²FF–ærÖ–æÆ–æS¢#ƒ²FF–ærÖ&÷GFöÓ¢#‡ƒ²ÐÐ¢æwV–FR×67&VVâæ&÷GFöÒÖæb²÷6—F–öã¢&VÆF—fS²¢Ö–æFWƒ¢²ÆVgC¢WFó²&–v‡C¢WFó²&÷GFöÓ¢WFó²v–GFƒ¢WFó²G&ç6f÷&Ó¢æöæS²Ö&v–ã¢#‡‚Ó#‚Ó#‡ƒ²&÷.¹×‹h‘éì¶»§q«^uÚ]NÈ˜XÚÙÜ›Ý[™ˆ˜[œÜ\™[È›Û\Ú^™NˆÈ›Û]ÙZYÚˆŒÈ[™KZZYÚˆNÈÝ\œÛÜŽˆÚ[\ŽÈCB‹›Y[K[\ÝÈ›Ü™\‹]Üˆ\ÛÛY™Ø˜JN‹Œ‹
+NÈCB‹›Y[K[\Ý]ÛˆÈÚYˆL	NÈZ[‹ZZYÚˆÈ\Ü^NˆÜšYÈÜšY][\]KXÛÛ[[œÎˆÌZ[›X^
+YœŠHŒÈ[YÛ‹Z][\ÎˆÙ[\ŽÈØ\ˆLÈ›Ü™\ŽˆÈ›Ü™\‹X›ÝÛNˆ\ÛÛY™Ø˜JN‹Œ‹ŒÍŠNÈÛÛÜŽˆÚ]NÈ˜XÚÙÜ›Ý[™ˆ˜[œÜ\™[È^X[YÛŽˆYÈÝ\œÛÜŽˆÚ[\ŽÈCB‹›Y[K[\Ý]ÛˆˆÜ[ˆÈÛÛÜŽˆÌM™LÙÈCB‹›Y[K[\ÝÝ›Û™ÈÈ›Û\Ú^™NˆÛ[\
+LœËËN
+NÈ]\‹\ÜXÚ[™ÎˆKŒY[NÈÚ]K\ÜXÙNˆ›ÝÜ˜\ÈCB‹˜XØÛÝ[X›ÙHÈ\Ü^NˆÜšYÈØ\ˆŒÈZ[‹]ÚYˆÈX\™Ú[‹]ÜˆÍÈCB‹˜XØÛÝ[[›ÝXÙHÈX\™Ú[ŽˆÈÛÛÜŽˆØNXÙŽÈ›Û\Ú^™NˆM\È[™KZZYÚˆKNÈCB‹˜XØÛÝ[XØ\™ÈÚYˆL	NÈZ[‹]ÚYˆÈY[™Îˆ\ŒœÈ›Ü™\Žˆ\ÛÛY™Ø˜JÌKMŽŒNKJNÈ›Ü™\‹\˜Y]\ÎˆŒœÈ˜XÚÙÜ›Ý[™ˆ™Ø˜JËKÍJNÈCB‹˜XØÛÝ[XØ\™ˆÈX\™Ú[ŽˆŒÜÈ›Û\Ú^™NˆŽÈCB‹˜XØÛÝ[XØ\™ˆÈÛÛÜŽˆ˜\ŠK[]]Y
+NÈCB‹˜XØÛÝ[Z[œ]ÈZ[‹ZZYÚˆÈ\Ü^Nˆ›^È[YÛ‹Z][\ÎˆÙ[\ŽÈØ\ˆMœÈX\™Ú[ŽˆLœÈY[™ÎˆN\È›Ü™\Žˆ\ÛÛY™Ø˜JLN‹ŒMË
+NÈ›Ü™\‹\˜Y]\ÎˆNÈÛÛÜŽˆ˜\ŠK[]]Y
+NÈCB‹˜XØÛÝ[Z[œ][œ]ÈZ[‹]ÚYˆÈ›^ˆNÈ›Ü™\ŽˆÈÝ][™NˆÈÛÛÜŽˆÚ]NÈ˜XÚÙÜ›Ý[™ˆ˜[œÜ\™[È›Û\Ú^™NˆNÈCB‹œš[X\žKX]ÛˆÈÚYˆL	NÈZ[‹ZZYÚˆŒœÈX\™Ú[‹]ÜˆLÜÈ›Ü™\ŽˆÈ›Ü™\‹\˜Y]\ÎˆMÜÈÛÛÜŽˆÚ]NÈ˜XÚÙÜ›Ý[™ˆ[™X\‹YÜ˜YY[
+LÍYYËÌLØX™ÌÎXÊNÈ›Û\Ú^™NˆŒÈ›Û]ÙZYÚˆÌÈÝ\œÛÜŽˆÚ[\ŽÈCB‹œÛØÚX[YÜšYÈ\Ü^NˆÜšYÈÜšY][\]KXÛÛ[[œÎˆ™\X]
+ËZ[›X^
+YœŠJNÈØ\ˆLÈZ[‹]ÚYˆÈX\™Ú[‹]ÜˆŒÈCB‹œÛØÚX[YÜšY]ÛˆÈZ[‹]ÚYˆÈZ[‹ZZYÚˆŒœÈ\Ü^Nˆ›^È[YÛ‹Z][\ÎˆÙ[\ŽÈ\ÝYžKXÛÛ[ˆÙ[\ŽÈØ\ˆ\ÈY[™ËZ[›[™NˆÈ›Ü™\Žˆ\ÛÛY™Ø˜JLN‹ŒMË
+NÈ›Ü™\‹\˜Y]\ÎˆMœÈ˜XÚÙÜ›Ý[™ˆ™Ø˜J‹ÍKNK
+NÈÝ\œÛÜŽˆÚ[\ŽÈÚ]K\ÜXÙNˆ›ÝÜ˜\ÈCB‹œÛØÚX[YÜšYˆÈ›Û\Ú^™NˆŒÈCB‹™ÛÛÙÛK[X\šÈÈÛÛÜŽˆÍMXLÙ™ŽÈK›˜]™\‹[X\šÈÈÛÛÜŽˆÌYMXÎÈCB‹™[XZ[\ÚYÛ\ÈÚYˆL	NÈ\Ü^Nˆ›^È\ÝYžKXÛÛ[ˆÙ[\ŽÈ[YÛ‹Z][\ÎˆÙ[\ŽÈØ\ˆ\ÈX\™Ú[‹]ÜˆŒœÈY[™Ë]ÜˆŒœÈ›Ü™\ŽˆÈ›Ü™\‹]Üˆ\ÛÛY™Ø˜JLN‹ŒMËŒÎ
+NÈÛÛÜŽˆÌNLYŒÈ˜XÚÙÜ›Ý[™ˆ˜[œÜ\™[ÈÝ\œÛÜŽˆÚ[\ŽÈ›Û\Ú^™NˆMÜÈCB‹›[™ÝXYÙKX›ÙHÈX\™Ú[‹]ÜˆÈCB‹œÙ][™Ë\›ÝÈÈÚYˆL	NÈZ[‹ZZYÚˆLÈ\Ü^Nˆ›^È[YÛ‹Z][\ÎˆÙ[\ŽÈ\ÝYžKXÛÛ[ˆÜXÙKX™]ÙY[ŽÈY[™ÎˆÈ›Ü™\Žˆ\ÛÛY™Ø˜JÌKMŽŒNKJNÈ›Ü™\‹\˜Y]\ÎˆŒœÈ˜XÚÙÜ›Ý[™ˆ™Ø˜JÎJNÈÝ\œÛÜŽˆÚ[\ŽÈCB‹œÙ][™Ë\›ÝÈÝ›Û™ÈÈ›Û\Ú^™NˆÈKœÙ][™Ë\›ÝÈÜ[ˆÈ\Ü^Nˆ›^È[YÛ‹Z][\ÎˆÙ[\ŽÈØ\ˆÈÛÛÜŽˆ˜\ŠK[]]Y
+NÈ›Û\Ú^™NˆŒÈCB‹›[™ÝXYÙK[\Ý›\ÝXØ\™ÈÝ™\™›ÝÎˆY[ŽÈX\™Ú[‹]ÜˆœÈ›Ü™\Žˆ\ÛÛY™Ø˜JÌKMŽŒNKJNÈ›Ü™\‹\˜Y]\ÎˆŒœÈ˜XÚÙÜ›Ý[™ˆ™Ø˜JÎJNÈCB‹›[™ÝXYÙK\XÚÙ\‹X›ÙHÈX\™Ú[‹]ÜˆÍœÈCB‹›[™ÝXYÙK\ÙX\˜ÚÈ\Ü^Nˆ›ØÚÎÈCB‹›[™ÝXYÙK\ÙX\˜Ú[œ]ÈÚYˆL	NÈZ[‹ZZYÚˆNÈY[™ÎˆNÈ›Ü™\Žˆ\ÛÛY™Ø˜JÌKMŽŒNKMJNÈ›Ü™\‹\˜Y]\ÎˆMÜÈÝ][™NˆÈÛÛÜŽˆÚ]NÈ˜XÚÙÜ›Ý[™ˆ™Ø˜JÌKM‹MJNÈ›Û\Ú^™NˆNÈCB‹›[™ÝXYÙK[ØY[™ÈÈZ[‹ZZYÚˆŒœÈX\™Ú[ŽˆLœÈÛÛÜŽˆ˜\ŠK[]]Y
+NÈ›Û\Ú^™NˆMÈCB‹›[™ÝXYÙK\XÚÙ\‹X›ÙH›[™ÝXYÙK[\ÝÈX^ZZYÚˆØ[ÊLšHÌ
+NÈX\™Ú[‹]ÜˆÈÝ™\™›ÝË^Nˆ]]ÎÈCB‹›[™ÝXYÙKY[\HÈX\™Ú[ŽˆÈY[™ÎˆŒÈÛÛÜŽˆ˜\ŠK[]]Y
+NÈCB‹›[™ÝXYÙK[\Ý]Û‹›\ÝXØ\™]ÛˆÈÚYˆL	NÈZ[‹ZZYÚˆÌœÈ\Ü^Nˆ›^È[YÛ‹Z][\ÎˆÙ[\ŽÈ\ÝYžKXÛÛ[ˆÜXÙKX™]ÙY[ŽÈY[™ÎˆÈ›Ü™\ŽˆÈ›Ü™\‹X›ÝÛNˆ\ÛÛY™Ø˜JLN‹ŒMËŒŽ
+NÈÛÛÜŽˆÚ]NÈ˜XÚÙÜ›Ý[™ˆ˜[œÜ\™[ÈÝ\œÛÜŽˆÚ[\ŽÈ›Û\Ú^™NˆŒ\È^X[YÛŽˆYÈCB‹›[™ÝXYÙK[\Ý]ÛŽ›\ÝXÚ[›\ÝXØ\™]ÛŽ›\ÝXÚ[È›Ü™\‹X›ÝÛNˆÈCB‹›[™ÝXYÙK[\Ý]ÛŽ™š\œÝXÚ[Ý™ÈÈÛÛÜŽˆÌNMÈCB‹›[™ÝXYÙK[\Ý]Û–Ø\šXK\™\ÜÙYHYH—HÝ™ÈÈÛÛÜŽˆÌNMÈCB‹›\ÝXØ\™ÈX\™Ú[‹]ÜˆÎÈCB‹›\ÝXØ\™]ÛˆÈZ[‹ZZYÚˆÈ›Û\Ú^™NˆŒÜÈCB‹›\ÝXØ\™[HÈÛÛÜŽˆ˜\ŠK[]]Y
+NÈ›Û\Ý[Nˆ›Ü›X[È›Û\Ú^™NˆN\ÈCB‹œÙ\šXÙKX›ÙHÈX\™Ú[‹]ÜˆœÈCB‹œÙ\šXÙKX›ÙHˆ\XÛHÈY[™ÎˆŽ\È›Ü™\Žˆ\ÛÛY™Ø˜JÌKMŽŒNKJNÈ›Ü™\‹\˜Y]\ÎˆŒœÈ˜XÚÙÜ›Ý[™ˆ™Ø˜JÎJNÈCB‹œÙ\šXÙKX›ÙH\XÛHˆÈX\™Ú[ŽˆÈ›Û\Ú^™NˆÌÈKœÙ\šXÙKX›ÙH\XÛHÈX\™Ú[ŽˆLœÈÛÛÜŽˆ˜\ŠK[]]Y
+NÈ›Û\Ú^™NˆN\ÈCB‹œÙ\šXÙKX›ÙH›\ÝXØ\™ÈX\™Ú[‹]ÜˆŒÈCB‹š[™›ËXÛÜHÈY[™ÎˆÈ›Ü™\Žˆ\ÛÛY™Ø˜JÌKMŽŒNKJNÈ›Ü™\‹\˜Y]\ÎˆŒœÈÛÛÜŽˆÙYNYNÈ˜XÚÙÜ›Ý[™ˆ™Ø˜JÎŠNÈ›Û\Ú^™NˆNÈ[™KZZYÚˆKÍNÈCB‹™\œÚ[Û‹XØ\™ÈX\™Ú[‹]ÜˆœÈY[™ÎˆŽÈ›Ü™\Žˆ\ÛÛY™Ø˜JÌKMŽŒNKLŠNÈ›Ü™\‹\˜Y]\ÎˆŒœÈÛÛÜŽˆ˜\ŠK[]]Y
+NÈ˜XÚÙÜ›Ý[™ˆ™Ø˜JÎ
+NÈ›Û\Ú^™NˆŒÈCB‹™\œÚ[Û‹XØ\™ÈX\™Ú[ŽˆNÈCB‹™\œÚ[Û‹XØ\™™š\œÝXÚ[È›Û\Ú^™NˆÈCB‹™\œÚ[Û‹XØ\™ˆÈ›Ü™\ŽˆÈ›Ü™\‹]Üˆ\ÛÛY™Ø˜JÌKMŽŒNK
+NÈCB‹›YØ[X›ÙHÈX\™Ú[‹]ÜˆÌœÈY[™ËZ[›[™NˆÈÛÛÜŽˆÙÙMŒŽÈCB‹›YØ[X›ÙH\XÛHÈY[™ÎˆŒ\È›Ü™\‹X›ÝÛNˆ\ÛÛY™Ø˜JÌKMŽŒNKŠNÈCB‹›YØ[X›ÙH\XÛN™š\œÝXÚ[ÈY[™Ë]ÜˆÈCB‹›YØ[X›ÙH\XÛN›\ÝXÚ[È›Ü™\‹X›ÝÛNˆÈCB‹›YØ[X›ÙHˆÈX\™Ú[ŽˆLÈÛÛÜŽˆÚ]NÈ›Û\Ú^™NˆŒœÈCB‹›YØ[X›ÙHÈX\™Ú[ŽˆÈ›Û\Ú^™NˆNÈ[™KZZYÚˆKÍNÈÚ]K\ÜXÙNˆ›Ü›X[ÈÝ™\™›ÝË]Ü˜\ˆ[ž]Ú\™NÈCB‹šÝÝËXØ\™ÈX\™Ú[‹]ÜˆÍœÈY[™ÎˆÈ›Ü™\Žˆ\ÛÛY™Ø˜JÌKMŽŒNKMJNÈ›Ü™\‹\˜Y]\ÎˆŒÜÈ˜XÚÙÜ›Ý[™ˆ™Ø˜JÎŠNÈCB‹šÝÝË\Ý\ÈZ[‹ZZYÚˆMœÈ\Ü^NˆÜšYÈÜšY][\]KXÛÛ[[œÎˆœYœŽÈØ\ˆŒœÈ[YÛ‹Z][\ÎˆÙ[\ŽÈY[™ÎˆÈ›Ü™\‹X›ÝÛNˆ\ÛÛY™Ø˜JÌKMŽŒNKŒÎ
+NÈCB‹šÝÝË\Ý\›\ÝXÚ[È›Ü™\‹X›ÝÛNˆÈCB‹šÝÝËZXÛÛˆÈÚYˆÌœÈZYÚˆÌœÈ\Ü^NˆÜšYÈXÙKZ][\ÎˆÙ[\ŽÈ›Ü™\Žˆ\ÛÛY™Ø˜JÌKMŽŒNKMŠNÈ›Ü™\‹\˜Y]\ÎˆL	NÈÛÛÜŽˆ˜\ŠKXÞX[ŠNÈCB‹šÝÝË\Ý\ˆÈX\™Ú[ŽˆLÜÈ›Û\Ú^™Nˆ\ÈCB‹šÝÝË\Ý\ÈX\™Ú[ŽˆÈÛÛÜŽˆÙYNYNÈ›Û\Ú^™NˆÛ[\
+MœËŒ
+NÈ[™KZZYÚˆKÎÈCB‹™˜\K[\ÝÈ\Ü^NˆÜšYÈØ\ˆLÈX\™Ú[‹]ÜˆÎÈCB‹™˜\KZ][HÈÝ™\™›ÝÎˆY[ŽÈ›Ü™\Žˆ\ÛÛY™Ø˜JÌKMŽŒNKMŠNÈ›Ü™\‹\˜Y]\ÎˆŒ\È˜XÚÙÜ›Ý[™ˆ™Ø˜JÎŠNÈCB‹™˜\KZ][K›Ü[ˆÈ›Ü™\‹XÛÛÜŽˆÌNŽÈ›Þ\ÚYÝÎˆ\™Ø˜JŒM‹ŒLŠNÈCB‹™˜\K\]Y\Ý[ÛˆÈÚYˆL	NÈZ[‹ZZYÚˆÍÈ\Ü^Nˆ›^È[YÛ‹Z][\ÎˆÙ[\ŽÈ\ÝYžKXÛÛ[ˆÜXÙKX™]ÙY[ŽÈØ\ˆLœÈY[™ÎˆMœŒœÈ›Ü™\ŽˆÈÛÛÜŽˆÚ]NÈ˜XÚÙÜ›Ý[™ˆ˜[œÜ\™[È^X[YÛŽˆYÈ›Û\Ú^™NˆÛ[\
+MÜ]ËŒœ
+NÈÝ\œÛÜŽˆÚ[\ŽÈCB‹™˜\K\]Y\Ý[ÛˆÜ[ˆÈZ[‹]ÚYˆÈCB‹™˜\K\]Y\Ý[ÛˆÝ™ÈÈ›^ˆ]]ÎÈÛÛÜŽˆÙN™™ŽÈ˜[œÚ][ÛŽˆ˜[œÙ›Ü›HŒNÈX\ÙKÛÛÜˆŒNÈX\ÙNÈCB‹™˜\KZ][K›Ü[ˆ™˜\K\]Y\Ý[ÛˆÝ™ÈÈÛÛÜŽˆ˜\ŠKXÞX[ŠNÈ˜[œÙ›Ü›Nˆ›Ý]JNLYÊNÈCB‹™˜\KX[œÝÙ\ˆÈX\™Ú[ŽˆÈY[™ÎˆŒŒœÈ›Ü™\‹]Üˆ\ÛÛY™Ø˜JÌKMŽŒNKŒÍŠNÈÛÛÜŽˆÙYNYNÈ›Û\Ú^™NˆÛ[\
+MÜŒËŒ\
+NÈ[™KZZYÚˆKÎÈCB‹™˜\KX[œÝÙ\ˆÝ›Û™ÈÈX\™Ú[‹\šYÚˆÈÛÛÜŽˆÚ]NÈCB‹˜ÛÛXÝXØ\™ÈX\™Ú[‹]ÜˆÈY[™ÎˆœŽÈ›Ü™\Žˆ\ÛÛY™Ø˜JÌKMŽŒNKMJNÈ›Ü™\‹\˜Y]\ÎˆŒÜÈ˜XÚÙÜ›Ý[™ˆ™Ø˜JÎŠNÈCB‹˜ÛÛXÝXØ\™›Ü›HÈ\Ü^NˆÜšYÈØ\ˆMÈCB‹˜ÛÛXÝXØ\™X™[ÈX\™Ú[‹]ÜˆÈ›Û\Ú^™NˆŒ\ÈCB‹˜ÛÛXÝXØ\™Ù[XÝ˜ÛÛXÝXØ\™^\™XHÈÚYˆL	NÈ›Ü™\Žˆ\ÛÛY™Ø˜JÌKMŽŒNKMŠNÈ›Ü™\‹\˜Y]\ÎˆNÈÛÛÜŽˆÚ]NÈ˜XÚÙÜ›Ý[™ˆ™Ø˜JÍKŒN
+NÈ›Û\Ú^™NˆNÈCB‹˜ÛÛXÝXØ\™Ù[XÝÈZ[‹ZZYÚˆœÈY[™ÎˆŒÈCB‹˜ÛÛXÝXØ\™^\™XHÈZ[‹ZZYÚˆŒLÈ™\Ú^™Nˆ™\XØ[ÈY[™ÎˆŒÈ[™KZZYÚˆKŽÈCB‹˜ÛÛXÝXØ\™^\™XNŽœXÙZÛ\ˆÈÛÛÜŽˆ˜\ŠK[]]Y
+NÈCB‹˜ÛÛXÝ\ÝX›Z]ÈZ[‹ZZYÚˆœÈX\™Ú[‹]ÜˆÈ›Ü™\Žˆ\ÛÛYÌMÙYŽÈ›Ü™\‹\˜Y]\ÎˆNÈÛÛÜŽˆÚ]NÈ˜XÚÙÜ›Ý[™ˆ™Ø˜J‹M‹ŒŠNÈ›Û\Ú^™NˆŒœÈ›Û]ÙZYÚˆÌÈÝ\œÛÜŽˆÚ[\ŽÈCB‹˜ÛÛXÝ[›ÝXÙHÈZ[‹ZZYÚˆÈX\™Ú[ŽˆÈÛÛÜŽˆØNXÙŽÈ›Û\Ú^™NˆM\ÈCB‹˜ÛÛXÝ[›ÝXÙN››Ý
+™[\JHÈZ[‹ZZYÚˆÈCB‹œÜ‹[Û›HÈÜÚ][ÛŽˆXœÛÛ]NÈÚYˆ\ÈZYÚˆ\ÈY[™ÎˆÈX\™Ú[ŽˆL\ÈÝ™\™›ÝÎˆY[ŽÈÛ\ˆ™XÝ
+
+NÈÚ]K\ÜXÙNˆ›ÝÜ˜\È›Ü™\ŽˆÈCBƒBYYXH
+Z[‹]ÚYˆÌŒ
+HÃBˆ˜\\Ú[ÈX^]ÚYˆLŒÈZ[‹ZZYÚˆØ[ÊLšHÌœ
+NÈX\™Ú[ŽˆMœ]]ÎÈ›Ü™\Žˆ\ÛÛY™Ø˜JL‹NKŒŽŒÍJNÈ›Ü™\‹\˜Y]\ÎˆœÈ›Þ\ÚYÝÎˆÌL™Ø˜JŠNÈCBˆœØÜ™Y[ˆÈZ[‹ZZYÚˆØ[ÊLšHÍ
+NÈCBˆ^\ØÜ™Y[ˆÈZYÚˆØ[ÊLšHÍ
+NÈZ[‹ZZYÚˆÈCBˆ˜›ÝÛK[˜]ˆÈYˆL	NÈšYÚˆ]]ÎÈÚYˆLŒÈ˜[œÙ›Ü›Nˆ˜[œÛ]V
+ML	JNÈ›ÝÛNˆÈ›Ü™\‹\˜Y]\ÎˆÍœÍœœœÈCBˆšÛYK\ØÜ™Y[ˆ˜›ÝÛK[˜]ˆÈ›ÝÛNˆÈÚYˆL	NÈ›Ü™\‹\˜Y]\ÎˆÍœÍœÈCBˆœ]\ÙKX]ÛˆÈ›ÝÛNˆMÈCBˆ›Y\ÜØYÙKXÛÛ\ÜÙ\ˆÈX\™Ú[‹X›ÝÛNˆœÈCBŸCBƒBYYXH
+X^]ÚYˆÎL
+HÃBˆœØÜ™Y[ˆÈY[™ËZ[›[™NˆNÈCBˆ™™X]\™KXØ\™ÈZ[‹ZZYÚˆÛ[\
+MLÝšŒM
+NÈCBˆ™™X]\™KZXÛÛˆÝ™ÈÈÚYˆNÈZYÚˆNÈCBˆ›[ÙKXØ\™ÈÜšY][\]KXÛÛ[[œÎˆŒœYœˆÈY[™ÎˆMœÈØ\ˆLÜÈCBˆ›[ÙKZXÛÛˆÈÚYˆŒÈZYÚˆŒÈCBˆšÝÝËXØ\™˜ÛÛXÝXØ\™ÈY[™ËZ[›[™NˆMÜÈCBˆšÝÝË\Ý\ÈÜšY][\]KXÛÛ[[œÎˆŒœYœŽÈØ\ˆM\ÈY[™ËZ[›[™NˆœÈCBˆšÝÝËZXÛÛˆÈÚYˆNÈZYÚˆNÈCBˆšÝÝËZXÛÛˆÝ™ÈÈÚYˆÍœÈZYÚˆÍœÈCBˆ™˜\K\]Y\Ý[ÛˆÈY[™ËZ[›[™NˆMÜÈCBˆ™˜\KX[œÝÙ\ˆÈY[™ËZ[›[™NˆNÈCBˆ™ÝZYK\ØÜ™Y[ˆÈY[™ËZ[›[™NˆMÈCBˆ™ÝZYK\ØÜ™Y[ˆ˜›ÝÛK[˜]ˆÈX\™Ú[‹Z[›[™NˆLMÈCBˆ˜[œÙ™\‹X˜[›™\ˆÈ[œÙ]Z[›[™NˆÈØ\ˆ\ÈY[™ËZ[›[™NˆÜÈCBˆ›[™KX˜YÙHÈÚYˆÌÈZYÚˆÌÈ›^X˜\Ú\ÎˆÌÈ›Û\Ú^™NˆŒÈCBˆ›[™K[˜[YHÈ›Û\Ú^™NˆLœÈCBˆ›[™K[˜[YHÛX[˜[œÙ™\‹[X™[ÛX[È›Û\Ú^™Nˆ\ÈCBˆ˜[œÙ™\‹X\œ›ÝÈÈ›Û\Ú^™NˆŒœÈCBˆ˜[œÙ™\‹[X™[ÈØ\ˆÜÈY[™Ë[Yˆ\È›Û\Ú^™NˆLÈCBˆ˜[œÙ™\‹[X™[Ý™ÈÈÚYˆŒ\ÈZYÚˆŒ\ÈCBˆ˜X˜›HÈÚYˆZ[ŠL	KŒ
+NÈY[™ÎˆLœM\ÈCBŸCBƒBYYXH
+X^]ÚYˆÌ
+HÃBˆ›\™ÙKZ[œ][œ]È›Û\Ú^™NˆŒœÈCBˆšÝÝËXØ\™ÈY[™ËZ[›[™NˆLœÈCBˆ˜XØÛÝ[XØ\™ÈY[™ÎˆŒMœÈCBˆ˜XØÛÝ[XØ\™ˆÈX\™Ú[‹X›ÝÛNˆMÜÈ›Û\Ú^™NˆÛ[\
+ŒœËœ
+NÈCBˆ˜XØÛÝ[Z[œ]ÈZ[‹ZZYÚˆMœÈØ\ˆLœÈY[™ËZ[›[™NˆMÈ›Ü™\‹\˜Y]\ÎˆMœÈCBˆ˜XØÛÝ[Z[œ]Ý™ÈÈÚYˆŒœÈZYÚˆŒœÈ›^ˆ]]ÎÈCBˆ˜XØÛÝ[Z[œ][œ]È›Û\Ú^™NˆMœÈCBˆœš[X\žKX]ÛˆÈZ[‹ZZYÚˆMœÈ›Ü™\‹\˜Y]\ÎˆM\È›Û\Ú^™NˆNÈCBˆšÝÝË\Ý\ÈZ[‹ZZYÚˆÈÜšY][\]KXÛÛ[[œÎˆœZ[›X^
+YœŠNÈØ\ˆLÈY[™ÎˆNÈCBˆšÝÝËZXÛÛˆÈÚYˆœÈZYÚˆœÈCBˆšÝÝËZXÛÛˆÝ™ÈÈÚYˆÌÈZYÚˆÌÈCBˆšÝÝË\Ý\ˆÈX\™Ú[‹X›ÝÛNˆÈ›Û\Ú^™NˆŒÈCBˆšÝÝË\Ý\È›Û\Ú^™NˆÛ[\
+LÜË]ËM\
+NÈ[™KZZYÚˆKŽÈCBˆœÛØÚX[YÜšYÈØ\ˆœÈX\™Ú[‹]ÜˆMœÈCBˆœÛØÚX[YÜšY]ÛˆÈZ[‹ZZYÚˆMœÈØ\ˆ\È›Û\Ú^™NˆÛ[\
+LœËËM\
+NÈCBˆœÛØÚX[YÜšYˆÈ›Û\Ú^™NˆNÈCBˆ™[XZ[\ÚYÛ\ÈX\™Ú[‹]ÜˆNÈY[™Ë]ÜˆNÈ›Û\Ú^™NˆM\ÈCBˆ›[ÙKXØ\™ÈÜšY][\]KXÛÛ[[œÎˆMœZ[›X^
+YœŠHŒœÈØ\ˆLœÈZ[‹ZZYÚˆLÈY[™ÎˆMMœÈCBˆ›[ÙKZXÛÛˆÈÚYˆMÈZYÚˆMÈCBˆ›[ÙKXÛÜHÈØ\ˆœÈCBˆ›[ÙKXÛÜHÝ›Û™ÈÈ›Û\Ú^™NˆŒÈ[™KZZYÚˆKŒNÈCBˆ›[ÙKXÛÜHÛX[È›Û\Ú^™NˆÛ[\
+LœËŽËM\
+NÈ[™KZZYÚˆKŒÎÈ]\‹\ÜXÚ[™ÎˆKŒY[NÈÚ]K\ÜXÙNˆ›ÝÜ˜\ÈCBˆ›[ÙKXØ\™ˆÝ™ÈÈÚYˆÈZYÚˆÈCBŸCBƒBƒBƒBƒBƒB‹Êˆ™\Ù\™HH›Ý]H\ÈÛÛ^Ú[ˆ\™H\È›È\ÝÛÜHÝÙÜ˜\]H[˜Ý[Û‹ˆ
+‹ÃB
