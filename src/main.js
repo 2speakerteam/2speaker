@@ -2,6 +2,7 @@ const root = document.querySelector('#root');
 let currentPage = 'home';
 let routeEntryMode = 'dual';
 let routeDestinationQuery = '';
+let routeTransportMode = 'subway';
 let routeMapLoaderPromise = null;
 let routeMapSession = 0;
 let routeMapAuthError = '';
@@ -157,10 +158,10 @@ function guideScreen() {
       </div>
     </section>
     <section class="transport-options" role="group" aria-label="이동 수단">
-      <button class="transport-option" type="button" data-mode="walk" aria-pressed="false"><strong>도보</strong></button>
-      <button class="transport-option" type="button" data-mode="subway" aria-pressed="true"><strong>지하철</strong></button>
-      <button class="transport-option" type="button" data-mode="bus" aria-pressed="false"><strong>버스</strong></button>
-      <button class="transport-option" type="button" data-mode="taxi" aria-pressed="false"><strong>택시</strong></button>
+      <button class="transport-option" type="button" data-mode="walk" aria-pressed="${routeTransportMode === 'walk'}"><strong>도보</strong></button>
+      <button class="transport-option" type="button" data-mode="subway" aria-pressed="${routeTransportMode === 'subway'}"><strong>지하철</strong></button>
+      <button class="transport-option" type="button" data-mode="bus" aria-pressed="${routeTransportMode === 'bus'}"><strong>버스</strong></button>
+      <button class="transport-option" type="button" data-mode="taxi" aria-pressed="${routeTransportMode === 'taxi'}"><strong>택시</strong></button>
     </section>
     <section class="guide-dialogue" aria-label="길찾기 내용"></section>
     </div>
@@ -238,10 +239,22 @@ function initializeNaverRouteMap() {
   const destinationChoicesElement = document.querySelector('.guide-dialogue');
   if (!mapElement || !statusElement) return;
   let subwayRequested = document.querySelector('.transport-option[data-mode="subway"]')?.getAttribute('aria-pressed') === 'true';
+  let busRequested = document.querySelector('.transport-option[data-mode="bus"]')?.getAttribute('aria-pressed') === 'true';
   let changeSubwayMode = null;
+  let changeBusMode = null;
   mapElement.addEventListener('transport-mode-change', (event) => {
     subwayRequested = event.detail?.mode === 'subway';
-    changeSubwayMode?.(subwayRequested);
+    busRequested = event.detail?.mode === 'bus';
+    if (subwayRequested) {
+      changeBusMode?.(false);
+      changeSubwayMode?.(true);
+    } else if (busRequested) {
+      changeSubwayMode?.(false);
+      changeBusMode?.(true);
+    } else {
+      changeSubwayMode?.(false);
+      changeBusMode?.(false);
+    }
   });
 
   const setStatus = (message, state = 'info') => {
@@ -465,6 +478,118 @@ function initializeNaverRouteMap() {
         updateMapView();
       }
     };
+    const showBusMessage = (message, isError = false) => {
+      if (!destinationChoicesElement || destinationState !== 'success') return;
+      destinationChoicesElement.innerHTML = `<div class="subway-route-panel${isError ? ' is-error' : ''}" role="status">${escapeHtml(message)}</div>`;
+    };
+    const showBusRoute = (route) => {
+      if (!destinationChoicesElement) return;
+      const minutes = Math.ceil(route.totalSeconds / 60);
+      const accessWalk = route.accessWalk
+        ? `<li><strong>도보 접근 · ${escapeHtml(route.accessWalk.station)}</strong><span>현재 위치 → ${escapeHtml(route.accessWalk.station)} · ${Math.ceil(route.accessWalk.seconds / 60)}분 · ${Math.round(route.accessWalk.distanceMeters)}m</span></li>`
+        : '';
+      const legs = route.transportLegs.map((leg) => `<li><strong>버스 · ${escapeHtml(leg.route)}</strong><span>${escapeHtml(leg.board)} 탑승 → ${escapeHtml(leg.alight)} 하차 · ${Math.ceil(leg.seconds / 60)}분</span></li>`).join('');
+      const arrivalWalk = route.arrivalWalk
+        ? `<li><strong>도보 도착</strong><span>하차 정류장 → 목적지 · ${Math.ceil(route.arrivalWalk.seconds / 60)}분 · ${Math.round(route.arrivalWalk.distanceMeters)}m</span></li>`
+        : '';
+      const transfers = route.transfers.length
+        ? `<p class="subway-transfer">버스 환승: ${route.transfers.map((transfer) => escapeHtml(transfer.from === transfer.to ? transfer.from : `${transfer.from} → ${transfer.to}`)).join(' · ')}</p>`
+        : '';
+      const missingWalk = route.missingGeometryModes?.includes('WALK')
+        ? '<p class="subway-transfer">TMAP이 일부 도보 구간 좌표를 제공하지 않아 확인된 구간만 지도에 표시했습니다.</p>'
+        : '';
+      destinationChoicesElement.innerHTML = `<div class="subway-route-panel" role="status" aria-label="TMAP 버스 경로">
+        <strong>버스 약 ${minutes}분 · 환승 ${route.transferCount}회</strong>
+        <ol>${accessWalk}${legs}${arrivalWalk}</ol>${transfers}${missingWalk}
+      </div>`;
+    };
+    const requestBusRoute = () => {
+      if (!busRequested || destinationState !== 'success' || !destinationLocation) return;
+      if (locationState === 'error') {
+        showBusMessage('현재 GPS 위치를 확인할 수 없어 버스 경로를 요청하지 않았습니다.', true);
+        return;
+      }
+      if (!currentLocation) {
+        showBusMessage('GPS 확인 후 버스 경로를 조회합니다.');
+        return;
+      }
+      const start = { lat: currentLocation.lat(), lng: currentLocation.lng() };
+      const end = { lat: destinationLocation.lat(), lng: destinationLocation.lng() };
+      const requestKey = `${start.lat},${start.lng}:${end.lat},${end.lng}`;
+      if (routeController && routeRequestKey === requestKey) return;
+      routeController?.abort();
+      const controller = new AbortController();
+      routeController = controller;
+      routeRequestKey = requestKey;
+      const requestId = ++routeRequestId;
+      removeRouteLines();
+      showBusMessage('TMAP에서 실제 버스 경로를 조회하고 있습니다.');
+      fetch('/api/transit/bus', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ start, end }),
+        signal: controller.signal
+      }).then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || 'TMAP 버스 경로 조회에 실패했습니다.');
+        return payload;
+      }).then((payload) => {
+        if (session !== routeMapSession || currentPage !== 'guide' || !busRequested || requestId !== routeRequestId) return;
+        const route = payload.route;
+        if (!payload.coordinateMatch || !route || !Array.isArray(route.segments)
+          || !route.segments.some((segment) => segment.mode === 'BUS')
+          || !Array.isArray(route.transportLegs) || !route.transportLegs.length
+          || route.transportLegs.some((leg) => leg.mode !== 'BUS')) {
+          throw new Error('TMAP 버스 경로와 요청 좌표를 확인할 수 없습니다.');
+        }
+        const segments = route.segments.map((segment) => {
+          if (!['BUS', 'WALK'].includes(segment.mode)
+            || !Array.isArray(segment.coordinates) || segment.coordinates.length < 2) {
+            throw new Error('TMAP 버스 경로 형상 좌표가 부족합니다.');
+          }
+          const points = segment.coordinates.map(([lng, lat]) => {
+            if (!Number.isFinite(lat) || !Number.isFinite(lng)) throw new Error('TMAP 경로 좌표가 올바르지 않습니다.');
+            return new maps.LatLng(lat, lng);
+          });
+          return { ...segment, points };
+        });
+        routeCoordinates = segments.flatMap((segment) => segment.points);
+        routeLines = segments.map((segment) => new maps.Polyline({
+          map,
+          path: segment.points,
+          strokeColor: segment.color,
+          strokeWeight: segment.mode === 'BUS' ? 5 : 2,
+          strokeOpacity: segment.mode === 'BUS' ? 0.95 : 0.75,
+          strokeStyle: segment.mode === 'BUS' ? 'solid' : 'shortdash',
+          zIndex: 60
+        }));
+        updateMapView();
+        showBusRoute(route);
+      }).catch((error) => {
+        if (controller.signal.aborted || session !== routeMapSession || currentPage !== 'guide'
+          || !busRequested || requestId !== routeRequestId) return;
+        removeRouteLines();
+        showBusMessage(error instanceof Error ? error.message : 'TMAP 버스 경로 조회에 실패했습니다.', true);
+      }).finally(() => {
+        if (routeController === controller) {
+          routeController = null;
+          routeRequestKey = null;
+        }
+      });
+    };
+    changeBusMode = (active) => {
+      if (active) {
+        requestBusRoute();
+      } else {
+        routeController?.abort();
+        routeController = null;
+        routeRequestKey = null;
+        routeRequestId += 1;
+        removeRouteLines();
+        if (destinationState === 'success') clearDestinationChoices();
+        updateMapView();
+      }
+    };
     const markDestination = (latitude, longitude, title) => {
       if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return false;
       routeController?.abort();
@@ -491,6 +616,7 @@ function initializeNaverRouteMap() {
       updateMapView();
       updateStatus();
       requestSubwayRoute();
+      requestBusRoute();
       return true;
     };
     const searchNaverPlace = () => {
@@ -557,6 +683,7 @@ function initializeNaverRouteMap() {
       updateMapView();
       updateStatus();
       requestSubwayRoute();
+      requestBusRoute();
     }).catch((error) => {
       if (session !== routeMapSession || currentPage !== 'guide') return;
       locationStatus = error?.code === 1
@@ -565,6 +692,7 @@ function initializeNaverRouteMap() {
       locationState = 'error';
       updateStatus();
       requestSubwayRoute();
+      requestBusRoute();
     });
 
     if (routeDestinationQuery) {
@@ -820,6 +948,7 @@ function render() {
 
   document.querySelectorAll('.transport-option').forEach((button) => {
     button.addEventListener('click', () => {
+      routeTransportMode = button.dataset.mode;
       document.querySelectorAll('.transport-option').forEach((option) => {
         option.setAttribute('aria-pressed', String(option === button));
       });
