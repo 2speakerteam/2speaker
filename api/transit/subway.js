@@ -1,6 +1,7 @@
 const TMAP_ROUTES_URL = 'https://apis.openapi.sk.com/transit/routes';
 const TMAP_WALK_URL = 'https://apis.openapi.sk.com/tmap/routes/pedestrian?version=1';
 const NAVER_PLACE_URL = 'https://naverapihub.apigw.ntruss.com/search/v1/local';
+const { requestNextMorning } = require('./scheduled');
 
 function coordinate(value, limit) {
   if (value === null || value === undefined || String(value).trim() === '') return null;
@@ -331,6 +332,21 @@ module.exports = async function handler(req, res) {
       else return [parsed];
       return [];
     });
+    let scheduledStatus = null;
+    if (!routes.length) {
+      const scheduled = await requestNextMorning(start, end, appKey, controller.signal);
+      scheduledStatus = scheduled.response.status;
+      if (scheduled.response.ok
+        && matchRequestEcho(scheduled.payload.metaData?.requestParameters, start, end)) {
+        const scheduledItineraries = Array.isArray(scheduled.payload.metaData?.plan?.itineraries)
+          ? scheduled.payload.metaData.plan.itineraries : [];
+        const scheduledRoute = validRoutes(scheduledItineraries)[0];
+        if (scheduledRoute) {
+          scheduledRoute.departureBasis = scheduled.departure.label;
+          return res.status(200).json({ route: scheduledRoute, coordinateMatch: true });
+        }
+      }
+    }
     if (!routes.length && !startIsStation) {
       let fallbackError = '';
       const stations = await findNearbyStations(itineraries, start, controller.signal);
@@ -375,7 +391,7 @@ module.exports = async function handler(req, res) {
           ))
             ? 'TMAP이 반환한 지하철 구간의 운행이 종료됐습니다.'
             : '이 출발지와 목적지 사이에 버스 탑승이 없는 지하철 경로가 없습니다.';
-      return res.status(422).json({ error, shapeIssues: [...shapeIssues],
+      return res.status(422).json({ error, shapeIssues: [...shapeIssues], scheduledStatus,
         availablePathTypes: [...new Set(itineraries.map((itinerary) => Number(itinerary.pathType)))] });
     }
     routes.sort((a, b) => a.priorityScore - b.priorityScore

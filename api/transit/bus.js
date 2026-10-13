@@ -1,4 +1,5 @@
 const TMAP_ROUTES_URL = 'https://apis.openapi.sk.com/transit/routes';
+const { requestNextMorning } = require('./scheduled');
 
 function coordinate(value, limit) {
   if (value === null || value === undefined || String(value).trim() === '') return null;
@@ -169,10 +170,40 @@ module.exports = async function handler(req, res) {
       return parsed && !parsed.incompleteBusGeometry ? [parsed] : [];
     });
     if (!routes.length) {
+      const scheduled = await requestNextMorning(start, end, appKey, controller.signal);
+      if (scheduled.response.ok) {
+        const scheduledMetadata = scheduled.payload.metaData;
+        const scheduledStart = point({ lat: scheduledMetadata?.requestParameters?.startY,
+          lng: scheduledMetadata?.requestParameters?.startX });
+        const scheduledEnd = point({ lat: scheduledMetadata?.requestParameters?.endY,
+          lng: scheduledMetadata?.requestParameters?.endX });
+        if (scheduledStart && scheduledEnd && samePoint(start, scheduledStart)
+          && samePoint(end, scheduledEnd)) {
+          const scheduledItineraries = Array.isArray(scheduledMetadata?.plan?.itineraries)
+            ? scheduledMetadata.plan.itineraries : [];
+          const scheduledRoutes = scheduledItineraries.map(parseItinerary).filter((route) =>
+            route && !route.incompleteBusGeometry).sort((a, b) =>
+            a.totalSeconds - b.totalSeconds || a.transferCount - b.transferCount);
+          if (scheduledRoutes.length) {
+            scheduledRoutes[0].departureBasis = scheduled.departure.label;
+            return res.status(200).json({ route: scheduledRoutes[0], coordinateMatch: true });
+          }
+        }
+      }
+      const busOnlyItineraries = itineraries.filter((itinerary) =>
+        Array.isArray(itinerary.legs) && itinerary.legs.some((leg) => leg.mode === 'BUS')
+        && itinerary.legs.every((leg) => leg.mode === 'WALK' || leg.mode === 'BUS'));
       return res.status(422).json({
         error: incompleteBusGeometry
           ? 'TMAP 버스 경로에 지도 표시용 실제 형상 좌표가 부족합니다.'
+          : busOnlyItineraries.length && busOnlyItineraries.every((itinerary) => itinerary.legs.some(
+            (leg) => leg.mode === 'BUS' && Number(leg.service) === 0
+          ))
+            ? scheduled.response.ok
+              ? '현재 버스 운행이 종료됐고 다음 오전 7시 기준으로도 이용 가능한 버스 경로를 확인하지 못했습니다.'
+              : '현재 버스 운행이 종료됐고 다음 운행 시간 조회에도 실패했습니다.'
           : '이 출발지와 목적지 사이에 지하철 탑승이 없는 버스 경로가 없습니다.',
+        scheduledStatus: scheduled.response.status,
         availablePathTypes: [...new Set(itineraries.map((itinerary) => Number(itinerary.pathType)))]
       });
     }
