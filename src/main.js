@@ -1,3 +1,5 @@
+import { createWalkPanorama } from './walk-panorama.js';
+
 const root = document.querySelector('#root');
 let currentPage = 'home';
 let routeEntryMode = 'dual';
@@ -7,6 +9,7 @@ let routeMapLoaderPromise = null;
 let routeMapSession = 0;
 let routeMapAuthError = '';
 let routeMapAuthFailureInstalled = false;
+let activeWalkPanorama = null;
 let selectedAppLanguage = '한국어';
 let selectedUserLanguage = '한국어';
 let selectedUserLanguageCode = 'ko';
@@ -164,6 +167,15 @@ function guideScreen() {
       <button class="transport-option" type="button" data-mode="taxi" aria-pressed="false"><strong>택시</strong></button>
     </section>
     <section class="guide-dialogue" aria-label="길찾기 내용"></section>
+    <section class="walk-panorama" aria-label="네이버 도보 로드뷰" hidden>
+      <p class="walk-panorama-status" role="status" aria-live="polite"></p>
+      <div class="walk-panorama-canvas" aria-label="네이버 실제 로드뷰"></div>
+      <div class="walk-panorama-controls">
+        <button type="button" data-panorama-action="previous">이전</button>
+        <button type="button" data-panorama-action="playback">재생</button>
+        <button type="button" data-panorama-action="next">다음</button>
+      </div>
+    </section>
     </div>
     ${bottomNav()}
   </main>`;
@@ -211,7 +223,7 @@ function loadNaverMaps() {
     };
     script.async = true;
     script.onerror = () => finish(new Error('네이버 지도 SDK를 불러오지 못했습니다.'));
-    script.src = `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${encodeURIComponent(clientId)}&submodules=geocoder&callback=${callbackName}`;
+    script.src = `https://oapi.map.naver.com/openapi/v3/maps.js?ncpKeyId=${encodeURIComponent(clientId)}&submodules=geocoder,panorama&callback=${callbackName}`;
     timeoutId = window.setTimeout(() => finish(new Error('네이버 지도 인증을 확인하지 못했습니다.')), 16000);
     document.head.append(script);
   });
@@ -286,6 +298,8 @@ function initializeNaverRouteMap() {
       zoomControl: true,
       zoomControlOptions: { position: maps.Position.TOP_RIGHT }
     });
+    const walkPanorama = createWalkPanorama(maps, document.querySelector('.walk-panorama'));
+    activeWalkPanorama = walkPanorama;
     let currentLocation = null;
     let destinationLocation = null;
     let destinationMarker = null;
@@ -656,6 +670,7 @@ function initializeNaverRouteMap() {
       const end = { lat: destinationLocation.lat(), lng: destinationLocation.lng() };
       const requestKey = `${start.lat},${start.lng}:${end.lat},${end.lng}`;
       if (routeController && routeRequestKey === requestKey) return;
+      walkPanorama.stop();
       routeController?.abort();
       const controller = new AbortController();
       routeController = controller;
@@ -713,6 +728,7 @@ function initializeNaverRouteMap() {
         ]);
         updateWalkMapView();
         showWalkRoute(route);
+        void walkPanorama.start(route);
       }).catch((error) => {
         if (controller.signal.aborted || session !== routeMapSession || currentPage !== 'guide'
           || !walkRequested || requestId !== routeRequestId) return;
@@ -729,6 +745,7 @@ function initializeNaverRouteMap() {
       if (active) {
         requestWalkRoute();
       } else {
+        walkPanorama.stop();
         routeController?.abort();
         routeController = null;
         routeRequestKey = null;
@@ -740,6 +757,7 @@ function initializeNaverRouteMap() {
     };
     const markDestination = (latitude, longitude, title) => {
       if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return false;
+      walkPanorama.stop();
       routeController?.abort();
       routeController = null;
       routeRequestKey = null;
@@ -1093,6 +1111,8 @@ function render() {
       ['6. 개인정보 문의', '개인정보와 관련된 문의는 2SPEAKER 문의 / 오류 신고를 통해 접수할 수 있습니다.']
     ])
   };
+  activeWalkPanorama?.stop();
+  activeWalkPanorama = null;
   root.innerHTML = `<div class="app-shell">${screens[currentPage]()}</div>`;
   if (currentPage === 'guide') initializeNaverRouteMap();
   else routeMapSession += 1;
