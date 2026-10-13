@@ -352,19 +352,30 @@ export function createWalkPanorama(maps, section) {
     }
     if (points.length < 2) return;
     const formatPoint = ([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`;
-    const path = points.map(([x, y], index) => `${index ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join(' ');
+    const sides = points.map(([x, y], index) => {
+      const before = points[Math.max(0, index - 1)];
+      const after = points[Math.min(points.length - 1, index + 1)];
+      const length = Math.hypot(after[0] - before[0], after[1] - before[1]) || 1;
+      const normal = [-(after[1] - before[1]) / length, (after[0] - before[0]) / length];
+      const halfWidth = Math.max(10, 24 - index * 2.7);
+      return {
+        left: [x + normal[0] * halfWidth, y + normal[1] * halfWidth],
+        right: [x - normal[0] * halfWidth, y - normal[1] * halfWidth]
+      };
+    });
+    const ribbon = [...sides.map((side) => side.left), ...sides.map((side) => side.right).reverse()]
+      .map(formatPoint).join(' ');
     const tip = points.at(-1);
     const before = points.at(-2);
     const length = Math.hypot(tip[0] - before[0], tip[1] - before[1]) || 1;
     const tangent = [(tip[0] - before[0]) / length, (tip[1] - before[1]) / length];
     const normal = [-tangent[1], tangent[0]];
-    const base = [tip[0] - tangent[0] * 16, tip[1] - tangent[1] * 16];
+    const base = [tip[0] - tangent[0] * 14, tip[1] - tangent[1] * 14];
     const left = [base[0] + normal[0] * 10, base[1] + normal[1] * 10];
     const right = [base[0] - normal[0] * 10, base[1] - normal[1] * 10];
     ground.innerHTML = `<svg viewBox="0 0 300 200" preserveAspectRatio="none" aria-hidden="true">
-      <path d="${path}" fill="none" stroke="rgba(5,55,31,.72)" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
-      <path d="${path}" fill="none" stroke="#35d477" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
-      <polygon points="${[left, tip, right].map(formatPoint).join(' ')}" fill="#35d477" stroke="rgba(5,55,31,.72)" stroke-width="1.5" stroke-linejoin="round"/>
+      <polygon points="${ribbon}" fill="rgba(166,246,190,.65)" stroke="rgba(65,190,111,.85)" stroke-width="2" stroke-linejoin="round"/>
+      <polygon points="${[left, tip, right].map(formatPoint).join(' ')}" fill="rgba(166,246,190,.85)" stroke="rgba(65,190,111,.9)" stroke-width="1.5" stroke-linejoin="round"/>
     </svg>`;
   };
 
