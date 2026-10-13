@@ -166,12 +166,21 @@ module.exports = async function handler(req, res) {
       return [];
     });
     if (!routes.length) {
+      const subwayOptions = itineraries.filter((itinerary) => Number(itinerary.pathType) === 1);
+      const mixedOptions = itineraries.some((itinerary) => Number(itinerary.pathType) === 3);
       const error = missingShape
         ? 'TMAP 지하철 경로에 지도 표시용 실제 형상 좌표가 부족합니다.'
         : missingDetails
           ? 'TMAP 지하철 경로의 노선·역·시간 정보가 부족합니다.'
+          : subwayOptions.length && subwayOptions.every((itinerary) => itinerary.legs?.some(
+            (leg) => leg.mode === 'SUBWAY' && Number(leg.service) === 0
+          ))
+            ? 'TMAP 지하철 전용 경로의 운행이 종료됐습니다.'
+            : mixedOptions
+              ? 'TMAP은 이 위치에서 버스와 지하철을 함께 이용하는 경로만 반환했습니다. 지하철 전용 경로는 없습니다.'
           : '이 출발지와 목적지 사이에 지하철 경로가 없습니다.';
-      return res.status(422).json({ error, shapeIssues: [...shapeIssues] });
+      return res.status(422).json({ error, shapeIssues: [...shapeIssues],
+        availablePathTypes: [...new Set(itineraries.map((itinerary) => Number(itinerary.pathType)))] });
     }
     routes.sort((a, b) => a.totalSeconds - b.totalSeconds);
     return res.status(200).json({ route: routes[0], coordinateMatch: true });
