@@ -3,6 +3,7 @@ import { createWalkPanorama } from './walk-panorama.js';
 const root = document.querySelector('#root');
 let currentPage = 'home';
 let routeEntryMode = 'dual';
+let routeStartQuery = '';
 let routeDestinationQuery = '';
 let routeTransportMode = 'subway';
 let routeMapLoaderPromise = null;
@@ -75,6 +76,14 @@ function escapeHtml(value) {
     '"': '&quot;',
     "'": '&#39;'
   })[character]);
+}
+
+function parseRouteQuery(value) {
+  const query = value.trim();
+  const route = query.match(/^(.+?)에서\s*(.+?)(?:까지|으로|로)$/);
+  return route && route[1].trim() && route[2].trim()
+    ? { start: route[1].trim(), destination: route[2].trim() }
+    : { start: '', destination: query };
 }
 
 function bottomNav() {
@@ -302,12 +311,14 @@ function initializeNaverRouteMap() {
     const walkPanorama = createWalkPanorama(maps, document.querySelector('.walk-panorama'));
     activeWalkPanorama = walkPanorama;
     let currentLocation = null;
+    let startTitle = '';
     let destinationLocation = null;
     let destinationMarker = null;
-    let locationStatus = '현재 위치를 확인하고 있습니다.';
+    let locationStatus = routeStartQuery ? '출발지를 검색하고 있습니다.' : '현재 위치를 확인하고 있습니다.';
     let locationState = 'pending';
     let destinationTitle = '';
-    let destinationStatus = routeDestinationQuery ? '목적지를 검색하고 있습니다.' : '목적지를 입력해 주세요.';
+    let destinationStatus = routeStartQuery ? '출발지 확인 후 목적지를 검색합니다.'
+      : routeDestinationQuery ? '목적지를 검색하고 있습니다.' : '목적지를 입력해 주세요.';
     let destinationState = routeDestinationQuery ? 'pending' : 'info';
     let routeLines = [];
     let routeCoordinates = [];
@@ -317,7 +328,9 @@ function initializeNaverRouteMap() {
 
     const shortPlaceName = (name) => String(name || '').replace(/\s*\([^)]*\)\s*$/, '').slice(0, 12);
     const updateStatus = () => {
-      const locationSummary = locationState === 'success' ? 'GPS 확인' : locationStatus;
+      const locationSummary = locationState === 'success'
+        ? routeStartQuery ? shortPlaceName(startTitle) : 'GPS 확인'
+        : locationStatus;
       const destinationSummary = destinationState === 'success'
         ? shortPlaceName(destinationTitle)
         : destinationStatus;
@@ -331,6 +344,11 @@ function initializeNaverRouteMap() {
       size: new maps.Size(28, 28),
       anchor: new maps.Point(14, 14)
     };
+    const startPinIcon = {
+      content: '<div role="img" aria-label="출발지 위치" style="width:25px;height:25px;display:grid;place-items:center;border:2px solid #fff;border-radius:50%;background:#168cff;box-shadow:0 1px 8px rgba(0,26,52,.72);"><span style="width:8px;height:8px;border-radius:50%;background:#fff;"></span></div>',
+      size: new maps.Size(29, 29),
+      anchor: new maps.Point(14, 14)
+    };
     const destinationPinIcon = {
       content: '<svg role="img" aria-label="목적지 위치" width="36" height="44" viewBox="0 0 36 44" style="display:block;filter:drop-shadow(0 2px 4px rgba(0,20,38,.7))"><path d="M18 2C9.72 2 3 8.72 3 17c0 10.6 15 25 15 25s15-14.4 15-25C33 8.72 26.28 2 18 2Z" fill="#ffc36d" stroke="#fff" stroke-width="2"/><circle cx="18" cy="17" r="6" fill="#07334d" stroke="#fff" stroke-width="2"/></svg>',
       size: new maps.Size(36, 44),
@@ -339,10 +357,10 @@ function initializeNaverRouteMap() {
     const clearDestinationChoices = () => {
       if (destinationChoicesElement) destinationChoicesElement.replaceChildren();
     };
-    const renderDestinationChoices = (places) => {
+    const renderPlaceChoices = (places, role, onSelect) => {
       if (!destinationChoicesElement) return;
       destinationChoicesElement.innerHTML = `<div class="place-choice-list" role="group" aria-label="네이버 장소 검색 결과">
-        <p class="place-choice-heading">검색 결과 ${places.length}곳 · 목적지를 선택해 주세요</p>
+        <p class="place-choice-heading">검색 결과 ${places.length}곳 · ${role}를 선택해 주세요</p>
         ${places.map((place, index) => {
           const detail = [place.roadAddress, place.address, place.category].filter(Boolean).join(' · ');
           return `<button class="place-choice" type="button" data-place-index="${index}" aria-label="${escapeHtml(place.title)}${detail ? `, ${escapeHtml(detail)}` : ''}">
@@ -355,7 +373,7 @@ function initializeNaverRouteMap() {
           const place = places[Number(button.dataset.placeIndex)];
           if (!place) return;
           clearDestinationChoices();
-          markDestination(place.lat, place.lng, place.title);
+          onSelect(place);
         });
       });
     };
@@ -402,7 +420,7 @@ function initializeNaverRouteMap() {
       const transportLabel = route.busBoardings ? '버스 + 지하철' : '지하철';
       const accessWalk = route.accessWalk && Number.isFinite(route.accessWalk.seconds)
         && Number.isFinite(route.accessWalk.distanceMeters)
-        ? `<li><strong>도보 접근 · ${escapeHtml(route.accessWalk.station)}</strong><span>현재 위치 → ${escapeHtml(route.accessWalk.station)} · ${Math.ceil(route.accessWalk.seconds / 60)}분 · ${Math.round(route.accessWalk.distanceMeters)}m</span></li>`
+        ? `<li><strong>도보 접근 · ${escapeHtml(route.accessWalk.station)}</strong><span>${escapeHtml(startTitle || '현재 위치')} → ${escapeHtml(route.accessWalk.station)} · ${Math.ceil(route.accessWalk.seconds / 60)}분 · ${Math.round(route.accessWalk.distanceMeters)}m</span></li>`
         : '';
       const legs = route.transportLegs.map((leg) => `<li><strong>${leg.mode === 'BUS' ? '버스' : '지하철'} · ${escapeHtml(leg.route)}</strong><span>${escapeHtml(leg.board)} 탑승 → ${escapeHtml(leg.alight)} 하차 · ${Math.ceil(leg.seconds / 60)}분</span></li>`).join('');
       const transfers = route.transfers.length
@@ -421,11 +439,11 @@ function initializeNaverRouteMap() {
     const requestSubwayRoute = () => {
       if (!subwayRequested || destinationState !== 'success' || !destinationLocation) return;
       if (locationState === 'error') {
-        showSubwayMessage('현재 GPS 위치를 확인할 수 없어 지하철 경로를 요청하지 않았습니다.', true);
+        showSubwayMessage(routeStartQuery ? '출발지를 확인할 수 없어 지하철 경로를 요청하지 않았습니다.' : '현재 GPS 위치를 확인할 수 없어 지하철 경로를 요청하지 않았습니다.', true);
         return;
       }
       if (!currentLocation) {
-        showSubwayMessage('GPS 확인 후 지하철 경로를 조회합니다.');
+        showSubwayMessage(routeStartQuery ? '출발지 확인 후 지하철 경로를 조회합니다.' : 'GPS 확인 후 지하철 경로를 조회합니다.');
         return;
       }
 
@@ -511,7 +529,7 @@ function initializeNaverRouteMap() {
       if (!destinationChoicesElement) return;
       const minutes = Math.ceil(route.totalSeconds / 60);
       const accessWalk = route.accessWalk
-        ? `<li><strong>도보 접근 · ${escapeHtml(route.accessWalk.station)}</strong><span>현재 위치 → ${escapeHtml(route.accessWalk.station)} · ${Math.ceil(route.accessWalk.seconds / 60)}분 · ${Math.round(route.accessWalk.distanceMeters)}m</span></li>`
+        ? `<li><strong>도보 접근 · ${escapeHtml(route.accessWalk.station)}</strong><span>${escapeHtml(startTitle || '현재 위치')} → ${escapeHtml(route.accessWalk.station)} · ${Math.ceil(route.accessWalk.seconds / 60)}분 · ${Math.round(route.accessWalk.distanceMeters)}m</span></li>`
         : '';
       const legs = route.transportLegs.map((leg) => `<li><strong>버스 · ${escapeHtml(leg.route)}</strong><span>${escapeHtml(leg.board)} 탑승 → ${escapeHtml(leg.alight)} 하차 · ${Math.ceil(leg.seconds / 60)}분</span></li>`).join('');
       const arrivalWalk = route.arrivalWalk
@@ -531,11 +549,11 @@ function initializeNaverRouteMap() {
     const requestBusRoute = () => {
       if (!busRequested || destinationState !== 'success' || !destinationLocation) return;
       if (locationState === 'error') {
-        showBusMessage('현재 GPS 위치를 확인할 수 없어 버스 경로를 요청하지 않았습니다.', true);
+        showBusMessage(routeStartQuery ? '출발지를 확인할 수 없어 버스 경로를 요청하지 않았습니다.' : '현재 GPS 위치를 확인할 수 없어 버스 경로를 요청하지 않았습니다.', true);
         return;
       }
       if (!currentLocation) {
-        showBusMessage('GPS 확인 후 버스 경로를 조회합니다.');
+        showBusMessage(routeStartQuery ? '출발지 확인 후 버스 경로를 조회합니다.' : 'GPS 확인 후 버스 경로를 조회합니다.');
         return;
       }
       const start = { lat: currentLocation.lat(), lng: currentLocation.lng() };
@@ -660,11 +678,11 @@ function initializeNaverRouteMap() {
     const requestWalkRoute = () => {
       if (!walkRequested || destinationState !== 'success' || !destinationLocation) return;
       if (locationState === 'error') {
-        showWalkMessage('현재 GPS 위치를 확인할 수 없어 도보 경로를 요청하지 않았습니다.', true);
+        showWalkMessage(routeStartQuery ? '출발지를 확인할 수 없어 도보 경로를 요청하지 않았습니다.' : '현재 GPS 위치를 확인할 수 없어 도보 경로를 요청하지 않았습니다.', true);
         return;
       }
       if (!currentLocation) {
-        showWalkMessage('GPS 확인 후 도보 경로를 조회합니다.');
+        showWalkMessage(routeStartQuery ? '출발지 확인 후 도보 경로를 조회합니다.' : 'GPS 확인 후 도보 경로를 조회합니다.');
         return;
       }
       const start = { lat: currentLocation.lat(), lng: currentLocation.lng() };
@@ -787,11 +805,38 @@ function initializeNaverRouteMap() {
       requestWalkRoute();
       return true;
     };
-    const searchNaverPlace = () => {
+    const markStart = (place) => {
+      currentLocation = new maps.LatLng(place.lat, place.lng);
+      startTitle = place.title || routeStartQuery;
+      new maps.Marker({
+        map,
+        position: currentLocation,
+        title: `출발지: ${startTitle}`,
+        icon: {
+          ...startPinIcon,
+          content: startPinIcon.content.replace('aria-label="출발지 위치"', `aria-label="출발지: ${escapeHtml(startTitle)}"`)
+        },
+        zIndex: 120
+      });
+      locationStatus = `${shortPlaceName(startTitle)} 선택됨`;
+      locationState = 'success';
+      updateMapView();
+      updateStatus();
+      searchNaverPlace(routeDestinationQuery, '목적지', markSelectedDestination);
+    };
+    const markSelectedDestination = (place) => {
+      markDestination(place.lat, place.lng, place.title || routeDestinationQuery);
+    };
+    const searchNaverPlace = (query, role, onSelect) => {
+      if (role === '목적지') {
+        destinationStatus = '목적지를 검색하고 있습니다.';
+        destinationState = 'pending';
+        updateStatus();
+      }
       fetch('/api/map/place', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: routeDestinationQuery })
+        body: JSON.stringify({ query })
       }).then(async (response) => {
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(payload.error || '네이버 장소 검색에 연결하지 못했습니다.');
@@ -802,71 +847,91 @@ function initializeNaverRouteMap() {
           place && Number.isFinite(Number(place.lat)) && Number.isFinite(Number(place.lng))
         )).map((place) => ({ ...place, lat: Number(place.lat), lng: Number(place.lng) })) : [];
         if (validPlaces.length === 1) {
-          markDestination(validPlaces[0].lat, validPlaces[0].lng, validPlaces[0].title || routeDestinationQuery);
+          onSelect(validPlaces[0]);
         } else if (validPlaces.length > 1) {
-          destinationStatus = `검색 결과 ${validPlaces.length}곳 · 선택해 주세요`;
-          destinationState = 'info';
-          renderDestinationChoices(validPlaces);
+          if (role === '출발지') {
+            locationStatus = `출발지 검색 결과 ${validPlaces.length}곳 · 선택해 주세요`;
+            locationState = 'info';
+          } else {
+            destinationStatus = `목적지 검색 결과 ${validPlaces.length}곳 · 선택해 주세요`;
+            destinationState = 'info';
+          }
+          renderPlaceChoices(validPlaces, role, onSelect);
           updateStatus();
         } else {
-          destinationStatus = '네이버 장소 검색 결과가 없습니다.';
-          destinationState = 'error';
+          if (role === '출발지') {
+            locationStatus = '네이버 출발지 검색 결과가 없습니다.';
+            locationState = 'error';
+          } else {
+            destinationStatus = '네이버 목적지 검색 결과가 없습니다.';
+            destinationState = 'error';
+          }
           updateStatus();
         }
       }).catch((error) => {
         if (session !== routeMapSession || currentPage !== 'guide') return;
-        destinationStatus = error instanceof Error && error.message.includes('네이버 장소 검색')
+        const message = error instanceof Error && error.message.includes('네이버 장소 검색')
           ? error.message
           : '네이버 장소 검색에 실패했습니다. 다시 입력해 주세요.';
-        destinationState = 'error';
+        if (role === '출발지') {
+          locationStatus = message;
+          locationState = 'error';
+        } else {
+          destinationStatus = message;
+          destinationState = 'error';
+        }
         updateStatus();
       });
     };
 
-    currentPositionOnce().then((position) => {
-      if (session !== routeMapSession || currentPage !== 'guide') return;
-      const { latitude, longitude, accuracy } = position.coords;
-      currentLocation = new maps.LatLng(latitude, longitude);
-      new maps.Marker({
-        map,
-        position: currentLocation,
-        title: '현재 위치',
-        icon: currentLocationIcon,
-        zIndex: 120
-      });
-      if (Number.isFinite(accuracy) && accuracy > 0) {
-        new maps.Circle({
+    if (routeStartQuery) {
+      searchNaverPlace(routeStartQuery, '출발지', markStart);
+    } else {
+      currentPositionOnce().then((position) => {
+        if (session !== routeMapSession || currentPage !== 'guide') return;
+        const { latitude, longitude, accuracy } = position.coords;
+        currentLocation = new maps.LatLng(latitude, longitude);
+        new maps.Marker({
           map,
-          center: currentLocation,
-          radius: accuracy,
-          fillColor: '#27d5e8',
-          fillOpacity: 0.13,
-          strokeColor: '#48e3f2',
-          strokeOpacity: 0.72,
-          strokeWeight: 1
+          position: currentLocation,
+          title: '현재 위치',
+          icon: currentLocationIcon,
+          zIndex: 120
         });
-      }
-      locationStatus = 'GPS 확인됨';
-      locationState = 'success';
-      updateMapView();
-      updateStatus();
-      requestSubwayRoute();
-      requestBusRoute();
-      requestWalkRoute();
-    }).catch((error) => {
-      if (session !== routeMapSession || currentPage !== 'guide') return;
-      locationStatus = error?.code === 1
-        ? '위치 권한이 없어 현재 위치를 표시하지 않습니다.'
-        : '현재 위치를 확인하지 못했습니다.';
-      locationState = 'error';
-      updateStatus();
-      requestSubwayRoute();
-      requestBusRoute();
-      requestWalkRoute();
-    });
+        if (Number.isFinite(accuracy) && accuracy > 0) {
+          new maps.Circle({
+            map,
+            center: currentLocation,
+            radius: accuracy,
+            fillColor: '#27d5e8',
+            fillOpacity: 0.13,
+            strokeColor: '#48e3f2',
+            strokeOpacity: 0.72,
+            strokeWeight: 1
+          });
+        }
+        locationStatus = 'GPS 확인됨';
+        locationState = 'success';
+        updateMapView();
+        updateStatus();
+        requestSubwayRoute();
+        requestBusRoute();
+        requestWalkRoute();
+      }).catch((error) => {
+        if (session !== routeMapSession || currentPage !== 'guide') return;
+        locationStatus = error?.code === 1
+          ? '위치 권한이 없어 현재 위치를 표시하지 않습니다.'
+          : '현재 위치를 확인하지 못했습니다.';
+        locationState = 'error';
+        updateStatus();
+        requestSubwayRoute();
+        requestBusRoute();
+        requestWalkRoute();
+      });
 
-    if (routeDestinationQuery) {
-      searchNaverPlace();
+      if (routeDestinationQuery) {
+        searchNaverPlace(routeDestinationQuery, '목적지', markSelectedDestination);
+      }
     }
     updateStatus();
   }).catch((error) => {
@@ -1232,9 +1297,11 @@ if (currentPage === 'user-language-list' && !supportedUserLanguagesLoaded && !su
   });
   document.querySelector('#route-form')?.addEventListener('submit', (event) => {
     event.preventDefault();
-    const destination = routeInput?.value.trim();
-    if (destination) {
-      routeDestinationQuery = destination;
+    const query = routeInput?.value.trim();
+    if (query) {
+      const route = parseRouteQuery(query);
+      routeStartQuery = route.start;
+      routeDestinationQuery = route.destination;
       navigate('guide');
     }
   });
