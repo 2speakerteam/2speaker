@@ -93,8 +93,9 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .conversation-brand-row { height: 42px; display: grid; place-items: center; }
 .conversation-brand-row strong { padding: 7px 22px; border-radius: 24px; color: white; background: #02060b; font-size: 16px; letter-spacing: .03em; }
 .conversation-title { height: 58px; }
-.guide-screen { padding-inline: 20px; padding-bottom: 28px; }
-.guide-screen .bottom-nav { position: relative; z-index: 1; left: auto; right: auto; bottom: auto; width: auto; transform: none; margin: 28px -20px -28px; border-radius: 40px 40px 42px 42px; }
+.guide-screen { height: 100dvh; min-height: 0; display: flex; flex-direction: column; padding-inline: 20px; padding-bottom: 0; overflow: hidden; }
+.guide-content { min-height: 0; flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 28px; }
+.guide-screen .bottom-nav { position: relative; z-index: 1; left: auto; right: auto; bottom: auto; width: auto; flex: 0 0 calc(94px + env(safe-area-inset-bottom)); transform: none; margin: 0 -20px; border-radius: 40px 40px 42px 42px; }
 .guide-header { height: 54px; display: grid; grid-template-columns: 48px 1fr 48px; align-items: center; text-align: center; }
 .guide-header strong { width: max-content; justify-self: center; padding: 8px 22px; border-radius: 24px; color: white; background: #02060b; font-size: 18px; letter-spacing: .03em; }
 .guide-control { width: 44px; height: 44px; display: grid; place-items: center; border: 0; color: var(--cyan); background: transparent; cursor: pointer; }
@@ -251,6 +252,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 @media (min-width: 720px) {
   .app-shell { max-width: 520px; min-height: calc(100dvh - 32px); margin: 16px auto; border: 1px solid rgba(92, 189, 228, .35); border-radius: 42px; box-shadow: 0 30px 90px rgba(0,0,0,.42); }
   .screen { min-height: calc(100dvh - 34px); }
+  .guide-screen { height: calc(100dvh - 34px); min-height: 0; }
   .text-screen { height: calc(100dvh - 34px); min-height: 0; }
   .bottom-nav { left: 50%; right: auto; width: 520px; transform: translateX(-50%); bottom: 24px; border-radius: 36px 36px 42px 42px; }
   .home-screen .bottom-nav { bottom: 0; width: 100%; border-radius: 36px 36px 40px 40px; }

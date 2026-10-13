@@ -149,6 +149,7 @@ function guideScreen() {
       <strong>2SPEAKER</strong>
       <button class="guide-control" data-page="language" aria-label="설정">${icon('settings', 30)}</button>
     </header>
+    <div class="guide-content">
     <section class="route-visual" aria-label="네이버 지도">
       <div class="route-scene route-map-scene">
         <div id="route-map" class="route-map-canvas" role="application" aria-label="확대·축소 및 이동할 수 있는 지도"></div>
@@ -162,6 +163,7 @@ function guideScreen() {
       <button class="transport-option" type="button" data-mode="taxi" aria-pressed="false"><strong>택시</strong></button>
     </section>
     <section class="guide-dialogue" aria-label="길찾기 내용"></section>
+    </div>
     ${bottomNav()}
   </main>`;
 }
@@ -235,7 +237,7 @@ function initializeNaverRouteMap() {
   const statusElement = document.querySelector('#route-map-status');
   const destinationChoicesElement = document.querySelector('.guide-dialogue');
   if (!mapElement || !statusElement) return;
-  let subwayRequested = false;
+  let subwayRequested = document.querySelector('.transport-option[data-mode="subway"]')?.getAttribute('aria-pressed') === 'true';
   let changeSubwayMode = null;
   mapElement.addEventListener('transport-mode-change', (event) => {
     subwayRequested = event.detail?.mode === 'subway';
@@ -273,6 +275,7 @@ function initializeNaverRouteMap() {
     let routeCoordinates = [];
     let routeController = null;
     let routeRequestId = 0;
+    let routeRequestKey = null;
 
     const shortPlaceName = (name) => String(name || '').replace(/\s*\([^)]*\)\s*$/, '').slice(0, 12);
     const updateStatus = () => {
@@ -384,12 +387,15 @@ function initializeNaverRouteMap() {
         return;
       }
 
+      const start = { lat: currentLocation.lat(), lng: currentLocation.lng() };
+      const end = { lat: destinationLocation.lat(), lng: destinationLocation.lng() };
+      const requestKey = `${start.lat},${start.lng}:${end.lat},${end.lng}`;
+      if (routeController && routeRequestKey === requestKey) return;
       routeController?.abort();
       const controller = new AbortController();
       routeController = controller;
+      routeRequestKey = requestKey;
       const requestId = ++routeRequestId;
-      const start = { lat: currentLocation.lat(), lng: currentLocation.lng() };
-      const end = { lat: destinationLocation.lat(), lng: destinationLocation.lng() };
       removeRouteLines();
       showSubwayMessage('TMAP에서 실제 지하철 경로를 조회하고 있습니다.');
       fetch('/api/transit/subway', {
@@ -436,7 +442,10 @@ function initializeNaverRouteMap() {
         removeRouteLines();
         showSubwayMessage(error instanceof Error ? error.message : 'TMAP 지하철 경로 조회에 실패했습니다.', true);
       }).finally(() => {
-        if (routeController === controller) routeController = null;
+        if (routeController === controller) {
+          routeController = null;
+          routeRequestKey = null;
+        }
       });
     };
     changeSubwayMode = (active) => {
@@ -445,6 +454,7 @@ function initializeNaverRouteMap() {
       } else {
         routeController?.abort();
         routeController = null;
+        routeRequestKey = null;
         routeRequestId += 1;
         removeRouteLines();
         if (destinationState === 'success') clearDestinationChoices();
@@ -453,6 +463,12 @@ function initializeNaverRouteMap() {
     };
     const markDestination = (latitude, longitude, title) => {
       if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return false;
+      routeController?.abort();
+      routeController = null;
+      routeRequestKey = null;
+      routeRequestId += 1;
+      removeRouteLines();
+      clearDestinationChoices();
       destinationLocation = new maps.LatLng(latitude, longitude);
       destinationMarker?.setMap(null);
       destinationMarker = new maps.Marker({
