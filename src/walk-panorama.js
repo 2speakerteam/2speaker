@@ -320,22 +320,19 @@ export function createWalkPanorama(maps, section) {
     const pov = panorama.getPov();
     if (!Number.isFinite(pov?.pan) || !Number.isFinite(pov?.fov)) return;
     const points = [[150, 199]];
-    for (const [meters, y] of [[6, 177], [12, 151], [19, 121], [28, 87]]) {
+    for (const [meters, y] of [[2, 188], [6, 174], [12, 151], [19, 121], [28, 87]]) {
       const point = candidateAt(routeEdges, frame.progress + meters);
       const difference = signedAngle(pov.pan, headingDegrees(frame.camera, point));
-      if (Math.abs(difference) > Math.min(48, pov.fov / 2)) {
-        if (points.length > 1) break;
-        continue;
-      }
-      points.push([Math.max(22, Math.min(278, 150 + difference * 2.1)), y]);
+      if (Math.abs(difference) > Math.min(100, pov.fov / 2 + 40)) break;
+      points.push([Math.max(18, Math.min(282, 150 + difference * 2.1)), y]);
     }
-    if (points.length < 3) return;
+    if (points.length < 2) return;
     const sides = points.map(([x, y], index) => {
       const before = points[Math.max(0, index - 1)];
       const after = points[Math.min(points.length - 1, index + 1)];
       const length = Math.hypot(after[0] - before[0], after[1] - before[1]) || 1;
       const normal = [-(after[1] - before[1]) / length, (after[0] - before[0]) / length];
-      const halfWidth = 19 - index * 2.5;
+      const halfWidth = Math.max(11, 23 - index * 2.5);
       return {
         left: [x + normal[0] * halfWidth, y + normal[1] * halfWidth],
         right: [x - normal[0] * halfWidth, y - normal[1] * halfWidth]
@@ -344,16 +341,16 @@ export function createWalkPanorama(maps, section) {
     const formatPoint = ([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`;
     const ribbon = [...sides.map((side) => side.left), ...sides.map((side) => side.right).reverse()]
       .map(formatPoint).join(' ');
-    const arrows = points.slice(1, -1).map(([x, y], index) => {
+    const arrows = points.slice(1).map(([x, y], index) => {
       const before = points[index];
-      const after = points[index + 2];
-      const length = Math.hypot(after[0] - before[0], after[1] - before[1]) || 1;
-      const tangent = [(after[0] - before[0]) / length, (after[1] - before[1]) / length];
+      const length = Math.hypot(x - before[0], y - before[1]) || 1;
+      const tangent = [(x - before[0]) / length, (y - before[1]) / length];
       const normal = [-tangent[1], tangent[0]];
-      const tip = [x + tangent[0] * 8, y + tangent[1] * 8];
-      const left = [x - tangent[0] * 5 + normal[0] * 7, y - tangent[1] * 5 + normal[1] * 7];
-      const notch = [x - tangent[0], y - tangent[1]];
-      const right = [x - tangent[0] * 5 - normal[0] * 7, y - tangent[1] * 5 - normal[1] * 7];
+      const center = [(x + before[0]) / 2, (y + before[1]) / 2];
+      const tip = [center[0] + tangent[0] * 6, center[1] + tangent[1] * 6];
+      const left = [center[0] - tangent[0] * 5 + normal[0] * 6, center[1] - tangent[1] * 5 + normal[1] * 6];
+      const notch = [center[0] - tangent[0], center[1] - tangent[1]];
+      const right = [center[0] - tangent[0] * 5 - normal[0] * 6, center[1] - tangent[1] * 5 - normal[1] * 6];
       return `<polygon points="${[left, tip, right, notch].map(formatPoint).join(' ')}" fill="rgba(221,239,255,.9)"/>`;
     }).join('');
     ground.innerHTML = `<svg viewBox="0 0 300 200" preserveAspectRatio="none" aria-hidden="true">
