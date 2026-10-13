@@ -275,6 +275,43 @@ function initializeNaverRouteMap() {
         map.setZoom(15);
       }
     };
+    const markDestination = (latitude, longitude, title) => {
+      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return false;
+      destinationLocation = new maps.LatLng(latitude, longitude);
+      new maps.Marker({
+        map,
+        position: destinationLocation,
+        title,
+        zIndex: 110
+      });
+      destinationStatus = `목적지를 표시했습니다: ${title}`;
+      updateMapView();
+      updateStatus();
+      return true;
+    };
+    const searchNaverPlace = () => {
+      fetch('/api/map/place', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: routeDestinationQuery })
+      }).then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || '네이버 장소 검색에 연결하지 못했습니다.');
+        return payload.place;
+      }).then((place) => {
+        if (session !== routeMapSession || currentPage !== 'guide') return;
+        if (!place || !markDestination(Number(place.lat), Number(place.lng), place.title || routeDestinationQuery)) {
+          destinationStatus = '목적지 위치를 찾지 못했습니다.';
+          updateStatus();
+        }
+      }).catch((error) => {
+        if (session !== routeMapSession || currentPage !== 'guide') return;
+        destinationStatus = error instanceof Error && error.message.includes('인증 정보')
+          ? '네이버 장소 검색 인증 정보가 설정되지 않았습니다.'
+          : '목적지 위치를 찾지 못했습니다.';
+        updateStatus();
+      });
+    };
 
     currentPositionOnce().then((position) => {
       if (session !== routeMapSession || currentPage !== 'guide') return;
@@ -314,27 +351,12 @@ function initializeNaverRouteMap() {
         if (session !== routeMapSession || currentPage !== 'guide') return;
         const result = response?.v2?.addresses?.[0];
         if (status !== maps.Service.Status.OK || !result) {
-          destinationStatus = '목적지 위치를 찾지 못했습니다.';
-          updateStatus();
+          searchNaverPlace();
           return;
         }
         const longitude = Number(result.x);
         const latitude = Number(result.y);
-        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-          destinationStatus = '목적지 위치를 확인하지 못했습니다.';
-          updateStatus();
-          return;
-        }
-        destinationLocation = new maps.LatLng(latitude, longitude);
-        new maps.Marker({
-          map,
-          position: destinationLocation,
-          title: result.roadAddress || result.jibunAddress || routeDestinationQuery,
-          zIndex: 110
-        });
-        destinationStatus = `목적지를 표시했습니다: ${result.roadAddress || result.jibunAddress || routeDestinationQuery}`;
-        updateMapView();
-        updateStatus();
+        if (!markDestination(latitude, longitude, routeDestinationQuery)) searchNaverPlace();
       });
     }
     updateStatus();
