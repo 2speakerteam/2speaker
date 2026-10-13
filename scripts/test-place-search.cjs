@@ -20,9 +20,8 @@ async function call(handler, body, method = 'POST') {
 
 async function main() {
   const mainSource = fs.readFileSync(require.resolve('../src/main.js'), 'utf8');
-  const classifierStart = mainSource.indexOf('function normalizeEntranceQuery');
-  const classifierEnd = mainSource.indexOf('\nfunction openNearbyPlaceSearch', classifierStart);
-  const placeClassifier = new Function(`${mainSource.slice(classifierStart, classifierEnd)}\nreturn isPlaceSearchRequest;`)();
+  const placeClassifier = new Function('return (' + mainSource.slice(
+    mainSource.indexOf('function isPlaceSearchRequest'),mainSource.indexOf('\nfunction openNearbyPlaceSearch')) + ')')();
   assert.equal(placeClassifier('동대문 근처 숙소'),true);
   assert.equal(placeClassifier('안국역 숙소 찾아줘'),true);
   assert.equal(placeClassifier('숙소 찾아줘'),true);

@@ -3,7 +3,7 @@ const vm = require('node:vm');
 const assert = require('node:assert/strict');
 
 const source = fs.readFileSync(__dirname + '/../src/main.js', 'utf8');
-new Function(source.replace(/^import\s+\{[^}]+\}\s+from\s+['"]\.\/walking-preview\.mjs['"];?\s*/m, ''));
+new Function(source);
 const busStopSnippet = source.slice(source.indexOf('function explicitBusStopLandmark'),
   source.indexOf('async function pedestrianCandidates'));
 assert.ok(busStopSnippet.startsWith('function explicitBusStopLandmark'));

@@ -4,7 +4,7 @@ const vm = require('node:vm');
 
 const source = fs.readFileSync(require.resolve('../src/main.js'), 'utf8');
 const styles = fs.readFileSync(require.resolve('../src/styles.css'), 'utf8');
-new Function(source.replace(/^import\s+\{[^}]+\}\s+from\s+['"]\.\/walking-preview\.mjs['"];?\s*/m, ''));
+new Function(source);
 
 const detailsSource = source.slice(source.indexOf('function fastestTransitItinerary'), source.indexOf('function transportText'));
 assert.ok(detailsSource.startsWith('function fastestTransitItinerary'));
