@@ -4,7 +4,8 @@ const ROUTE_PROGRESS_LIMIT_METERS = 25;
 const MAX_FIRST_STAGE_ROUTE_METERS = 2000;
 const MAX_PROBES = 48;
 const MAX_FRAMES = 15;
-const FRAME_INTERVAL_MS = 1500;
+const FRAME_INTERVAL_MS = 1700;
+const TURN_FRAME_INTERVAL_MS = 850;
 const PANORAMA_TIMEOUT_MS = 6000;
 const ARRIVAL_RADIUS_METERS = 30;
 const ARRIVAL_MAX_ACCURACY_METERS = 20;
@@ -92,7 +93,7 @@ function routeCandidates(route, edges) {
     const after = candidateAt(edges, Math.min(total, progress + 10));
     const turn = signedAngle(headingDegrees(before, at), headingDegrees(at, after));
     const action = turn < -25 ? '좌회전' : turn > 25 ? '우회전' : '직진';
-    if (!crossing && action === '직진') return;
+    if (action === '직진') return;
     decisions.push({ progress, priority, action, crossing });
   };
   for (const guide of Array.isArray(route.guidePoints) ? route.guidePoints : []) {
@@ -163,8 +164,23 @@ function selectFrames(verified, total) {
     && frame.progress < total - endpointZone);
   const chosen = [first, last];
   const minimumSpacing = Math.min(24, Math.max(8, total / 55));
+  const decisionGroups = [...new Set(middle.filter((frame) => frame.decisionProgress !== null
+    && frame.action !== '직진' && frame.decisionProgress > endpointZone + 25
+    && frame.decisionProgress < total - endpointZone - 25)
+    .map((frame) => frame.decisionProgress))].sort((a, b) => a - b)
+    .filter((progress, index, all) => index === 0 || progress - all[index - 1] >= 35);
+  for (const progress of decisionGroups) {
+    for (const phase of ['approach', 'after']) {
+      if (chosen.length >= MAX_FRAMES) break;
+      const frame = middle.filter((item) => item.decisionProgress === progress
+        && item.phase === phase && !chosen.includes(item)
+        && chosen.every((other) => Math.abs(other.progress - item.progress) >= 8))
+        .sort((a, b) => Math.abs(a.progress - progress) - Math.abs(b.progress - progress))[0];
+      if (frame) chosen.push(frame);
+    }
+  }
   const targetGap = (last.progress - first.progress) / (MAX_FRAMES - 1);
-  for (let index = 1; index < MAX_FRAMES - 1; index += 1) {
+  for (let index = 1; index < MAX_FRAMES - 1 && chosen.length < MAX_FRAMES; index += 1) {
     const target = first.progress + targetGap * index;
     const candidate = middle
       .filter((frame) => !chosen.includes(frame)
@@ -298,7 +314,13 @@ export function createWalkPanorama(maps, section) {
       if (playing) pause();
       return;
     }
-    timer = window.setTimeout(() => { void showFrame(selected + 1); }, FRAME_INTERVAL_MS);
+    const current = frames[selected];
+    const upcoming = frames[selected + 1];
+    const sameTurn = current.decisionProgress !== null
+      && current.decisionProgress === upcoming.decisionProgress
+      && current.action !== '직진' && current.phase !== 'departure';
+    timer = window.setTimeout(() => { void showFrame(selected + 1); },
+      sameTurn ? TURN_FRAME_INTERVAL_MS : FRAME_INTERVAL_MS);
   };
   const fallback = (message) => {
     pause();
