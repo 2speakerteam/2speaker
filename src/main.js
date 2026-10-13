@@ -606,9 +606,41 @@ function initializeNaverRouteMap() {
     };
     const showWalkRoute = (route) => {
       if (!destinationChoicesElement) return;
+      const directions = Array.isArray(route.directions)
+        ? route.directions.filter((direction) => typeof direction === 'string' && direction.trim()) : [];
       destinationChoicesElement.innerHTML = `<div class="subway-route-panel" role="status" aria-label="TMAP 도보 경로">
         <strong>도보 약 ${Math.ceil(route.totalSeconds / 60)}분 · ${Math.round(route.distanceMeters).toLocaleString('ko-KR')}m</strong>
+        ${directions.length ? `<details><summary>TMAP 도보 안내 ${directions.length}개 보기</summary><ol>${directions.map((direction) => `<li>${escapeHtml(direction)}</li>`).join('')}</ol></details>` : ''}
       </div>`;
+    };
+    const updateWalkMapView = () => {
+      const points = [currentLocation, destinationLocation, ...routeCoordinates].filter(Boolean);
+      if (!points.length) return;
+      let minLat = 90;
+      let maxLat = -90;
+      let minLng = 180;
+      let maxLng = -180;
+      for (const point of points) {
+        minLat = Math.min(minLat, point.lat());
+        maxLat = Math.max(maxLat, point.lat());
+        minLng = Math.min(minLng, point.lng());
+        maxLng = Math.max(maxLng, point.lng());
+      }
+      const bounds = maps.LatLngBounds.bounds(
+        new maps.LatLng(minLat, minLng), new maps.LatLng(maxLat, maxLng)
+      );
+      map.fitBounds(bounds, { top: 22, right: 22, bottom: 28, left: 22, maxZoom: 17 });
+      const size = map.getSize();
+      const projection = map.getProjection();
+      const offsets = points.map((point) => projection.fromCoordToOffset(point));
+      const centerX = size.width / 2;
+      const centerY = size.height / 2;
+      if (offsets.every((offset) => {
+        const nextX = centerX + (offset.x - centerX) * 2;
+        const nextY = centerY + (offset.y - centerY) * 2;
+        return nextX >= 30 && nextX <= size.width - 30
+          && nextY >= 36 && nextY <= size.height - 36;
+      })) map.setZoom(Math.min(map.getZoom() + 1, 17));
     };
     const requestWalkRoute = () => {
       if (!walkRequested || destinationState !== 'success' || !destinationLocation) return;
@@ -659,16 +691,27 @@ function initializeNaverRouteMap() {
           return { ...segment, points };
         });
         routeCoordinates = segments.flatMap((segment) => segment.points);
-        routeLines = segments.map((segment) => new maps.Polyline({
-          map,
-          path: segment.points,
-          strokeColor: segment.color,
-          strokeWeight: 4,
-          strokeOpacity: 0.95,
-          strokeStyle: 'solid',
-          zIndex: 60
-        }));
-        updateMapView();
+        const paths = [];
+        for (const segment of segments) {
+          const path = paths.at(-1);
+          const previousEnd = path?.at(-1);
+          if (previousEnd && previousEnd.equals(segment.points[0])) {
+            path.push(...segment.points.slice(1));
+          } else {
+            paths.push([...segment.points]);
+          }
+        }
+        routeLines = paths.flatMap((path) => [
+          new maps.Polyline({
+            map, path, strokeColor: '#07334d', strokeWeight: 9,
+            strokeOpacity: 0.95, strokeLineCap: 'round', strokeLineJoin: 'round', zIndex: 60
+          }),
+          new maps.Polyline({
+            map, path, strokeColor: '#26e7ed', strokeWeight: 5,
+            strokeOpacity: 1, strokeLineCap: 'round', strokeLineJoin: 'round', zIndex: 61
+          })
+        ]);
+        updateWalkMapView();
         showWalkRoute(route);
       }).catch((error) => {
         if (controller.signal.aborted || session !== routeMapSession || currentPage !== 'guide'
