@@ -629,7 +629,7 @@ function initializeNaverRouteMap() {
       const bounds = maps.LatLngBounds.bounds(
         new maps.LatLng(minLat, minLng), new maps.LatLng(maxLat, maxLng)
       );
-      map.fitBounds(bounds, { top: 22, right: 22, bottom: 28, left: 22, maxZoom: 17 });
+      map.fitBounds(bounds, { top: 22, right: 70, bottom: 28, left: 22, maxZoom: 17 });
       const size = map.getSize();
       const projection = map.getProjection();
       const offsets = points.map((point) => projection.fromCoordToOffset(point));
@@ -638,7 +638,7 @@ function initializeNaverRouteMap() {
       if (offsets.every((offset) => {
         const nextX = centerX + (offset.x - centerX) * 2;
         const nextY = centerY + (offset.y - centerY) * 2;
-        return nextX >= 30 && nextX <= size.width - 30
+        return nextX >= 30 && nextX <= size.width - 70
           && nextY >= 36 && nextY <= size.height - 36;
       })) map.setZoom(Math.min(map.getZoom() + 1, 17));
     };
