@@ -54,7 +54,7 @@ function parseItinerary(itinerary) {
   for (const leg of legs) {
     if (leg.mode === 'SUBWAY') {
       const coordinates = linePoints(leg.passShape?.linestring);
-      if (!coordinates) return { incompleteShape: true };
+      if (!coordinates) return { incompleteShape: 'subway' };
       const stations = Array.isArray(leg.passStopList?.stationList)
         ? leg.passStopList.stationList.map((station) => text(station.stationName)).filter(Boolean)
         : [];
@@ -73,10 +73,10 @@ function parseItinerary(itinerary) {
         ? `#${leg.routeColor}` : '#20c8e7';
       segments.push({ mode: 'SUBWAY', route: detail.route, color: routeColor, coordinates });
     } else if (Number(leg.distance) > 0) {
-      if (!Array.isArray(leg.steps) || leg.steps.length === 0) return { incompleteShape: true };
+      if (!Array.isArray(leg.steps) || leg.steps.length === 0) return { incompleteShape: 'walking steps absent' };
       for (const step of leg.steps) {
         const coordinates = linePoints(step.linestring);
-        if (!coordinates) return { incompleteShape: true };
+        if (!coordinates) return { incompleteShape: 'walking step shape invalid' };
         segments.push({ mode: 'WALK', color: '#d4e9f1', coordinates });
       }
     }
@@ -146,10 +146,14 @@ module.exports = async function handler(req, res) {
     const itineraries = Array.isArray(metadata?.plan?.itineraries) ? metadata.plan.itineraries : [];
     let missingShape = false;
     let missingDetails = false;
+    const shapeIssues = new Set();
     const routes = itineraries.flatMap((itinerary) => {
       const parsed = parseItinerary(itinerary);
       if (!parsed) return [];
-      if (parsed.incompleteShape) missingShape = true;
+      if (parsed.incompleteShape) {
+        missingShape = true;
+        shapeIssues.add(parsed.incompleteShape);
+      }
       else if (parsed.incompleteDetails) missingDetails = true;
       else return [parsed];
       return [];
@@ -160,7 +164,7 @@ module.exports = async function handler(req, res) {
         : missingDetails
           ? 'TMAP 지하철 경로의 노선·역·시간 정보가 부족합니다.'
           : '이 출발지와 목적지 사이에 지하철 경로가 없습니다.';
-      return res.status(422).json({ error });
+      return res.status(422).json({ error, shapeIssues: [...shapeIssues] });
     }
     routes.sort((a, b) => a.totalSeconds - b.totalSeconds);
     return res.status(200).json({ route: routes[0], coordinateMatch: true });
