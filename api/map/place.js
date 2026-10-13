@@ -32,49 +32,65 @@ module.exports = async function handler(req, res) {
     return res.status(503).json({ error: '네이버 장소 검색 인증 정보가 설정되지 않았습니다.' });
   }
 
-  const endpoint = new URL('https://naverapihub.apigw.ntruss.com/search/v1/local');
-  endpoint.searchParams.set('query', query);
-  endpoint.searchParams.set('display', '5');
-  endpoint.searchParams.set('start', '1');
-  endpoint.searchParams.set('sort', 'random');
-  endpoint.searchParams.set('format', 'json');
-
   try {
-    const response = await fetch(endpoint, {
-      headers: {
-        'X-NCP-APIGW-API-KEY-ID': clientId,
-        'X-NCP-APIGW-API-KEY': clientSecret,
-        Accept: 'application/json'
+    const search = async (term) => {
+      const endpoint = new URL('https://naverapihub.apigw.ntruss.com/search/v1/local');
+      endpoint.searchParams.set('query', term);
+      endpoint.searchParams.set('display', '5'); // NAVER local-search maximum.
+      endpoint.searchParams.set('start', '1');
+      endpoint.searchParams.set('sort', 'random'); // NAVER documents this value as accuracy order.
+      endpoint.searchParams.set('format', 'json');
+      const response = await fetch(endpoint, {
+        headers: {
+          'X-NCP-APIGW-API-KEY-ID': clientId,
+          'X-NCP-APIGW-API-KEY': clientSecret,
+          Accept: 'application/json'
+        }
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const error = new Error(response.status === 401 || response.status === 403
+          ? '네이버 장소 검색 인증 설정을 확인해 주세요.'
+          : response.status === 429
+            ? '네이버 장소 검색 사용 한도에 도달했습니다.'
+            : '네이버 장소 검색에 연결하지 못했습니다.');
+        error.statusCode = response.status === 401 || response.status === 403 ? 503 : 502;
+        throw error;
       }
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      const message = response.status === 401 || response.status === 403
-        ? '네이버 장소 검색 인증 설정을 확인해 주세요.'
-        : response.status === 429
-          ? '네이버 장소 검색 사용 한도에 도달했습니다.'
-          : '네이버 장소 검색에 연결하지 못했습니다.';
-      return res.status(502).json({ error: message });
+      const items = Array.isArray(payload.items) ? payload.items : [];
+      const places = items.flatMap((item) => {
+        const lng = coordinate(item.mapx, 180);
+        const lat = coordinate(item.mapy, 90);
+        if (lat === null || lng === null) return [];
+        return [{
+          title: plainText(item.title, term),
+          category: plainText(item.category, ''),
+          address: plainText(item.address, ''),
+          roadAddress: plainText(item.roadAddress, ''),
+          lat,
+          lng
+        }];
+      });
+      if (items.length && !places.length) {
+        const error = new Error('네이버 장소 좌표를 확인할 수 없습니다.');
+        error.statusCode = 502;
+        throw error;
+      }
+      return places;
+    };
+
+    const normalized = (value) => String(value || '').toLowerCase().replace(/\s+/g, '');
+    let places = await search(query);
+    if (!places.some((place) => normalized(place.title).startsWith(normalized(query)))) {
+      // The first five accuracy results can all be businesses inside a landmark.
+      const landmarkPlaces = await search(`${query} 명소`);
+      const namedLandmarks = landmarkPlaces.filter((place) =>
+        normalized(place.title).startsWith(normalized(query)));
+      if (namedLandmarks.length) places = namedLandmarks;
     }
-
-    const places = (Array.isArray(payload.items) ? payload.items : []).flatMap((item) => {
-      const lng = coordinate(item.mapx, 180);
-      const lat = coordinate(item.mapy, 90);
-      if (lat === null || lng === null) return [];
-
-      return [{
-        title: plainText(item.title, query),
-        category: plainText(item.category, ''),
-        address: plainText(item.address, ''),
-        roadAddress: plainText(item.roadAddress, ''),
-        lat,
-        lng
-      }];
-    });
-
     return res.status(200).json({ places, place: places[0] || null });
-  } catch {
-    return res.status(502).json({ error: '네이버 장소 검색에 연결하지 못했습니다.' });
+  } catch (error) {
+    return res.status(error.statusCode || 502).json({ error: error.message || '네이버 장소 검색에 연결하지 못했습니다.' });
   }
 };
 

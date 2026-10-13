@@ -1,6 +1,6 @@
 const { cloudLocation, cloudProjectId, getAccessToken } = require('./google-cloud');
 
-async function generateWithVertex({ req, systemInstruction, contents }) {
+async function generateWithVertex({ req, systemInstruction, contents, generationConfig = {} }) {
   const projectId = cloudProjectId();
   const location = cloudLocation();
   const configuredModelId = process.env.GEMINI_MODEL_ID?.trim();
@@ -19,7 +19,7 @@ async function generateWithVertex({ req, systemInstruction, contents }) {
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: systemInstruction }] },
       contents,
-      generationConfig: { maxOutputTokens: 512, thinkingConfig: { thinkingLevel: 'LOW' } }
+      generationConfig: { maxOutputTokens: 512, thinkingConfig: { thinkingLevel: 'LOW' }, ...generationConfig }
     })
   });
   const payload = await response.json().catch(() => ({}));
@@ -120,5 +120,5 @@ async function generateAssistantText(input) {
   return provider(input);
 }
 
-module.exports = { generateAssistantText };
+module.exports = { generateAssistantText, generateWithVertex };
 

@@ -6,6 +6,8 @@ let routeEntryMode = 'dual';
 let routeStartQuery = '';
 let routeDestinationQuery = '';
 let routeTransportMode = 'subway';
+const routeIntentHistory = [];
+let routeIntentRequestId = 0;
 let routeMapLoaderPromise = null;
 let routeMapSession = 0;
 let routeMapAuthError = '';
@@ -84,6 +86,30 @@ function parseRouteQuery(value) {
   return route && route[1].trim() && route[2].trim()
     ? { start: route[1].trim(), destination: route[2].trim() }
     : { start: '', destination: query };
+}
+
+function resolveNaverPlace(query, places) {
+  const name = (value) => String(value || '').toLowerCase().replace(/\s+/g, '');
+  const term = name(query);
+  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean);
+  const scored = places.map((place) => {
+    const title = name(place.title);
+    const score = title === term ? 100 : title.startsWith(term) ? 80
+      : words.length > 1 && words.every((word) => title.includes(name(word))) ? 50 : 0;
+    return { place, score };
+  }).filter((candidate) => candidate.score > 0).sort((a, b) => b.score - a.score);
+  if (!scored.length) return { choices: [] };
+  const best = scored[0];
+  if (best.score === 100 && scored.filter((candidate) => candidate.score === 100).length === 1) {
+    return { selected: best.place };
+  }
+  const station = /역$/.test(term) && scored.every(({ place }) =>
+    name(place.title).startsWith(term) && /(지하철|전철|정차역)/.test(place.category || ''));
+  if (station) return { selected: best.place };
+  const attractions = scored.filter(({ place }) =>
+    place.category?.startsWith('여행,명소>') && name(place.title).startsWith(term));
+  if (attractions.length === 1 && best.score === 80) return { selected: attractions[0].place };
+  return { choices: scored.map(({ place }) => place) };
 }
 
 function bottomNav() {
@@ -843,53 +869,38 @@ function initializeNaverRouteMap() {
         destinationState = 'pending';
         updateStatus();
       }
-      fetchNaverPlaces(query).then(async (places) => {
-        if (session !== routeMapSession || currentPage !== 'guide') return [];
-        const term = query.replace(/\s+/g, ' ').trim().toLowerCase();
-        const matchesName = (place) => {
-          const title = String(place?.title || '').replace(/\s+/g, ' ').trim().toLowerCase();
-          return title.startsWith(term);
-        };
-        if (places.some(matchesName)) return places;
-        try {
-          const alternatives = await fetchNaverPlaces(`${query} 명소`);
-          const matchingAlternatives = alternatives.filter(matchesName);
-          return matchingAlternatives.length ? matchingAlternatives : places;
-        } catch {
-          return places;
-        }
-      }).then((places) => {
+      fetchNaverPlaces(query).then((places) => {
         if (session !== routeMapSession || currentPage !== 'guide') return;
         const validPlaces = Array.isArray(places) ? places.filter((place) => (
           place && Number.isFinite(Number(place.lat)) && Number.isFinite(Number(place.lng))
         )).map((place) => ({ ...place, lat: Number(place.lat), lng: Number(place.lng) })) : [];
-        if (validPlaces.length === 1) {
-          onSelect(validPlaces[0]);
-        } else if (validPlaces.length > 1) {
+        const result = resolveNaverPlace(query, validPlaces);
+        if (result.selected) {
+          onSelect(result.selected);
+        } else if (result.choices.length) {
           if (role === '출발지') {
-            locationStatus = `출발지 검색 결과 ${validPlaces.length}곳 · 선택해 주세요`;
+            locationStatus = `출발지 검색 결과 ${result.choices.length}곳 · 선택해 주세요`;
             locationState = 'info';
           } else {
-            destinationStatus = `목적지 검색 결과 ${validPlaces.length}곳 · 선택해 주세요`;
+            destinationStatus = `목적지 검색 결과 ${result.choices.length}곳 · 선택해 주세요`;
             destinationState = 'info';
           }
-          renderPlaceChoices(validPlaces, role, onSelect);
+          renderPlaceChoices(result.choices, role, onSelect);
           updateStatus();
         } else {
           if (role === '출발지') {
-            locationStatus = '네이버 출발지 검색 결과가 없습니다.';
+            locationStatus = '네이버에서 일치하는 출발지를 확인하지 못했습니다.';
             locationState = 'error';
           } else {
-            destinationStatus = '네이버 목적지 검색 결과가 없습니다.';
+            destinationStatus = '네이버에서 일치하는 목적지를 확인하지 못했습니다.';
             destinationState = 'error';
           }
           updateStatus();
         }
       }).catch((error) => {
         if (session !== routeMapSession || currentPage !== 'guide') return;
-        const message = error instanceof Error && error.message.includes('네이버 장소 검색')
-          ? error.message
-          : '네이버 장소 검색에 실패했습니다. 다시 입력해 주세요.';
+        const message = error instanceof Error && error.message
+          ? error.message : '네이버 장소 검색에 실패했습니다. 다시 입력해 주세요.';
         if (role === '출발지') {
           locationStatus = message;
           locationState = 'error';
@@ -1307,24 +1318,49 @@ if (currentPage === 'user-language-list' && !supportedUserLanguagesLoaded && !su
     document.querySelector('#route-destination')?.focus();
   });
   routeInput?.addEventListener('input', (event) => {
+    routeInput.setCustomValidity('');
     const routeSubmit = document.querySelector('.route-submit');
     if (routeSubmit) routeSubmit.hidden = !event.target.value.trim();
     routeTextAction?.setAttribute('aria-label', event.target.value.trim() ? '입력한 장소 검색' : '문자로 목적지 입력');
   });
-  routeInput?.addEventListener('keydown', (event) => {
-    if (event.key === 'Enter') {
-      event.preventDefault();
-      routeInput.form.requestSubmit();
-    }
-  });
-  document.querySelector('#route-form')?.addEventListener('submit', (event) => {
+  document.querySelector('#route-form')?.addEventListener('submit', async (event) => {
     event.preventDefault();
     const query = routeInput?.value.trim();
-    if (query) {
-      const route = parseRouteQuery(query);
-      routeStartQuery = route.start;
-      routeDestinationQuery = route.destination;
+    if (!query || routeInput.readOnly) return;
+    const requestId = ++routeIntentRequestId;
+    routeInput.readOnly = true;
+    routeInput.setAttribute('aria-busy', 'true');
+    try {
+      const response = await fetch('/api/route/interpret', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: query, history: routeIntentHistory })
+      });
+      const intent = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(intent.error || '길찾기 요청을 이해하지 못했습니다.');
+      if (intent.provider !== 'vertex' || typeof intent.start !== 'string'
+        || typeof intent.destination !== 'string' || typeof intent.useCurrentLocation !== 'boolean'
+        || intent.useCurrentLocation !== !intent.start || !intent.destination.trim()
+        || !['walk', 'subway', 'bus', 'taxi', 'unspecified'].includes(intent.mode)) {
+        throw new Error('Gemini 길찾기 결과를 확인할 수 없습니다.');
+      }
+      if (intent.mode === 'taxi') throw new Error('택시 경로는 아직 제공하지 않습니다.');
+      if (requestId !== routeIntentRequestId || currentPage !== 'route') return;
+      routeStartQuery = intent.start.trim();
+      routeDestinationQuery = intent.destination.trim();
+      if (intent.mode !== 'unspecified') routeTransportMode = intent.mode;
+      routeIntentHistory.push({ start: routeStartQuery, destination: routeDestinationQuery, mode: routeTransportMode });
+      if (routeIntentHistory.length > 4) routeIntentHistory.shift();
       navigate('guide');
+    } catch (error) {
+      if (requestId !== routeIntentRequestId || currentPage !== 'route') return;
+      routeInput.setCustomValidity(error instanceof Error ? error.message : '길찾기 요청을 처리하지 못했습니다.');
+      routeInput.reportValidity();
+    } finally {
+      if (routeInput.isConnected) {
+        routeInput.readOnly = false;
+        routeInput.removeAttribute('aria-busy');
+      }
     }
   });
   document.querySelector('.message-composer')?.addEventListener('submit', (event) => {
