@@ -1,7 +1,7 @@
 const TMAP_ROUTES_URL = 'https://apis.openapi.sk.com/transit/routes';
 const TMAP_WALK_URL = 'https://apis.openapi.sk.com/tmap/routes/pedestrian?version=1';
 const NAVER_PLACE_URL = 'https://naverapihub.apigw.ntruss.com/search/v1/local';
-const { requestNextMorning } = require('./scheduled');
+const { requestNextMorning } = require('../../lib/transit-scheduled');
 
 function coordinate(value, limit) {
   if (value === null || value === undefined || String(value).trim() === '') return null;

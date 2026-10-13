@@ -1,5 +1,5 @@
 const TMAP_ROUTES_URL = 'https://apis.openapi.sk.com/transit/routes';
-const { requestNextMorning } = require('./scheduled');
+const { requestNextMorning } = require('../../lib/transit-scheduled');
 
 function coordinate(value, limit) {
   if (value === null || value === undefined || String(value).trim() === '') return null;

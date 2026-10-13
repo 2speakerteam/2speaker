@@ -710,10 +710,10 @@ function initializeNaverRouteMap() {
       const requestId = ++routeRequestId;
       removeRouteLines();
       showTaxiMessage('TMAP에서 실제 자동차 주행 경로를 조회하고 있습니다.');
-      fetch('/api/transit/taxi', {
+      fetch('/api/transit/walk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ start, end }),
+        body: JSON.stringify({ start, end, mode: 'taxi' }),
         signal: controller.signal
       }).then(async (response) => {
         const payload = await response.json().catch(() => ({}));

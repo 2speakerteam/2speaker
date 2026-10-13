@@ -1,4 +1,5 @@
 const TMAP_WALK_URL = 'https://apis.openapi.sk.com/tmap/routes/pedestrian?version=1';
+const taxiHandler = require('../../lib/taxi-route');
 
 function coordinate(value, limit) {
   if (value === null || value === undefined || String(value).trim() === '') return null;
@@ -34,6 +35,7 @@ function lineCoordinates(value) {
 }
 
 module.exports = async function handler(req, res) {
+  if (req.body?.mode === 'taxi') return taxiHandler(req, res);
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
