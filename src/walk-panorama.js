@@ -1,7 +1,6 @@
 const CAMERA_TO_ROUTE_LIMIT_METERS = 15;
 const CAMERA_TO_REQUEST_LIMIT_METERS = 25;
 const ROUTE_PROGRESS_LIMIT_METERS = 25;
-const MAX_FIRST_STAGE_ROUTE_METERS = 2000;
 const MAX_PROBES = 460;
 const MAX_FRAMES = 25;
 const PANORAMA_TIMEOUT_MS = 6000;
@@ -239,7 +238,8 @@ function selectFrames(verified, total, startStationLocation = null) {
     - Math.abs(total - 25 - b.progress))[0]
     || [...ordered].reverse().find((frame) => frame.progress >= total - endpointZone)
     || ordered.at(-1);
-  if (!first || !last || first.panoId === last.panoId) return [];
+  if (!first || !last) return [];
+  if (first.panoId === last.panoId) return [{ ...first, phase: 'route' }];
   // Show the verified portion even if one endpoint lacks a panorama. Only
   // scenes inside an endpoint zone may be called departure or arrival.
   const hasDeparture = first.progress <= endpointZone;
@@ -695,8 +695,8 @@ export function createWalkPanorama(maps, section) {
       fallback('네이버 로드뷰를 불러올 수 없습니다.');
       return;
     }
-    if (!Number.isFinite(route.distanceMeters) || route.distanceMeters > MAX_FIRST_STAGE_ROUTE_METERS) {
-      fallback('이번 단계에서는 2km 이내 도보 경로만 로드뷰를 확인합니다.');
+    if (!Number.isFinite(route.distanceMeters) || route.distanceMeters <= 0) {
+      fallback('실제 도보 경로의 거리를 확인할 수 없습니다.');
       return;
     }
     const edges = walkEdges(route.segments);
