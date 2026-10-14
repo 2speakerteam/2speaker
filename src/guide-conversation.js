@@ -48,8 +48,12 @@ async function placeAnswer(message, context, signal) {
   const payload = await jsonPost('/api/map/place', { query }, signal);
   const places = Array.isArray(payload.places) ? payload.places : [];
   const normalized = (value) => String(value || '').replace(/\s+/g, '').toLowerCase();
-  const exact = places.filter((place) => normalized(place.title) === normalized(query));
-  const matching = exact.length ? exact : places.filter((place) => normalized(place.title).startsWith(normalized(query)));
+  const exit = query.match(/^(.+?역)\s*(\d+)번\s*출구$/);
+  const matching = exit
+    ? places.filter((place) => place.category === '교통시설>지하철출구번호'
+      && normalized(place.title).startsWith(normalized(exit[1]))
+      && normalized(place.title).includes(`${exit[2]}번출구`))
+    : places.filter((place) => normalized(place.title) === normalized(query));
   const valid = matching.filter((place) => Number.isFinite(place.lat) && Number.isFinite(place.lng));
   if (!valid.length) return `네이버 장소 검색에서 ‘${query}’의 확인된 위치를 찾지 못했습니다.`;
   if (valid.length !== 1) return `‘${query}’의 검색 결과가 여러 곳입니다. 장소를 더 구체적으로 말씀해 주세요.`;
