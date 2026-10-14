@@ -99,9 +99,10 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .conversation-brand-row { height: 42px; display: grid; place-items: center; }
 .conversation-brand-row strong { padding: 7px 22px; border-radius: 24px; color: white; background: #02060b; font-size: 16px; letter-spacing: .03em; }
 .conversation-title { height: 58px; }
-.guide-screen { --guide-nav-height: calc(78px + env(safe-area-inset-bottom)); height: 100%; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto var(--guide-nav-height); padding-inline: 20px; padding-bottom: 0; overflow: hidden; }
+.guide-screen { --guide-nav-height: calc(78px + env(safe-area-inset-bottom)); --guide-footer-inset: 0px; height: 100%; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto var(--guide-nav-height); padding-inline: 20px; padding-bottom: 0; overflow: hidden; }
+.guide-screen:has(.guide-chat-delete-actions:not([hidden])) { grid-template-rows: minmax(0, 1fr) 62px var(--guide-nav-height); }
 .guide-content { grid-row: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 28px; }
-.guide-screen .bottom-nav { grid-row: 3; position: relative; z-index: 1; left: auto; right: auto; bottom: auto; width: auto; height: var(--guide-nav-height); min-height: 0; transform: none; margin: 0 -20px; border-radius: 40px 40px 42px 42px; }
+.guide-screen .bottom-nav { position: fixed; z-index: 10; left: 50%; right: auto; bottom: var(--guide-footer-inset); width: min(520px, 100vw); height: var(--guide-nav-height); min-height: 0; transform: translateX(-50%); margin: 0; border-radius: 40px 40px 42px 42px; }
 .guide-header { position: relative; height: 54px; display: grid; grid-template-columns: 48px 1fr 48px; align-items: center; text-align: center; }
 .guide-header strong { width: max-content; justify-self: center; padding: 8px 22px; border-radius: 24px; color: white; background: #02060b; font-size: 18px; letter-spacing: .03em; }
 .guide-control { width: 44px; height: 44px; display: grid; place-items: center; border: 0; color: var(--cyan); background: transparent; cursor: pointer; }
@@ -156,7 +157,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .guide-chat-form .guide-chat-mic[aria-pressed="true"] { background: #13a4bb; box-shadow: 0 0 0 2px rgba(35, 214, 255, .45); }
 .guide-chat-status { min-height: 0; margin: 0; color: #b9d4e7; font-size: 11px; line-height: 1.35; }
 .guide-chat-status:empty { display: none; }
-.guide-chat-delete-actions { grid-row: 2; z-index: 2; width: 100%; max-width: 620px; min-height: 54px; display: grid; grid-template-columns: 1fr minmax(64px, 86px) minmax(82px, 104px); align-items: center; gap: 8px; margin: 0 auto 8px; padding: 5px 8px; border: 1px solid rgba(72, 198, 226, .44); border-radius: 16px; background: #00263f; }
+.guide-chat-delete-actions { position: fixed; z-index: 11; left: 50%; bottom: calc(var(--guide-footer-inset) + var(--guide-nav-height) + 8px); width: min(480px, calc(100vw - 40px)); min-height: 54px; display: grid; grid-template-columns: 1fr minmax(64px, 86px) minmax(82px, 104px); align-items: center; gap: 8px; margin: 0; padding: 5px 8px; border: 1px solid rgba(72, 198, 226, .44); border-radius: 16px; background: #00263f; transform: translateX(-50%); }
 .guide-chat-delete-actions[hidden], .guide-chat-tabs[hidden] { display: none; }
 .guide-chat-selected-count { color: #19dff0; font-size: 13px; font-weight: 700; }
 .guide-chat-delete-actions button { min-height: 42px; border: 1px solid rgba(72, 198, 226, .44); border-radius: 13px; background: rgba(4, 45, 73, .9); color: #e4f5fb; font: inherit; font-size: 13px; cursor: pointer; }
@@ -325,7 +326,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
   .app-shell { max-width: 520px; min-height: calc(100dvh - 32px); margin: 16px auto; border: 1px solid rgba(92, 189, 228, .35); border-radius: 42px; box-shadow: 0 30px 90px rgba(0,0,0,.42); }
   .app-shell:has(.guide-screen) { height: calc(100dvh - 32px); min-height: 0; }
   .screen { min-height: calc(100dvh - 34px); }
-  .guide-screen { height: 100%; min-height: 0; }
+  .guide-screen { --guide-footer-inset: 16px; height: 100%; min-height: 0; }
   .text-screen { height: calc(100dvh - 34px); min-height: 0; }
   .bottom-nav { left: 50%; right: auto; width: 520px; transform: translateX(-50%); bottom: 24px; border-radius: 36px 36px 42px 42px; }
   .home-screen .bottom-nav { bottom: 0; width: 100%; border-radius: 36px 36px 40px 40px; }
@@ -349,7 +350,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
   .guide-header strong { padding: 7px 14px; font-size: 15px; }
   .guide-chat-trash { right: 44px; width: 36px; }
   .guide-chat-trash svg { width: 24px; height: 24px; }
-  .guide-screen .bottom-nav { margin-inline: -14px; }
+  .guide-chat-delete-actions { width: calc(100vw - 28px); }
   .transport-options { gap: 6px; }
   .transport-option { min-height: 56px; padding-inline: 3px; }
   .transport-option strong { font-size: clamp(12px, 3.6vw, 14px); }
