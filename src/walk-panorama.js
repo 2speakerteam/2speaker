@@ -174,11 +174,24 @@ function selectFrames(verified, total) {
   const targetCount = Math.min(MAX_FRAMES, Math.ceil(total / targetGap) + 1);
   const canAdd = (frame) => !chosen.includes(frame)
     && chosen.every((item) => Math.abs(item.progress - frame.progress) >= 4.5);
-  // Keep both sides of verified decisions, then fill the largest real gaps.
-  for (const frame of [...middle].filter((item) => item.priority > 0)
-    .sort((a, b) => b.priority - a.priority)) {
-    if (chosen.length >= targetCount) break;
-    if (canAdd(frame)) chosen.push(frame);
+  // Retain at most one real scene on each side of a turn. Reserving every
+  // turn probe would exhaust a 25-scene preview and leave long straight gaps.
+  const decisionGroups = new Map();
+  for (const frame of middle.filter((item) => item.priority > 0
+    && Number.isFinite(item.decisionProgress))) {
+    const group = decisionGroups.get(frame.decisionProgress) || [];
+    group.push(frame);
+    decisionGroups.set(frame.decisionProgress, group);
+  }
+  for (const [progress, group] of decisionGroups) {
+    const before = group.filter((frame) => frame.progress <= progress)
+      .sort((a, b) => b.progress - a.progress)[0];
+    const after = group.filter((frame) => frame.progress > progress)
+      .sort((a, b) => a.progress - b.progress)[0];
+    for (const frame of [before, after]) {
+      if (chosen.length >= targetCount) break;
+      if (frame && canAdd(frame)) chosen.push(frame);
+    }
   }
   while (chosen.length < targetCount) {
     const candidate = middle.filter(canAdd)
