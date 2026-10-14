@@ -6,7 +6,7 @@ let currentPage = 'home';
 let routeEntryMode = 'dual';
 let routeStartQuery = '';
 let routeDestinationQuery = '';
-let routeTransportMode = 'subway';
+let routeTransportMode = '';
 let guideView = 'route';
 const routeIntentHistory = [];
 let routeIntentRequestId = 0;
@@ -1578,8 +1578,8 @@ if (currentPage === 'user-language-list' && !supportedUserLanguagesLoaded && !su
       if (requestId !== routeIntentRequestId || currentPage !== 'route' || !routeInput.isConnected) return;
       routeStartQuery = intent.start.trim();
       routeDestinationQuery = intent.destination.trim();
-      if (intent.mode !== 'unspecified') routeTransportMode = intent.mode;
-      routeIntentHistory.push({ start: routeStartQuery, destination: routeDestinationQuery, mode: routeTransportMode });
+      routeTransportMode = '';
+      routeIntentHistory.push({ start: routeStartQuery, destination: routeDestinationQuery, mode: intent.mode });
       if (routeIntentHistory.length > 4) routeIntentHistory.shift();
       navigate('guide');
     } catch (error) {
