@@ -326,6 +326,7 @@ export function createWalkPanorama(maps, section) {
   let startStationMarker = null;
   let groundFrame = null;
   let groundRequest = 0;
+  let groundSuspended = false;
   let projectionTimer = null;
   let sizeObserver = null;
 
@@ -338,12 +339,22 @@ export function createWalkPanorama(maps, section) {
     groundPoints = [];
     ground.replaceChildren();
   };
+  const suspendGround = () => {
+    groundSuspended = true;
+    window.clearTimeout(projectionTimer);
+    window.cancelAnimationFrame(groundRequest);
+    ground.replaceChildren();
+  };
+  canvas.addEventListener('pointerdown', suspendGround, true);
+  canvas.addEventListener('touchstart', suspendGround, { capture: true, passive: true });
+  canvas.addEventListener('wheel', suspendGround, { capture: true, passive: true });
   const drawGround = () => {
-    if (!groundFrame || !panorama || !groundPoints.length || canvas.hidden) return;
+    if (groundSuspended || !groundFrame || !panorama || !groundPoints.length || canvas.hidden) return;
     const pov = panorama.getPov();
     const box = canvas.getBoundingClientRect();
     if (!box.width || !box.height || !Number.isFinite(pov?.pan)) return;
-    if (angleDifference(pov.pan, groundFrame.pov.pan) > 80) {
+    if (angleDifference(pov.pan, groundFrame.pov.pan) > 8
+      || Math.abs((pov.tilt || 0) - (groundFrame.pov.tilt || 0)) > 4) {
       ground.replaceChildren();
       return;
     }
@@ -416,6 +427,7 @@ export function createWalkPanorama(maps, section) {
   };
   const showGround = (frame) => {
     clearGround();
+    groundSuspended = false;
     if (!panorama || frame.routeOffset > CAMERA_TO_ROUTE_LIMIT_METERS) return;
     groundFrame = frame;
     const total = routeEdges.at(-1)?.to || 0;
