@@ -86,7 +86,7 @@ const icons = {
   lock: '<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
   check: '<path d="m5 12 4 4L19 6"/>',
   sparkles: '<path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Z"/><path d="m19 15 .9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15ZM5 2l.7 1.8L7.5 4.5l-1.8.7L5 7l-.7-1.8L2.5 4.5l1.8-.7L5 2Z"/>',
-  walkMode: '<circle cx="13" cy="3.5" r="2" fill="currentColor" stroke="none"/><path d="m10 8 3-1 2 3 3 1M12 8l-1 5-3 3M11 13l4 3 1 5M10 9 7 12" stroke-width="2.3"/>',
+  walkMode: '<circle cx="12" cy="3.5" r="2" fill="currentColor" stroke="none"/><path d="m11 8-1 5-3 8M10 13l5 3 1 5M11 8l4 3 3 1M11 8l-4 4" stroke-width="2.5"/>',
   subwayMode: '<rect x="5" y="2.5" width="14" height="16" rx="3"/><path d="M5 12h14M8 6h8M8 21l2-2.5M16 18.5l2 2.5"/><circle cx="8.5" cy="15" r=".8" fill="currentColor" stroke="none"/><circle cx="15.5" cy="15" r=".8" fill="currentColor" stroke="none"/>',
   busMode: '<rect x="3.5" y="3" width="17" height="16" rx="2.5"/><path d="M3.5 12h17M7 19v2M17 19v2M7 7h10"/><circle cx="7.5" cy="15.5" r=".8" fill="currentColor" stroke="none"/><circle cx="16.5" cy="15.5" r=".8" fill="currentColor" stroke="none"/>',
   taxiMode: '<path d="M5 10 6.5 6h11L19 10M5 10h14a2 2 0 0 1 2 2v6H3v-6a2 2 0 0 1 2-2ZM8 6V4h8v2M5 18v2M19 18v2"/><path d="M7 14h2m6 0h2"/>'
