@@ -99,7 +99,7 @@ function projectOnPanoramaGround(camera, point, pov, width, height) {
   if (x < -width * .08 || x > width * 1.08 || y < -height * .08 || y > height * 1.08) {
     return null;
   }
-  return { x, y, radius: Math.min(28, Math.max(1.4, focal * .48 / depth)) };
+  return { x, y, radius: Math.min(18, Math.max(1.2, focal * .25 / depth)) };
 }
 
 function routeCandidates(route, edges) {
@@ -319,7 +319,7 @@ export function createWalkPanorama(maps, section) {
     });
     ground.innerHTML = ribbons.length
       ? `<svg viewBox="0 0 ${box.width} ${box.height}" preserveAspectRatio="none" aria-hidden="true">${ribbons.map((path) =>
-        `<path d="${path}" fill="#459BFF" fill-opacity=".74"/>`).join('')}</svg>`
+        `<path d="${path}" fill="#6ECFF6" fill-opacity=".76"/>`).join('')}</svg>`
       : '';
   };
   const scheduleGround = () => {
