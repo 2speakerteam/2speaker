@@ -21,7 +21,7 @@ function distanceMeters(a, b) {
 function walkEdges(segments) {
   const edges = [];
   let progress = 0;
-  for (const segment of segments) {
+  for (const [segmentIndex, segment] of segments.entries()) {
     if (!Array.isArray(segment.coordinates)) continue;
     for (let index = 1; index < segment.coordinates.length; index += 1) {
       const [startLng, startLat] = segment.coordinates[index - 1];
@@ -31,7 +31,7 @@ function walkEdges(segments) {
       if (![start.lat, start.lng, end.lat, end.lng].every(Number.isFinite)) continue;
       const length = distanceMeters(start, end);
       if (length < 0.1) continue;
-      edges.push({ start, end, from: progress, to: progress + length });
+      edges.push({ start, end, from: progress, to: progress + length, segmentIndex });
       progress += length;
     }
   }
@@ -45,7 +45,8 @@ function candidateAt(edges, progress) {
   return {
     lat: edge.start.lat + (edge.end.lat - edge.start.lat) * fraction,
     lng: edge.start.lng + (edge.end.lng - edge.start.lng) * fraction,
-    progress: target
+    progress: target,
+    segmentIndex: edge.segmentIndex
   };
 }
 
@@ -99,7 +100,7 @@ function projectOnPanoramaGround(camera, point, pov, width, height) {
   if (x < -width * .08 || x > width * 1.08 || y < -height * .08 || y > height * 1.08) {
     return null;
   }
-  return { x, y, radius: Math.min(18, Math.max(1.2, focal * .25 / depth)) };
+  return { x, y, radius: Math.min(11, Math.max(1.3, focal * .16 / depth)) };
 }
 
 function routeCandidates(route, edges) {
@@ -191,11 +192,35 @@ function instructionForFrame(frame, decisions, routeLength) {
     ? '목적지 방향으로 계속 가세요.' : '계속 직진하세요.';
 }
 
-function selectFrames(verified, total, startIsStation = false) {
+async function findStationExit(stationName, routePoint, stationPoint) {
+  const response = await fetch('/api/map/place', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query: `${stationName} 출구` })
+  });
+  if (!response.ok) return null;
+  const payload = await response.json();
+  return (Array.isArray(payload.places) ? payload.places : [])
+    .filter((place) => place.category === '교통시설>지하철출구번호'
+      && place.title?.startsWith(stationName)
+      && Number.isFinite(place.lat) && Number.isFinite(place.lng)
+      && distanceMeters(place, stationPoint) <= 160
+      && distanceMeters(place, routePoint) <= 120)
+    .sort((a, b) => distanceMeters(a, routePoint) - distanceMeters(b, routePoint))[0] || null;
+}
+
+function selectFrames(verified, total, startStationLocation = null) {
   if (!verified.length) return [];
   const ordered = [...verified].sort((a, b) => a.progress - b.progress);
   const endpointZone = Math.min(65, Math.max(30, total * .08));
-  const first = ordered.find((frame) => frame.progress <= endpointZone);
+  const departureOptions = ordered.filter((frame) => frame.progress <= endpointZone);
+  const stationViews = startStationLocation ? departureOptions.filter((frame) => {
+    const stationHeading = headingDegrees(frame.camera, startStationLocation);
+    return distanceMeters(frame.camera, startStationLocation) <= 45
+      && angleDifference(frame.pov.pan, stationHeading) <= 80;
+  }) : [];
+  const first = stationViews.sort((a, b) => distanceMeters(a.camera, startStationLocation)
+    - distanceMeters(b.camera, startStationLocation))[0] || departureOptions[0];
   // Keep the destination in front of the final camera. A panorama almost on
   // top of the destination can face beyond it and project its marker offscreen.
   const arrivalOptions = ordered.filter((frame) => frame.progress >= total - endpointZone
@@ -208,7 +233,7 @@ function selectFrames(verified, total, startIsStation = false) {
   if (!first || !last || first.panoId === last.panoId) return [];
   // A station is one departure landmark. Use the remaining scenes for the
   // journey beyond its immediate surroundings instead of repeating it.
-  const departureZone = startIsStation ? Math.min(110, total * .25) : 0;
+  const departureZone = startStationLocation ? Math.min(45, total * .08) : 0;
   const middle = ordered.filter((frame) => frame !== first && frame !== last
     && frame.progress >= Math.max(first.progress + 4.5, departureZone)
     && frame.progress <= last.progress - 4.5);
@@ -271,6 +296,8 @@ export function createWalkPanorama(maps, section) {
   let destination = null;
   let destinationPinLocation = null;
   let destinationPinTitle = '';
+  let startStationLocation = null;
+  let startStationTitle = '';
   let selected = -1;
   let playing = false;
   let busy = false;
@@ -279,6 +306,7 @@ export function createWalkPanorama(maps, section) {
   let arrivalRequest = 0;
   let groundPoints = [];
   let destinationMarker = null;
+  let startStationMarker = null;
   let groundFrame = null;
   let groundRequest = 0;
   let projectionTimer = null;
@@ -298,13 +326,16 @@ export function createWalkPanorama(maps, section) {
     const pov = panorama.getPov();
     const box = canvas.getBoundingClientRect();
     if (!box.width || !box.height || !Number.isFinite(pov?.pan)) return;
-    const points = groundPoints.map((point) => projectOnPanoramaGround(
-      groundFrame.camera, point, pov, box.width, box.height));
+    const points = groundPoints.map((point) => {
+      const projected = projectOnPanoramaGround(groundFrame.camera, point, pov, box.width, box.height);
+      return projected ? { ...projected, segmentIndex: point.segmentIndex } : null;
+    });
     const runs = [];
     let current = [];
     for (const point of points) {
-      if (!point || current.length && Math.hypot(point.x - current.at(-1).x,
-        point.y - current.at(-1).y) > Math.max(100, box.width * .26)) {
+      if (!point || current.length && (point.segmentIndex !== current.at(-1).segmentIndex
+        || Math.hypot(point.x - current.at(-1).x,
+          point.y - current.at(-1).y) > Math.max(100, box.width * .26))) {
         if (current.length > 1) runs.push(current);
         current = [];
       }
@@ -338,7 +369,7 @@ export function createWalkPanorama(maps, section) {
     });
     ground.innerHTML = ribbons.length
       ? `<svg viewBox="0 0 ${box.width} ${box.height}" preserveAspectRatio="none" aria-hidden="true">${ribbons.map((path) =>
-        `<path d="${path}" fill="#6ECFF6" fill-opacity=".76"/>`).join('')}</svg>`
+        `<path d="${path}" fill="#1685d3" fill-opacity=".8" stroke="#e9faff" stroke-opacity=".9" stroke-width="1.4" stroke-linejoin="round"/>`).join('')}</svg>`
       : '';
   };
   const scheduleGround = () => {
@@ -348,6 +379,10 @@ export function createWalkPanorama(maps, section) {
       if (destinationMarker?.getMap()) {
         destinationMarker.setMap(null);
         destinationMarker.setMap(panorama);
+      }
+      if (startStationMarker?.getMap()) {
+        startStationMarker.setMap(null);
+        startStationMarker.setMap(panorama);
       }
       window.cancelAnimationFrame(groundRequest);
       groundRequest = window.requestAnimationFrame(() => {
@@ -368,8 +403,28 @@ export function createWalkPanorama(maps, section) {
     }
     scheduleGround();
   };
+  const showStartStation = (frame) => {
+    if (frame.phase !== 'departure' || !startStationLocation || !panorama
+      || distanceMeters(frame.camera, startStationLocation) > 50) {
+      startStationMarker?.setMap(null);
+      return;
+    }
+    if (!startStationMarker) {
+      startStationMarker = new maps.Marker({
+        position: new maps.LatLng(startStationLocation.lat, startStationLocation.lng),
+        title: startStationTitle,
+        icon: {
+          content: `<span class="walk-panorama-station" role="img" aria-label="출발역 출구">${startStationTitle.replace(/[<>&"']/g, '')} 출발</span>`,
+          size: new maps.Size(112, 34), anchor: new maps.Point(56, 34)
+        },
+        zIndex: 490
+      });
+    }
+    startStationMarker.setMap(null);
+    startStationMarker.setMap(panorama);
+  };
   const showDestination = (frame) => {
-    if (!destinationPinLocation || !panorama
+    if (frame.phase !== 'arrival' || !destinationPinLocation || !panorama
       || distanceMeters(frame.camera, destinationPinLocation) > 120) {
       destinationMarker?.setMap(null);
       return;
@@ -379,8 +434,8 @@ export function createWalkPanorama(maps, section) {
         position: new maps.LatLng(destinationPinLocation.lat, destinationPinLocation.lng),
         title: destinationPinTitle || '목적지',
         icon: {
-          content: '<span class="walk-panorama-pin" role="img" aria-label="목적지"><svg viewBox="0 0 34 44" aria-hidden="true"><path d="M17 42C12 35 3 25 3 17a14 14 0 0 1 28 0c0 8-9 18-14 25Z" fill="#080b10" stroke="white" stroke-width="2"/><circle cx="17" cy="17" r="5" fill="white"/></svg></span>',
-          size: new maps.Size(34, 44), anchor: new maps.Point(17, 44)
+          content: '<span class="walk-panorama-arrival-arrow" role="img" aria-label="도보 경로 도착점"><svg viewBox="0 0 36 48" aria-hidden="true"><path d="M18 2 33 17v25a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V17L18 2Z" fill="#0868b7" stroke="white" stroke-width="3" stroke-linejoin="round"/></svg></span>',
+          size: new maps.Size(36, 48), anchor: new maps.Point(18, 46)
         },
         zIndex: 500
       });
@@ -489,6 +544,7 @@ export function createWalkPanorama(maps, section) {
     canvas.hidden = true;
     clearGround();
     destinationMarker?.setMap(null);
+    startStationMarker?.setMap(null);
     turn.hidden = true;
     section.hidden = false;
     arrival.textContent = '';
@@ -555,6 +611,7 @@ export function createWalkPanorama(maps, section) {
         ? `${frame.action} 후 진행` : '';
     turn.hidden = !['approach', 'after'].includes(frame.phase) || !turn.textContent;
     showGround(frame);
+    showStartStation(frame);
     showDestination(frame);
     setStatus(`경로 미리보기 ${index + 1}/${frames.length}`);
     section.dataset.panoramaId = frame.panoId;
@@ -584,6 +641,8 @@ export function createWalkPanorama(maps, section) {
     clearGround();
     destinationMarker?.setMap(null);
     destinationMarker = null;
+    startStationMarker?.setMap(null);
+    startStationMarker = null;
     panorama?.setVisible(false);
     panorama = null;
     canvas.replaceChildren();
@@ -601,6 +660,8 @@ export function createWalkPanorama(maps, section) {
     destination = null;
     destinationPinLocation = null;
     destinationPinTitle = '';
+    startStationLocation = null;
+    startStationTitle = '';
     selected = -1;
     busy = false;
   };
@@ -631,37 +692,33 @@ export function createWalkPanorama(maps, section) {
     }
     routeEdges = edges;
     routeDecisions = decisions;
+    const routeStart = edges[0].start;
+    const routeEnd = edges.at(-1).end;
+    destinationPinLocation = routeEnd;
+    destinationPinTitle = '도보 경로 도착점';
     section.hidden = false;
     canvas.hidden = false;
     section.classList.add('is-loading');
-    const stationName = options.destinationTitle?.match(/^(.+?역)(?:\s|$)/)?.[1];
-    if (stationName && destination) {
-      // A station's representative coordinate can be underground or in the
-      // roadway. Pin only an actual NAVER station exit near the TMAP endpoint.
-      destinationPinLocation = null;
-      try {
-        const response = await fetch('/api/map/place', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ query: `${stationName} 출구` })
-        });
-        const payload = response.ok ? await response.json() : {};
-        if (run !== generation) return;
-        const routeEnd = edges.at(-1).end;
-        const exits = (Array.isArray(payload.places) ? payload.places : [])
-          .filter((place) => place.category === '교통시설>지하철출구번호'
-            && place.title?.startsWith(stationName)
-            && Number.isFinite(place.lat) && Number.isFinite(place.lng)
-            && distanceMeters(place, destination) <= 160
-            && distanceMeters(place, routeEnd) <= 120)
-          .sort((a, b) => distanceMeters(a, routeEnd) - distanceMeters(b, routeEnd));
-        if (exits.length) {
-          destinationPinLocation = { lat: exits[0].lat, lng: exits[0].lng };
-          destinationPinTitle = exits[0].title;
-        }
-      } catch {
-        if (run !== generation) return;
-      }
+    const startStationName = options.startIsStation
+      ? options.startTitle?.match(/^(.+?역)(?:\s|\(|$)/)?.[1] : null;
+    const destinationStationName = options.destinationTitle?.match(/^(.+?역)(?:\s|\(|$)/)?.[1];
+    const [startExit, destinationExit] = await Promise.all([
+      startStationName ? findStationExit(startStationName, routeStart, routeStart).catch(() => null) : null,
+      destinationStationName && destination
+        ? findStationExit(destinationStationName, routeEnd, destination).catch(() => null) : null
+    ]);
+    if (run !== generation) return;
+    if (startExit) {
+      startStationLocation = { lat: startExit.lat, lng: startExit.lng };
+      startStationTitle = startStationName;
+    }
+    if (destinationExit && distanceMeters(destinationExit, routeEnd) <= 30) {
+      destinationPinLocation = { lat: destinationExit.lat, lng: destinationExit.lng };
+      destinationPinTitle = destinationExit.title;
+    } else if (!destinationStationName && destination
+      && distanceMeters(destination, routeEnd) <= 30) {
+      destinationPinLocation = destination;
+      destinationPinTitle = options.destinationTitle || '목적지';
     }
     if (window.ResizeObserver) {
       sizeObserver = new ResizeObserver(() => {
@@ -726,10 +783,17 @@ export function createWalkPanorama(maps, section) {
     }
     if (run !== generation) return;
     section.classList.remove('is-loading');
-    frames = selectFrames(verified, edges.at(-1).to, options.startIsStation);
+    frames = selectFrames(verified, edges.at(-1).to, startStationLocation);
     if (!frames.length) {
       fallback('출발지와 도착지 주변 모두에서 실제 경로와 방향이 확인된 로드뷰가 부족합니다.');
       return;
+    }
+    if (startStationLocation && distanceMeters(frames[0].camera, startStationLocation) <= 45) {
+      const routePan = frames[0].pov.pan;
+      const exitPan = headingDegrees(frames[0].camera, startStationLocation);
+      if (angleDifference(routePan, exitPan) <= 80) {
+        frames[0].pov = { ...frames[0].pov, pan: routePan + signedAngle(routePan, exitPan) / 2 };
+      }
     }
     await showFrame(0);
     return selected === 0;

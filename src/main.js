@@ -901,7 +901,7 @@ function initializeNaverRouteMap() {
         ]);
         updateWalkMapView();
         showWalkRoute(route);
-        void walkPanorama.start(route, end, { startIsStation, destinationTitle }).then((ready) => {
+        void walkPanorama.start(route, end, { startIsStation, startTitle, destinationTitle }).then((ready) => {
           if (session !== routeMapSession || currentPage !== 'guide'
             || !walkRequested || requestId !== routeRequestId) return;
           if (ready) setGuideView('panorama');
