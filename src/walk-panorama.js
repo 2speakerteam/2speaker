@@ -339,19 +339,33 @@ export function createWalkPanorama(maps, section) {
 
   const showGroundGuide = (frame) => {
     ground.replaceChildren();
-    if (frame.phase === 'arrival') return;
     if (!routeEdges.length || frame.routeOffset > CAMERA_TO_ROUTE_LIMIT_METERS || !panorama) return;
-    if (routeEdges.at(-1).to - frame.progress < 8) return;
+    const remaining = routeEdges.at(-1).to - frame.progress;
+    if (remaining < .5) return;
     const pov = panorama.getPov();
     if (!Number.isFinite(pov?.pan) || !Number.isFinite(pov?.fov)) return;
     const points = [[150, 199]];
-    for (const [meters, y] of [[2, 188], [6, 174], [12, 151], [19, 121], [28, 87]]) {
+    const samples = [[0, 199], [2, 188], [6, 174], [12, 151], [19, 121],
+      [28, 87], [40, 62], [55, 42]];
+    const visibleDistance = Math.min(remaining, 55);
+    const distances = samples.slice(1).map(([meters]) => meters)
+      .filter((meters) => meters < visibleDistance);
+    distances.push(visibleDistance);
+    const screenY = (meters) => {
+      const afterIndex = samples.findIndex(([distance]) => distance >= meters);
+      const [beforeDistance, beforeY] = samples[afterIndex - 1];
+      const [afterDistance, afterY] = samples[afterIndex];
+      return beforeY + (afterY - beforeY) * (meters - beforeDistance)
+        / (afterDistance - beforeDistance);
+    };
+    for (const meters of distances) {
       const point = candidateAt(routeEdges, frame.progress + meters);
       const difference = signedAngle(pov.pan, headingDegrees(frame.camera, point));
-      if (Math.abs(difference) > Math.min(100, pov.fov / 2 + 40)) break;
+      if (Math.abs(difference) > Math.min(110, pov.fov / 2 + 55)) break;
       const projectedX = Math.max(18, Math.min(282, 150 + difference * 2.1));
       const previousX = points.at(-1)[0];
-      points.push([Math.max(previousX - 35, Math.min(previousX + 35, projectedX)), y]);
+      points.push([Math.max(previousX - 35, Math.min(previousX + 35, projectedX)),
+        screenY(meters)]);
     }
     if (points.length < 2) return;
     const formatPoint = ([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`;
@@ -365,7 +379,7 @@ export function createWalkPanorama(maps, section) {
       const after = smoothPoints[Math.min(smoothPoints.length - 1, index + 1)];
       const length = Math.hypot(after[0] - before[0], after[1] - before[1]) || 1;
       const normal = [-(after[1] - before[1]) / length, (after[0] - before[0]) / length];
-      const halfWidth = Math.max(10, 24 - index * 2.7);
+      const halfWidth = Math.max(12, 29 - index * 2.4);
       return {
         left: [x + normal[0] * halfWidth, y + normal[1] * halfWidth],
         right: [x - normal[0] * halfWidth, y - normal[1] * halfWidth]
@@ -383,17 +397,12 @@ export function createWalkPanorama(maps, section) {
       return `${path} L${formatPoint(edge.at(-1))}`;
     };
     const ribbon = `${smoothEdge(leftEdge, true)} ${smoothEdge(rightEdge)} Z`;
-    const tip = smoothPoints.at(-1);
-    const before = smoothPoints.at(-2);
-    const length = Math.hypot(tip[0] - before[0], tip[1] - before[1]) || 1;
-    const tangent = [(tip[0] - before[0]) / length, (tip[1] - before[1]) / length];
-    const normal = [-tangent[1], tangent[0]];
-    const base = [tip[0] - tangent[0] * 14, tip[1] - tangent[1] * 14];
-    const left = [base[0] + normal[0] * 10, base[1] + normal[1] * 10];
-    const right = [base[0] - normal[0] * 10, base[1] - normal[1] * 10];
     ground.innerHTML = `<svg viewBox="0 0 300 200" preserveAspectRatio="none" aria-hidden="true">
-      <path d="${ribbon}" fill="rgba(53,212,119,.62)" stroke="#35d477" stroke-width="2" stroke-linejoin="round"/>
-      <polygon points="${[left, tip, right].map(formatPoint).join(' ')}" fill="#35d477" stroke="rgba(5,55,31,.72)" stroke-width="1.5" stroke-linejoin="round"/>
+      <defs><linearGradient id="walk-ground-blue" x1="0" y1="1" x2="0" y2="0">
+        <stop offset="0" stop-color="#3798f6" stop-opacity=".78"/>
+        <stop offset="1" stop-color="#83ccff" stop-opacity=".66"/>
+      </linearGradient></defs>
+      <path d="${ribbon}" fill="url(#walk-ground-blue)" stroke="rgba(131,204,255,.8)" stroke-width="1.5" stroke-linejoin="round"/>
     </svg>`;
   };
 
