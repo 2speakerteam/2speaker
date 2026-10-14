@@ -672,7 +672,8 @@ export function createWalkPanorama(maps, section) {
           panorama = new maps.Panorama(canvas, {
             position: new maps.LatLng(candidate.lat, candidate.lng),
             pov: { pan: 0, tilt: 0, fov: 95 },
-            flightSpot: false
+            flightSpot: false,
+            logoControl: false
           });
           attachListeners();
         } else panorama.setPosition(new maps.LatLng(candidate.lat, candidate.lng));
@@ -729,5 +730,5 @@ export function createWalkPanorama(maps, section) {
     }
   });
   updateControls();
-  return { start, stop };
+  return { start, stop, pause };
 }

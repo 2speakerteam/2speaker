@@ -6,6 +6,7 @@ let routeEntryMode = 'dual';
 let routeStartQuery = '';
 let routeDestinationQuery = '';
 let routeTransportMode = 'subway';
+let guideView = 'route';
 const routeIntentHistory = [];
 let routeIntentRequestId = 0;
 let routeMapLoaderPromise = null;
@@ -199,12 +200,29 @@ function guideScreen() {
       <strong>2SPEAKER</strong>
       <button class="guide-control" data-page="language" aria-label="설정">${icon('settings', 30)}</button>
     </header>
-    <div class="guide-content">
+    <div class="guide-content" data-guide-view="${guideView}">
     <section class="route-visual" aria-label="네이버 지도">
       <div class="route-scene route-map-scene">
         <div id="route-map" class="route-map-canvas" role="application" aria-label="확대·축소 및 이동할 수 있는 지도"></div>
         <p id="route-map-status" class="route-map-status" role="status" aria-live="polite">네이버 지도를 불러오는 중입니다.</p>
       </div>
+      <section class="walk-panorama" aria-label="네이버 도보 로드뷰" hidden>
+        <div class="walk-panorama-heading">
+          <p class="walk-panorama-status" role="status" aria-live="polite"></p>
+          <button type="button" class="walk-panorama-map-button" data-action="show-guide-map">지도 보기</button>
+        </div>
+        <div class="walk-panorama-view">
+          <div class="walk-panorama-canvas" aria-label="네이버 실제 로드뷰"></div>
+          <div class="walk-panorama-ground" aria-hidden="true"></div>
+          <div class="walk-panorama-turn" role="status" aria-live="polite" hidden></div>
+        </div>
+        <div class="walk-panorama-controls">
+          <button type="button" data-panorama-action="previous">이전</button>
+          <button type="button" data-panorama-action="playback">재생</button>
+          <button type="button" data-panorama-action="next">다음</button>
+        </div>
+        <p class="walk-panorama-arrival" role="status" aria-live="polite"></p>
+      </section>
     </section>
     <section class="transport-options" role="group" aria-label="이동 수단">
       <button class="transport-option" type="button" data-mode="walk" aria-pressed="${routeTransportMode === 'walk'}"><strong>도보</strong></button>
@@ -213,20 +231,6 @@ function guideScreen() {
       <button class="transport-option" type="button" data-mode="taxi" aria-pressed="${routeTransportMode === 'taxi'}"><strong>택시</strong></button>
     </section>
     <section class="guide-dialogue" aria-label="길찾기 내용"></section>
-    <section class="walk-panorama" aria-label="네이버 도보 로드뷰" hidden>
-      <p class="walk-panorama-status" role="status" aria-live="polite"></p>
-      <div class="walk-panorama-view">
-        <div class="walk-panorama-canvas" aria-label="네이버 실제 로드뷰"></div>
-        <div class="walk-panorama-ground" aria-hidden="true"></div>
-        <div class="walk-panorama-turn" role="status" aria-live="polite" hidden></div>
-      </div>
-      <p class="walk-panorama-arrival" role="status" aria-live="polite"></p>
-      <div class="walk-panorama-controls">
-        <button type="button" data-panorama-action="previous">이전</button>
-        <button type="button" data-panorama-action="playback">재생</button>
-        <button type="button" data-panorama-action="next">다음</button>
-      </div>
-    </section>
     </div>
     ${bottomNav()}
   </main>`;
@@ -894,6 +898,7 @@ function initializeNaverRouteMap() {
         ]);
         updateWalkMapView();
         showWalkRoute(route);
+        setGuideView('panorama');
         void walkPanorama.start(route, end, { startIsStation, destinationTitle });
       }).catch((error) => {
         if (controller.signal.aborted || session !== routeMapSession || currentPage !== 'guide'
@@ -1363,6 +1368,9 @@ function render() {
   document.querySelectorAll('[data-action="back"]').forEach((button) => {
     button.addEventListener('click', goBack);
   });
+  document.querySelector('[data-action="show-guide-map"]')?.addEventListener('click', () => {
+    setGuideView('route');
+  });
   document.querySelectorAll('[data-action="menu-close"]').forEach((button) => {
     button.addEventListener('click', goBack);
   });
@@ -1721,10 +1729,20 @@ async function processVoiceTurn(message) {
   window.speechSynthesis.speak(utterance);
 }
 
+function setGuideView(view) {
+  if (view === 'route' && guideView === 'panorama') activeWalkPanorama?.pause?.();
+  guideView = view;
+  const content = document.querySelector('.guide-content');
+  if (!content) return;
+  content.dataset.guideView = view;
+  content.scrollTop = 0;
+}
+
 function navigate(page) {
   if (currentPage === 'voice' && page !== 'voice') stopVoiceConversation();
   if (page !== currentPage) pageHistory.push(currentPage);
   currentPage = page;
+  if (page === 'guide') guideView = 'route';
   if (page === 'voice') {
     voicePaused = false;
     voiceConversationError = '';
@@ -1737,6 +1755,10 @@ function navigate(page) {
 }
 
 function goBack() {
+  if (currentPage === 'guide' && guideView === 'panorama') {
+    setGuideView('route');
+    return;
+  }
   if (currentPage === 'voice') stopVoiceConversation();
   currentPage = pageHistory.pop() || 'home';
   render();
