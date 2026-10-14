@@ -119,11 +119,6 @@ export function createGuideConversation(section, { getContext }) {
       <button type="submit" class="guide-chat-send" aria-label="메시지 보내기"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m4 4 16 8-16 8 3-8Z"/><path d="M7 12h13"/></svg></button>
     </form>
     <p class="guide-chat-status" role="status" aria-live="polite"></p>
-    <div class="guide-chat-delete-actions" hidden>
-      <span class="guide-chat-selected-count" aria-live="polite">선택 0개</span>
-      <button type="button" class="guide-chat-delete-cancel">취소</button>
-      <button type="button" class="guide-chat-delete-confirm" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6.5 7l.8 13h9.4l.8-13M10 11v6M14 11v6"/></svg>삭제</button>
-    </div>
     <div class="guide-chat-tabs" role="group" aria-label="대화 방식">
       <button type="button" data-chat-mode="ai" aria-pressed="true">AI 대화</button>
       <button type="button" data-chat-mode="translation" aria-pressed="false">실시간 통역</button>
@@ -135,13 +130,12 @@ export function createGuideConversation(section, { getContext }) {
   const mic = section.querySelector('.guide-chat-mic');
   const trash = section.closest('.guide-screen')?.querySelector('.guide-chat-trash');
   const tabs = section.querySelector('.guide-chat-tabs');
-  const deleteActions = section.querySelector('.guide-chat-delete-actions');
-  const selectedCount = section.querySelector('.guide-chat-selected-count');
-  const cancelDelete = section.querySelector('.guide-chat-delete-cancel');
-  const confirmDelete = section.querySelector('.guide-chat-delete-confirm');
+  const deleteActions = section.closest('.guide-screen').querySelector('.guide-chat-delete-actions');
+  const selectedCount = deleteActions.querySelector('.guide-chat-selected-count');
+  const cancelDelete = deleteActions.querySelector('.guide-chat-delete-cancel');
+  const confirmDelete = deleteActions.querySelector('.guide-chat-delete-confirm');
 
   const updateDeleteUi = () => {
-    section.closest('.guide-screen')?.classList.toggle('is-chat-selecting', selecting);
     if (trash) {
       trash.hidden = mode !== 'ai';
       trash.setAttribute('aria-pressed', String(selecting));

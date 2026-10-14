@@ -256,6 +256,11 @@ function guideScreen() {
     <section class="guide-dialogue" aria-label="길찾기 내용"></section>
     <section class="guide-conversation" aria-label="길찾기 대화"></section>
     </div>
+    <div class="guide-chat-delete-actions" hidden>
+      <span class="guide-chat-selected-count" aria-live="polite">선택 0개</span>
+      <button type="button" class="guide-chat-delete-cancel">취소</button>
+      <button type="button" class="guide-chat-delete-confirm" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6.5 7l.8 13h9.4l.8-13M10 11v6M14 11v6"/></svg>삭제</button>
+    </div>
     ${bottomNav()}
   </main>`;
 }
