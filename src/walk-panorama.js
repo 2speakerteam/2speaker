@@ -112,7 +112,7 @@ function projectOnPanoramaGround(camera, point, pov, width, height) {
   if (x < 0 || x > width || y < Math.max(height * .55, horizonY + 8) || y > height) {
     return null;
   }
-  return { x, y, radius: Math.min(13, Math.max(1.6, focal * .2 / depth)) };
+  return { x, y, radius: Math.min(26, Math.max(3.2, focal * .4 / depth)) };
 }
 
 function routeCandidates(route, edges) {
