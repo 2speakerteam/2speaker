@@ -41,6 +41,26 @@ const sentTextMessages = [];
 const pageHistory = [];
 let faqOpenIndex = 3;
 
+function directRouteIntent(query, entryMode) {
+  const text = query.trim().replace(/[.!?。]+$/, '').trim();
+  const explicitRoute = text.match(/^(.+?)에서\s*(.+?)까지$/);
+  const stationRoute = text.match(/^(\S+역)\s*에서\s*(\S+역)$/);
+  const pair = explicitRoute || stationRoute;
+  if (pair) {
+    const start = pair[1].trim();
+    const destination = pair[2].trim();
+    if (start && destination && start.length <= 100 && destination.length <= 100) {
+      return { start, destination, mode: 'unspecified', useCurrentLocation: false, provider: 'direct' };
+    }
+    return null;
+  }
+  const destination = text.match(/^(.+?)까지$/)?.[1]?.trim() || text;
+  if (!destination || destination.length > 100 || /[?？]/.test(query)
+    || /(?:가자|가줘|가주세요|알려줘|알려주세요|찾아줘|찾아주세요|어디|어떻게|추천|지하철로|버스로|택시로|도보로)/.test(destination)
+    || /에서/.test(destination) || (entryMode !== 'simple' && /\s/.test(destination))) return null;
+  return { start: '', destination, mode: 'unspecified', useCurrentLocation: true, provider: 'direct' };
+}
+
 const icons = {
   search: '<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
   arrow: '<path d="M5 12h14"/><path d="m14 7 5 5-5 5"/>',
@@ -1517,22 +1537,33 @@ if (currentPage === 'user-language-list' && !supportedUserLanguagesLoaded && !su
     const query = routeInput?.value.trim();
     if (!query || routeInput.readOnly) return;
     const feedback = document.querySelector('.route-search-feedback');
+    const directIntent = directRouteIntent(query, routeEntryMode);
     if (feedback) {
-      feedback.textContent = '요청을 확인하고 있습니다.';
+      feedback.textContent = directIntent ? '장소를 확인하고 있습니다.' : '요청을 확인하고 있습니다.';
       feedback.classList.remove('is-error');
     }
     const requestId = ++routeIntentRequestId;
     routeInput.readOnly = true;
     routeInput.setAttribute('aria-busy', 'true');
     try {
-      const response = await fetch('/api/route/interpret', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: query, history: routeIntentHistory })
-      });
-      const intent = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(intent.error || '길찾기 요청을 이해하지 못했습니다.');
-      if (intent.provider !== 'vertex' || typeof intent.start !== 'string'
+      let intent = directIntent;
+      if (!intent) {
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 18_000);
+        try {
+          const response = await fetch('/api/route/interpret', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: query, history: routeIntentHistory }),
+            signal: controller.signal
+          });
+          intent = await response.json().catch(() => ({}));
+          if (!response.ok) throw new Error(intent.error || '길찾기 요청을 이해하지 못했습니다.');
+        } finally {
+          window.clearTimeout(timeout);
+        }
+      }
+      if (!['vertex', 'direct'].includes(intent.provider) || typeof intent.start !== 'string'
         || typeof intent.destination !== 'string' || typeof intent.useCurrentLocation !== 'boolean'
         || intent.useCurrentLocation !== !intent.start || !intent.destination.trim()
         || !['walk', 'subway', 'bus', 'taxi', 'unspecified'].includes(intent.mode)) {
@@ -1548,7 +1579,9 @@ if (currentPage === 'user-language-list' && !supportedUserLanguagesLoaded && !su
     } catch (error) {
       if (requestId !== routeIntentRequestId || currentPage !== 'route' || !routeInput.isConnected) return;
       if (feedback) {
-        feedback.textContent = error instanceof Error ? error.message : '길찾기 요청을 처리하지 못했습니다.';
+        feedback.textContent = error?.name === 'AbortError'
+          ? 'AI 응답이 지연되고 있습니다. 다시 검색해 주세요.'
+          : error instanceof Error ? error.message : '길찾기 요청을 처리하지 못했습니다.';
         feedback.classList.add('is-error');
       }
     } finally {

@@ -101,12 +101,15 @@ function projectOnPanoramaGround(camera, point, pov, width, height) {
   const forward = north * Math.cos(pan) + east * Math.sin(pan);
   const right = east * Math.cos(pan) - north * Math.sin(pan);
   const depth = forward * Math.cos(tilt) - PANORAMA_CAMERA_HEIGHT_METERS * Math.sin(tilt);
-  if (depth < 2) return null;
+  if (depth < 3) return null;
   const up = -PANORAMA_CAMERA_HEIGHT_METERS * Math.cos(tilt) - forward * Math.sin(tilt);
   const focal = width / (2 * Math.tan((pov.fov || 90) * radians / 2));
   const x = width / 2 + focal * right / depth;
   const y = height / 2 - focal * up / depth;
-  if (x < -width * .3 || x > width * 1.3 || y < -height * .3 || y > height * 1.3) {
+  // The panorama SDK exposes a viewing angle but no road-surface depth map.
+  // Only draw where a ground point can appear below the current horizon.
+  const horizonY = height / 2 + focal * Math.tan(tilt);
+  if (x < 0 || x > width || y < Math.max(height * .55, horizonY + 8) || y > height) {
     return null;
   }
   return { x, y, radius: Math.min(11, Math.max(1.3, focal * .16 / depth)) };
@@ -340,6 +343,10 @@ export function createWalkPanorama(maps, section) {
     const pov = panorama.getPov();
     const box = canvas.getBoundingClientRect();
     if (!box.width || !box.height || !Number.isFinite(pov?.pan)) return;
+    if (angleDifference(pov.pan, groundFrame.pov.pan) > 80) {
+      ground.replaceChildren();
+      return;
+    }
     const points = groundPoints.map((point) => {
       const projected = projectOnPanoramaGround(groundFrame.camera, point, pov, box.width, box.height);
       return projected ? { ...projected, segmentIndex: point.segmentIndex } : null;
@@ -387,6 +394,9 @@ export function createWalkPanorama(maps, section) {
       : '';
   };
   const scheduleGround = () => {
+    // Clear the old camera projection as soon as the user rotates the view.
+    // Keeping it during the trailing redraw makes the route float over the sky.
+    ground.replaceChildren();
     window.clearTimeout(projectionTimer);
     projectionTimer = window.setTimeout(() => {
       if (!panorama || !groundFrame) return;
