@@ -85,7 +85,11 @@ const icons = {
   mail: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>',
   lock: '<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
   check: '<path d="m5 12 4 4L19 6"/>',
-  sparkles: '<path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Z"/><path d="m19 15 .9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15ZM5 2l.7 1.8L7.5 4.5l-1.8.7L5 7l-.7-1.8L2.5 4.5l1.8-.7L5 2Z"/>'
+  sparkles: '<path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3Z"/><path d="m19 15 .9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9L19 15ZM5 2l.7 1.8L7.5 4.5l-1.8.7L5 7l-.7-1.8L2.5 4.5l1.8-.7L5 2Z"/>',
+  walkMode: '<circle cx="13" cy="3.5" r="2" fill="currentColor" stroke="none"/><path d="m10 8 3-1 2 3 3 1M12 8l-1 5-3 3M11 13l4 3 1 5M10 9 7 12" stroke-width="2.3"/>',
+  subwayMode: '<rect x="5" y="2.5" width="14" height="16" rx="3"/><path d="M5 12h14M8 6h8M8 21l2-2.5M16 18.5l2 2.5"/><circle cx="8.5" cy="15" r=".8" fill="currentColor" stroke="none"/><circle cx="15.5" cy="15" r=".8" fill="currentColor" stroke="none"/>',
+  busMode: '<rect x="3.5" y="3" width="17" height="16" rx="2.5"/><path d="M3.5 12h17M7 19v2M17 19v2M7 7h10"/><circle cx="7.5" cy="15.5" r=".8" fill="currentColor" stroke="none"/><circle cx="16.5" cy="15.5" r=".8" fill="currentColor" stroke="none"/>',
+  taxiMode: '<path d="M5 10 6.5 6h11L19 10M5 10h14a2 2 0 0 1 2 2v6H3v-6a2 2 0 0 1 2-2ZM8 6V4h8v2M5 18v2M19 18v2"/><path d="M7 14h2m6 0h2"/>'
 };
 
 function icon(name, size = 28) {
@@ -248,10 +252,10 @@ function guideScreen() {
       </section>
     </section>
     <section class="transport-options" role="group" aria-label="이동 수단">
-      <button class="transport-option" type="button" data-mode="walk" aria-pressed="${routeTransportMode === 'walk'}"><strong>도보</strong></button>
-      <button class="transport-option" type="button" data-mode="subway" aria-pressed="${routeTransportMode === 'subway'}"><strong>지하철</strong></button>
-      <button class="transport-option" type="button" data-mode="bus" aria-pressed="${routeTransportMode === 'bus'}"><strong>버스</strong></button>
-      <button class="transport-option" type="button" data-mode="taxi" aria-pressed="${routeTransportMode === 'taxi'}"><strong>택시</strong></button>
+      <button class="transport-option" type="button" data-mode="walk" aria-pressed="${routeTransportMode === 'walk'}">${icon('walkMode', 24)}<strong>도보</strong></button>
+      <button class="transport-option" type="button" data-mode="subway" aria-pressed="${routeTransportMode === 'subway'}">${icon('subwayMode', 24)}<strong>지하철</strong></button>
+      <button class="transport-option" type="button" data-mode="bus" aria-pressed="${routeTransportMode === 'bus'}">${icon('busMode', 24)}<strong>버스</strong></button>
+      <button class="transport-option" type="button" data-mode="taxi" aria-pressed="${routeTransportMode === 'taxi'}">${icon('taxiMode', 24)}<strong>택시</strong></button>
     </section>
     <section class="guide-dialogue" aria-label="길찾기 내용"></section>
     <section class="guide-conversation" aria-label="길찾기 대화"></section>
