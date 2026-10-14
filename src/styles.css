@@ -125,6 +125,27 @@ input::placeholder { color: var(--muted); opacity: 1; }
   .transport-option:hover { border-color: rgba(88, 196, 220, .62); color: #d4e8f5; box-shadow: inset 0 1px 0 rgba(191, 237, 248, .09), 0 7px 17px rgba(0, 10, 24, .2); transform: translateY(-1px); }
 }
 .guide-dialogue { max-width: 620px; margin: 16px auto 0; display: grid; gap: 14px; }
+.guide-conversation { width: 100%; max-width: 620px; min-height: 0; flex: 0 0 auto; margin: 6px auto 8px; display: flex; flex-direction: column; gap: 7px; }
+.guide-chat-messages { min-height: 0; max-height: min(24dvh, 192px); overflow-y: auto; overscroll-behavior: contain; display: grid; align-content: start; gap: 9px; padding: 0 2px; }
+.guide-chat-bubble { max-width: 88%; display: flex; align-items: end; gap: 7px; color: #f3fbff; font-size: 13px; }
+.guide-chat-bubble.user, .guide-chat-bubble.other { justify-self: start; }
+.guide-chat-bubble.assistant, .guide-chat-bubble.self { justify-self: end; flex-direction: row-reverse; }
+.guide-chat-bubble > span { width: 29px; height: 29px; flex: 0 0 29px; display: grid; place-items: center; border-radius: 50%; background: #126aab; font-size: 11px; font-weight: 700; }
+.guide-chat-bubble.assistant > span, .guide-chat-bubble.self > span { background: #008eaa; }
+.guide-chat-bubble > div { min-width: 0; padding: 9px 11px; border: 1px solid rgba(74, 190, 231, .4); border-radius: 15px; background: #07528c; overflow-wrap: anywhere; }
+.guide-chat-bubble.assistant > div, .guide-chat-bubble.other > div { background: #173c56; }
+.guide-chat-bubble p { margin: 0; line-height: 1.45; }
+.guide-chat-bubble small { display: block; margin-top: 5px; color: #b7e8fa; font-size: 11px; line-height: 1.4; }
+.guide-chat-speak { flex: 0 0 auto; border: 0; background: transparent; cursor: pointer; }
+.guide-chat-form { height: 43px; min-width: 0; display: flex; gap: 5px; align-items: center; padding: 4px 5px 4px 12px; border: 1px solid rgba(67, 187, 223, .55); border-radius: 14px; background: rgba(0, 31, 54, .88); }
+.guide-chat-form input { min-width: 0; flex: 1 1 auto; border: 0; outline: 0; background: transparent; color: #fff; font-size: 13px; }
+.guide-chat-form button { width: 34px; height: 34px; flex: 0 0 34px; border: 0; border-radius: 10px; background: #0a6184; cursor: pointer; }
+.guide-chat-form .guide-chat-mic[aria-pressed="true"] { background: #13a4bb; box-shadow: 0 0 0 2px rgba(35, 214, 255, .45); }
+.guide-chat-status { min-height: 0; margin: 0; color: #b9d4e7; font-size: 11px; line-height: 1.35; }
+.guide-chat-status:empty { display: none; }
+.guide-chat-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.guide-chat-tabs button { min-height: 44px; border: 1px solid rgba(72, 198, 226, .44); border-radius: 999px; background: rgba(4, 45, 73, .9); color: #d8edf8; font-weight: 650; cursor: pointer; }
+.guide-chat-tabs button[aria-pressed="true"] { border-color: #32dcf3; background: linear-gradient(155deg, #098aa9, #075e80); color: #fff; }
 .guide-content[data-guide-view="panorama"] .route-map-scene { position: absolute; top: 0; left: 0; width: 100%; visibility: hidden; pointer-events: none; }
 .guide-content[data-guide-view="panorama"] .transport-options,
 .guide-content[data-guide-view="panorama"] .guide-dialogue { display: none; }

@@ -1,4 +1,5 @@
 import { createWalkPanorama } from './walk-panorama.js';
+import { createGuideConversation } from './guide-conversation.js';
 
 const root = document.querySelector('#root');
 let currentPage = 'home';
@@ -14,6 +15,7 @@ let routeMapSession = 0;
 let routeMapAuthError = '';
 let routeMapAuthFailureInstalled = false;
 let activeWalkPanorama = null;
+let activeGuideConversation = null;
 let selectedAppLanguage = '한국어';
 let selectedUserLanguage = '한국어';
 let selectedUserLanguageCode = 'ko';
@@ -232,6 +234,7 @@ function guideScreen() {
     </section>
     <section class="guide-dialogue" aria-label="길찾기 내용"></section>
     </div>
+    <section class="guide-conversation" aria-label="길찾기 대화"></section>
     ${bottomNav()}
   </main>`;
 }
@@ -1346,8 +1349,21 @@ function render() {
   };
   activeWalkPanorama?.stop();
   activeWalkPanorama = null;
+  activeGuideConversation?.stop();
+  activeGuideConversation = null;
   root.innerHTML = `<div class="app-shell">${screens[currentPage]()}</div>`;
-  if (currentPage === 'guide') initializeNaverRouteMap();
+  if (currentPage === 'guide') {
+    initializeNaverRouteMap();
+    activeGuideConversation = createGuideConversation(document.querySelector('.guide-conversation'), {
+      getContext: () => ({
+        start: routeStartQuery || 'GPS 현재 위치',
+        destination: routeDestinationQuery,
+        mode: routeTransportMode,
+        routeVerified: Boolean(document.querySelector('.guide-dialogue .subway-route-panel[aria-label^="TMAP"]')),
+        routeText: document.querySelector('.guide-dialogue')?.innerText?.slice(0, 2600) || ''
+      })
+    });
+  }
   else routeMapSession += 1;
 
   document.querySelectorAll('.transport-option').forEach((button) => {
