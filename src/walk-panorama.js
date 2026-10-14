@@ -101,7 +101,7 @@ function projectOnPanoramaGround(camera, point, pov, width, height) {
   const forward = north * Math.cos(pan) + east * Math.sin(pan);
   const right = east * Math.cos(pan) - north * Math.sin(pan);
   const depth = forward * Math.cos(tilt) - PANORAMA_CAMERA_HEIGHT_METERS * Math.sin(tilt);
-  if (depth < 2.5) return null;
+  if (depth < 3) return null;
   const up = -PANORAMA_CAMERA_HEIGHT_METERS * Math.cos(tilt) - forward * Math.sin(tilt);
   const focal = width / (2 * Math.tan((pov.fov || 90) * radians / 2));
   const x = width / 2 + focal * right / depth;
@@ -112,9 +112,7 @@ function projectOnPanoramaGround(camera, point, pov, width, height) {
   if (x < 0 || x > width || y < Math.max(height * .55, horizonY + 8) || y > height) {
     return null;
   }
-  // A walking corridor is several metres wide near the camera, then narrows
-  // with distance. Keep it translucent so the photographed pavement shows through.
-  return { x, y, radius: Math.min(width * .28, Math.max(2, focal * 1.4 / depth)) };
+  return { x, y, radius: Math.min(11, Math.max(1.3, focal * .16 / depth)) };
 }
 
 function routeCandidates(route, edges) {
@@ -402,8 +400,8 @@ export function createWalkPanorama(maps, section) {
       return `${path} L${coords(shape.at(-1))} Z`;
     });
     ground.innerHTML = ribbons.length
-      ? `<svg viewBox="0 0 ${box.width} ${box.height}" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="walk-ground-fade" x1="0" y1="0" x2="0" y2="1"><stop offset="70%" stop-color="black"/><stop offset="82%" stop-color="white"/></linearGradient><mask id="walk-ground-mask"><rect width="${box.width}" height="${box.height}" fill="url(#walk-ground-fade)"/></mask></defs><g mask="url(#walk-ground-mask)">${ribbons.map((path) =>
-        `<path d="${path}" fill="#2166df" fill-opacity=".62" style="mix-blend-mode:multiply"/>`).join('')}</g></svg>`
+      ? `<svg viewBox="0 0 ${box.width} ${box.height}" preserveAspectRatio="none" aria-hidden="true">${ribbons.map((path) =>
+        `<path d="${path}" fill="#1685d3" fill-opacity=".8" stroke="#e9faff" stroke-opacity=".9" stroke-width="1.4" stroke-linejoin="round"/>`).join('')}</svg>`
       : '';
   };
   const scheduleGround = () => {
@@ -433,9 +431,7 @@ export function createWalkPanorama(maps, section) {
     if (!panorama || frame.routeOffset > CAMERA_TO_ROUTE_LIMIT_METERS) return;
     groundFrame = frame;
     const total = routeEdges.at(-1)?.to || 0;
-    // The scene must show the route ahead of the viewer. Drawing the previous
-    // 18 metres wraps the ribbon across buildings when the route turns.
-    const start = Math.max(0, frame.progress);
+    const start = Math.max(0, frame.progress - 18);
     const end = Math.min(total, frame.progress + 85);
     for (let progress = start; progress < end; progress += 1.25) {
       const point = candidateAt(routeEdges, progress);
