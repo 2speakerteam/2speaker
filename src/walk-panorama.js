@@ -402,8 +402,8 @@ export function createWalkPanorama(maps, section) {
       return `${path} L${coords(shape.at(-1))} Z`;
     });
     ground.innerHTML = ribbons.length
-      ? `<svg viewBox="0 0 ${box.width} ${box.height}" preserveAspectRatio="none" aria-hidden="true">${ribbons.map((path) =>
-        `<path d="${path}" fill="#2166df" fill-opacity=".62" style="mix-blend-mode:multiply"/>`).join('')}</svg>`
+      ? `<svg viewBox="0 0 ${box.width} ${box.height}" preserveAspectRatio="none" aria-hidden="true"><defs><linearGradient id="walk-ground-fade" x1="0" y1="0" x2="0" y2="1"><stop offset="70%" stop-color="black"/><stop offset="82%" stop-color="white"/></linearGradient><mask id="walk-ground-mask"><rect width="${box.width}" height="${box.height}" fill="url(#walk-ground-fade)"/></mask></defs><g mask="url(#walk-ground-mask)">${ribbons.map((path) =>
+        `<path d="${path}" fill="#2166df" fill-opacity=".62" style="mix-blend-mode:multiply"/>`).join('')}</g></svg>`
       : '';
   };
   const scheduleGround = () => {
