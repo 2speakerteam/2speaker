@@ -192,7 +192,7 @@ function instructionForFrame(frame, decisions, routeLength) {
     ? '목적지 방향으로 계속 가세요.' : '계속 직진하세요.';
 }
 
-async function findStationExit(stationName, routePoint, stationPoint) {
+export async function findStationExit(stationName, routePoint, stationPoint) {
   const response = await fetch('/api/map/place', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -217,7 +217,7 @@ function selectFrames(verified, total, startStationLocation = null) {
   const stationViews = startStationLocation ? departureOptions.filter((frame) => {
     const stationHeading = headingDegrees(frame.camera, startStationLocation);
     return distanceMeters(frame.camera, startStationLocation) <= 45
-      && angleDifference(frame.pov.pan, stationHeading) <= 80;
+      && angleDifference(frame.pov.pan, stationHeading) <= 115;
   }) : [];
   const first = stationViews.sort((a, b) => distanceMeters(a.camera, startStationLocation)
     - distanceMeters(b.camera, startStationLocation))[0] || departureOptions[0];
@@ -791,8 +791,8 @@ export function createWalkPanorama(maps, section) {
     if (startStationLocation && distanceMeters(frames[0].camera, startStationLocation) <= 45) {
       const routePan = frames[0].pov.pan;
       const exitPan = headingDegrees(frames[0].camera, startStationLocation);
-      if (angleDifference(routePan, exitPan) <= 80) {
-        frames[0].pov = { ...frames[0].pov, pan: routePan + signedAngle(routePan, exitPan) / 2 };
+      if (angleDifference(routePan, exitPan) <= 115) {
+        frames[0].pov = { ...frames[0].pov, pan: routePan + signedAngle(routePan, exitPan) * .7, fov: 120 };
       }
     }
     await showFrame(0);

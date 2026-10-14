@@ -1,4 +1,4 @@
-import { createWalkPanorama } from './walk-panorama.js';
+import { createWalkPanorama, findStationExit } from './walk-panorama.js';
 import { createGuideConversation } from './guide-conversation.js';
 
 const root = document.querySelector('#root');
@@ -851,16 +851,36 @@ function initializeNaverRouteMap() {
       const requestId = ++routeRequestId;
       removeRouteLines();
       showWalkMessage('TMAP에서 실제 도보 경로를 조회하고 있습니다.');
-      fetch('/api/transit/walk', {
+      const startStationName = startIsStation
+        ? startTitle.match(/^(.+?역)(?:\s|\(|$)/)?.[1] : null;
+      const destinationStationName = destinationTitle.match(/^(.+?역)(?:\s|\(|$)/)?.[1];
+      let walkEnd = end;
+      Promise.all([
+        startStationName ? findStationExit(startStationName, start, start).catch(() => null) : null,
+        destinationStationName ? findStationExit(destinationStationName, end, end).catch(() => null) : null
+      ]).then(([startExit, destinationExit]) => {
+        if (controller.signal.aborted || requestId !== routeRequestId) return null;
+        const walkStart = startExit && Math.hypot(
+          (startExit.lat - start.lat) * 111195,
+          (startExit.lng - start.lng) * 111195 * Math.cos(start.lat * Math.PI / 180)
+        ) <= 35 ? { lat: startExit.lat, lng: startExit.lng } : start;
+        walkEnd = destinationExit && Math.hypot(
+          (destinationExit.lat - end.lat) * 111195,
+          (destinationExit.lng - end.lng) * 111195 * Math.cos(end.lat * Math.PI / 180)
+        ) <= 80 ? { lat: destinationExit.lat, lng: destinationExit.lng } : end;
+        return fetch('/api/transit/walk', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ start, end }),
+        body: JSON.stringify({ start: walkStart, end: walkEnd }),
         signal: controller.signal
+        });
       }).then(async (response) => {
+        if (!response) return null;
         const payload = await response.json().catch(() => ({}));
         if (!response.ok) throw new Error(payload.error || 'TMAP 도보 경로 조회에 실패했습니다.');
         return payload;
       }).then((payload) => {
+        if (!payload) return;
         if (session !== routeMapSession || currentPage !== 'guide' || !walkRequested || requestId !== routeRequestId) return;
         const route = payload.route;
         if (!payload.coordinateMatch || !route || !Number.isFinite(route.totalSeconds)
@@ -901,7 +921,7 @@ function initializeNaverRouteMap() {
         ]);
         updateWalkMapView();
         showWalkRoute(route);
-        void walkPanorama.start(route, end, { startIsStation, startTitle, destinationTitle }).then((ready) => {
+        void walkPanorama.start(route, walkEnd, { startIsStation, startTitle, destinationTitle }).then((ready) => {
           if (session !== routeMapSession || currentPage !== 'guide'
             || !walkRequested || requestId !== routeRequestId) return;
           if (ready) setGuideView('panorama');
