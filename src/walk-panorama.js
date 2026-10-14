@@ -230,17 +230,20 @@ function selectFrames(verified, total, startStationLocation = null) {
       && angleDifference(frame.pov.pan, stationHeading) <= 115;
   }) : [];
   const first = stationViews.sort((a, b) => distanceMeters(a.camera, startStationLocation)
-    - distanceMeters(b.camera, startStationLocation))[0] || departureOptions[0];
+    - distanceMeters(b.camera, startStationLocation))[0] || departureOptions[0] || ordered[0];
   // Keep the destination in front of the final camera. A panorama almost on
   // top of the destination can face beyond it and project its marker offscreen.
   const arrivalOptions = ordered.filter((frame) => frame.progress >= total - endpointZone
     && frame.progress <= total - 5);
   const last = arrivalOptions.sort((a, b) => Math.abs(total - 25 - a.progress)
     - Math.abs(total - 25 - b.progress))[0]
-    || [...ordered].reverse().find((frame) => frame.progress >= total - endpointZone);
-  // An endpoint scene must really be near that end of the route. Never label
-  // a mid-route photograph as departure or arrival to make up the count.
+    || [...ordered].reverse().find((frame) => frame.progress >= total - endpointZone)
+    || ordered.at(-1);
   if (!first || !last || first.panoId === last.panoId) return [];
+  // Show the verified portion even if one endpoint lacks a panorama. Only
+  // scenes inside an endpoint zone may be called departure or arrival.
+  const hasDeparture = first.progress <= endpointZone;
+  const hasArrival = last.progress >= total - endpointZone;
   // A station is one departure landmark. Use the remaining scenes for the
   // journey beyond its immediate surroundings instead of repeating it.
   const departureZone = startStationLocation ? Math.min(45, total * .08) : 0;
@@ -280,7 +283,8 @@ function selectFrames(verified, total, startStationLocation = null) {
   }
   return chosen.sort((a, b) => a.progress - b.progress).map((frame, index, all) => ({
     ...frame,
-    phase: index === 0 ? 'departure' : index === all.length - 1 ? 'arrival' : frame.phase
+    phase: index === 0 && hasDeparture ? 'departure'
+      : index === all.length - 1 && hasArrival ? 'arrival' : frame.phase
   }));
 }
 
@@ -631,7 +635,10 @@ export function createWalkPanorama(maps, section) {
     section.dataset.progressMeters = frame.progress.toFixed(1);
     section.dataset.headingDegrees = applied.pan.toFixed(1);
     arrivalRequest += 1;
-    if (index === frames.length - 1) verifyArrival(run);
+    if (index === frames.length - 1 && frame.phase === 'arrival') verifyArrival(run);
+    else if (index === frames.length - 1) {
+      arrival.textContent = '확인된 로드뷰 구간의 끝입니다. 남은 도보 경로는 지도에서 확인하세요.';
+    }
     else {
       arrival.textContent = instructionForFrame(frame, routeDecisions, routeEdges.at(-1).to);
     }
@@ -806,8 +813,8 @@ export function createWalkPanorama(maps, section) {
     section.classList.remove('is-loading');
     frames = selectFrames(verified, edges.at(-1).to, startStationLocation);
     if (!frames.length) {
-      console.warn(`2SPEAKER walk panorama unavailable ${JSON.stringify({ ...probeStats, verified: verified.length })}`);
-      fallback('출발지와 도착지 주변 모두에서 실제 경로와 방향이 확인된 로드뷰가 부족합니다.');
+      console.warn(`2SPEAKER walk panorama unavailable ${JSON.stringify({ ...probeStats, verified: verified.length, firstProgress: verified.length ? Math.min(...verified.map((item) => item.progress)) : null, lastProgress: verified.length ? Math.max(...verified.map((item) => item.progress)) : null, total: edges.at(-1).to })}`);
+      fallback('실제 도보 경로와 방향이 확인된 로드뷰 장면이 부족합니다.');
       return;
     }
     if (startStationLocation && distanceMeters(frames[0].camera, startStationLocation) <= 45) {
