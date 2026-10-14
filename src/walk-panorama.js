@@ -207,14 +207,14 @@ function selectFrames(verified, total) {
 
 export function createWalkPanorama(maps, section) {
   const canvas = section?.querySelector('.walk-panorama-canvas');
-  const destinationBadge = section?.querySelector('.walk-panorama-destination');
+  const ground = section?.querySelector('.walk-panorama-ground');
   const turn = section?.querySelector('.walk-panorama-turn');
   const status = section?.querySelector('.walk-panorama-status');
   const arrival = section?.querySelector('.walk-panorama-arrival');
   const previous = section?.querySelector('[data-panorama-action="previous"]');
   const playback = section?.querySelector('[data-panorama-action="playback"]');
   const next = section?.querySelector('[data-panorama-action="next"]');
-  if (!section || !canvas || !destinationBadge || !turn || !status || !arrival || !previous || !playback || !next) {
+  if (!section || !canvas || !ground || !turn || !status || !arrival || !previous || !playback || !next) {
     return { start() {}, stop() {} };
   }
 
@@ -230,6 +230,135 @@ export function createWalkPanorama(maps, section) {
   let timer = null;
   let generation = 0;
   let arrivalRequest = 0;
+  let routeAnchors = [];
+  let destinationMarker = null;
+  let groundFrame = null;
+  let groundRequest = 0;
+  let projectionTimer = null;
+  let sizeObserver = null;
+
+  const clearGround = () => {
+    window.clearTimeout(projectionTimer);
+    projectionTimer = null;
+    window.cancelAnimationFrame(groundRequest);
+    groundRequest = 0;
+    groundFrame = null;
+    routeAnchors.forEach(({ marker }) => marker.setMap(null));
+    routeAnchors = [];
+    ground.replaceChildren();
+  };
+  const drawGround = () => {
+    if (!groundFrame || !panorama || !routeAnchors.length || canvas.hidden) return;
+    const pov = panorama.getPov();
+    const box = canvas.getBoundingClientRect();
+    if (!box.width || !box.height || !Number.isFinite(pov?.pan)) return;
+    const points = routeAnchors.map(({ index, distance, bearing }) => {
+      const icon = canvas.querySelector(`.walk-panorama-anchor[data-route-index="${index}"]`);
+      if (!icon || angleDifference(pov.pan, bearing) > pov.fov / 2 + 4) return null;
+      const rect = icon.getBoundingClientRect();
+      const x = rect.left + rect.width / 2 - box.left;
+      const y = rect.top + rect.height / 2 - box.top;
+      if (x < 1 || x > box.width - 1 || y < 1 || y > box.height - 1) return null;
+      return { x, y, distance };
+    });
+    const runs = [];
+    let current = [];
+    for (const point of points) {
+      if (!point || current.length && Math.hypot(point.x - current.at(-1).x,
+        point.y - current.at(-1).y) > Math.max(100, box.width * .26)) {
+        if (current.length > 1) runs.push(current);
+        current = [];
+      }
+      if (point) current.push(point);
+    }
+    if (current.length > 1) runs.push(current);
+    const ribbons = runs.map((run) => {
+      const sides = run.map((point, index) => {
+        const before = run[Math.max(0, index - 1)];
+        const after = run[Math.min(run.length - 1, index + 1)];
+        const length = Math.hypot(after.x - before.x, after.y - before.y) || 1;
+        const normalX = -(after.y - before.y) / length;
+        const normalY = (after.x - before.x) / length;
+        const radius = Math.max(1.8, 8 / (1 + point.distance / 18));
+        return {
+          left: [point.x + normalX * radius, point.y + normalY * radius],
+          right: [point.x - normalX * radius, point.y - normalY * radius]
+        };
+      });
+      const shape = [...sides.map((side) => side.left),
+        ...sides.map((side) => side.right).reverse()];
+      return `M${shape.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' L')} Z`;
+    });
+    ground.innerHTML = ribbons.length
+      ? `<svg viewBox="0 0 ${box.width} ${box.height}" preserveAspectRatio="none" aria-hidden="true">${ribbons.map((path) =>
+        `<path d="${path}" fill="#6ECFF6" fill-opacity=".62"/>`).join('')}</svg>`
+      : '';
+  };
+  const scheduleGround = () => {
+    window.clearTimeout(projectionTimer);
+    projectionTimer = window.setTimeout(() => {
+      if (!panorama || !groundFrame) return;
+      // Naver's panorama markers are georeferenced, but programmatic POV
+      // changes can leave their DOM projection stale until they are reattached.
+      for (const { marker } of routeAnchors) {
+        marker.setMap(null);
+        marker.setMap(panorama);
+      }
+      if (destinationMarker?.getMap()) {
+        destinationMarker.setMap(null);
+        destinationMarker.setMap(panorama);
+      }
+      window.cancelAnimationFrame(groundRequest);
+      groundRequest = window.requestAnimationFrame(() => {
+        groundRequest = window.requestAnimationFrame(drawGround);
+      });
+    }, 70);
+  };
+  const showGround = (frame) => {
+    clearGround();
+    if (!panorama || frame.routeOffset > CAMERA_TO_ROUTE_LIMIT_METERS) return;
+    groundFrame = frame;
+    const total = routeEdges.at(-1)?.to || 0;
+    const start = Math.max(0, frame.progress - 18);
+    const end = Math.min(total, frame.progress + 85);
+    let index = 0;
+    for (let progress = start; progress < end; progress += 2.5) {
+      const point = candidateAt(routeEdges, progress);
+      const projection = panorama.getProjection()?.fromCoordToPov(new maps.LatLng(point.lat, point.lng));
+      if (!Number.isFinite(projection?.pan) || !Number.isFinite(projection?.tilt)) continue;
+      const marker = new maps.Marker({
+        map: panorama,
+        position: new maps.LatLng(point.lat, point.lng),
+        icon: {
+          content: `<span class="walk-panorama-anchor" data-route-index="${index}"></span>`,
+          size: new maps.Size(1, 1), anchor: new maps.Point(0, 0)
+        }
+      });
+      routeAnchors.push({ marker, index, distance: Math.abs(progress - frame.progress),
+        bearing: projection.pan });
+      index += 1;
+    }
+    scheduleGround();
+  };
+  const showDestination = (frame) => {
+    if (!destination || !panorama || distanceMeters(frame.camera, destination) > 120) {
+      destinationMarker?.setMap(null);
+      return;
+    }
+    if (!destinationMarker) {
+      destinationMarker = new maps.Marker({
+        position: new maps.LatLng(destination.lat, destination.lng),
+        title: '목적지',
+        icon: {
+          content: '<span class="walk-panorama-pin" role="img" aria-label="목적지"><svg viewBox="0 0 34 44" aria-hidden="true"><path d="M17 42C12 35 3 25 3 17a14 14 0 0 1 28 0c0 8-9 18-14 25Z" fill="#080b10" stroke="white" stroke-width="2"/><circle cx="17" cy="17" r="5" fill="white"/></svg></span>',
+          size: new maps.Size(34, 44), anchor: new maps.Point(17, 44)
+        },
+        zIndex: 500
+      });
+    }
+    destinationMarker.setMap(null);
+    destinationMarker.setMap(panorama);
+  };
 
   const setStatus = (message) => { status.textContent = message; };
   const updateControls = () => {
@@ -265,6 +394,7 @@ export function createWalkPanorama(maps, section) {
   };
   const attachListeners = () => {
     listeners = [
+      maps.Event.addListener(panorama, 'pov_changed', scheduleGround),
       maps.Event.addListener(panorama, 'pano_status', (value) => {
         if (!pending) return;
         pending.status = value;
@@ -326,7 +456,8 @@ export function createWalkPanorama(maps, section) {
     pause();
     section.classList.remove('is-loading', 'is-switching');
     canvas.hidden = true;
-    destinationBadge.hidden = true;
+    clearGround();
+    destinationMarker?.setMap(null);
     turn.hidden = true;
     section.hidden = false;
     arrival.textContent = '';
@@ -352,7 +483,6 @@ export function createWalkPanorama(maps, section) {
       arrival.textContent = confirmed
         ? 'GPS 정확도와 목적지 좌표로 실제 도착을 확인했습니다.'
         : '로드뷰 미리보기 종료 · 현재 GPS로 실제 도착을 확인하지 못했습니다.';
-      destinationBadge.querySelector('span').textContent = confirmed ? '도착 확인' : '목적지 주변';
     }, () => {
       if (run === generation && check === arrivalRequest && selected === frames.length - 1) {
         arrival.textContent = '로드뷰 미리보기 종료 · GPS 확인에 실패해 실제 도착을 판정하지 않았습니다.';
@@ -366,6 +496,7 @@ export function createWalkPanorama(maps, section) {
     const frame = frames[index];
     busy = true;
     section.classList.add('is-switching');
+    clearGround();
     updateControls();
     const found = await query(() => panorama.setPanoIdWithPov(frame.panoId, frame.pov));
     if (run !== generation) return;
@@ -394,8 +525,8 @@ export function createWalkPanorama(maps, section) {
               ? `약 ${beforeTurnMeters}m 앞 ${frame.action}` : frame.action}`
             : `${frame.action} 후 진행`;
     turn.hidden = frame.phase === 'arrival';
-    destinationBadge.hidden = frame.phase !== 'arrival' || !destination;
-    destinationBadge.querySelector('span').textContent = '목적지 주변';
+    showGround(frame);
+    showDestination(frame);
     setStatus(`실제 도보 경로 로드뷰 ${index + 1}/${frames.length} · ${frame.title || '도보 경로'} · ${frame.photodate.slice(0, 10)} 촬영`);
     section.dataset.panoramaId = frame.panoId;
     section.dataset.cameraLat = frame.camera.lat.toFixed(7);
@@ -419,13 +550,17 @@ export function createWalkPanorama(maps, section) {
     generation += 1;
     arrivalRequest += 1;
     pause();
+    sizeObserver?.disconnect();
+    sizeObserver = null;
     settlePending({ status: 'CANCELLED' });
     listeners.forEach((listener) => maps.Event.removeListener(listener));
     listeners = [];
+    clearGround();
+    destinationMarker?.setMap(null);
+    destinationMarker = null;
     panorama?.setVisible(false);
     panorama = null;
     canvas.replaceChildren();
-    destinationBadge.hidden = true;
     turn.hidden = true;
     canvas.hidden = false;
     section.hidden = true;
@@ -467,6 +602,17 @@ export function createWalkPanorama(maps, section) {
     section.hidden = false;
     canvas.hidden = false;
     section.classList.add('is-loading');
+    if (window.ResizeObserver) {
+      sizeObserver = new ResizeObserver(() => {
+        if (!panorama) return;
+        const bounds = canvas.getBoundingClientRect();
+        if (bounds.width > 0 && bounds.height > 0) {
+          panorama.setSize(new maps.Size(bounds.width, bounds.height));
+          scheduleGround();
+        }
+      });
+      sizeObserver.observe(canvas);
+    }
     arrival.textContent = '경로 미리보기 · 실제 도착 판정과는 별개입니다.';
     updateControls();
     const verified = [];

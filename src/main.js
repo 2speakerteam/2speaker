@@ -217,10 +217,7 @@ function guideScreen() {
       <p class="walk-panorama-status" role="status" aria-live="polite"></p>
       <div class="walk-panorama-view">
         <div class="walk-panorama-canvas" aria-label="네이버 실제 로드뷰"></div>
-        <div class="walk-panorama-destination" role="status" aria-label="목적지 위치" hidden>
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22s7-6.1 7-12a7 7 0 1 0-14 0c0 5.9 7 12 7 12Z"/><circle cx="12" cy="10" r="2.8"/></svg>
-          <span>목적지 주변</span>
-        </div>
+        <div class="walk-panorama-ground" aria-hidden="true"></div>
         <div class="walk-panorama-turn" role="status" aria-live="polite" hidden></div>
       </div>
       <p class="walk-panorama-arrival" role="status" aria-live="polite"></p>
