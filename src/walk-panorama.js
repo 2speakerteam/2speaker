@@ -208,13 +208,14 @@ function selectFrames(verified, total) {
 export function createWalkPanorama(maps, section) {
   const canvas = section?.querySelector('.walk-panorama-canvas');
   const ground = section?.querySelector('.walk-panorama-ground');
+  const destinationBadge = section?.querySelector('.walk-panorama-destination');
   const turn = section?.querySelector('.walk-panorama-turn');
   const status = section?.querySelector('.walk-panorama-status');
   const arrival = section?.querySelector('.walk-panorama-arrival');
   const previous = section?.querySelector('[data-panorama-action="previous"]');
   const playback = section?.querySelector('[data-panorama-action="playback"]');
   const next = section?.querySelector('[data-panorama-action="next"]');
-  if (!section || !canvas || !ground || !turn || !status || !arrival || !previous || !playback || !next) {
+  if (!section || !canvas || !ground || !destinationBadge || !turn || !status || !arrival || !previous || !playback || !next) {
     return { start() {}, stop() {} };
   }
 
@@ -327,6 +328,7 @@ export function createWalkPanorama(maps, section) {
     section.classList.remove('is-loading', 'is-switching');
     canvas.hidden = true;
     ground.replaceChildren();
+    destinationBadge.hidden = true;
     turn.hidden = true;
     section.hidden = false;
     arrival.textContent = '';
@@ -337,6 +339,7 @@ export function createWalkPanorama(maps, section) {
 
   const showGroundGuide = (frame) => {
     ground.replaceChildren();
+    if (frame.phase === 'arrival') return;
     if (!routeEdges.length || frame.routeOffset > CAMERA_TO_ROUTE_LIMIT_METERS || !panorama) return;
     if (routeEdges.at(-1).to - frame.progress < 8) return;
     const pov = panorama.getPov();
@@ -352,9 +355,14 @@ export function createWalkPanorama(maps, section) {
     }
     if (points.length < 2) return;
     const formatPoint = ([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`;
-    const sides = points.map(([x, y], index) => {
-      const before = points[Math.max(0, index - 1)];
-      const after = points[Math.min(points.length - 1, index + 1)];
+    const smoothPoints = points.map(([x, y], index) => [
+      index === 0 || index === points.length - 1 ? x
+        : (points[index - 1][0] + 2 * x + points[index + 1][0]) / 4,
+      y
+    ]);
+    const sides = smoothPoints.map(([x, y], index) => {
+      const before = smoothPoints[Math.max(0, index - 1)];
+      const after = smoothPoints[Math.min(smoothPoints.length - 1, index + 1)];
       const length = Math.hypot(after[0] - before[0], after[1] - before[1]) || 1;
       const normal = [-(after[1] - before[1]) / length, (after[0] - before[0]) / length];
       const halfWidth = Math.max(10, 24 - index * 2.7);
@@ -363,10 +371,20 @@ export function createWalkPanorama(maps, section) {
         right: [x - normal[0] * halfWidth, y - normal[1] * halfWidth]
       };
     });
-    const ribbon = [...sides.map((side) => side.left), ...sides.map((side) => side.right).reverse()]
-      .map(formatPoint).join(' ');
-    const tip = points.at(-1);
-    const before = points.at(-2);
+    const leftEdge = sides.map((side) => side.left);
+    const rightEdge = sides.map((side) => side.right).reverse();
+    const smoothEdge = (edge, start = false) => {
+      let path = `${start ? 'M' : 'L'}${formatPoint(edge[0])}`;
+      for (let index = 1; index < edge.length - 1; index += 1) {
+        const midpoint = [(edge[index][0] + edge[index + 1][0]) / 2,
+          (edge[index][1] + edge[index + 1][1]) / 2];
+        path += ` Q${formatPoint(edge[index])} ${formatPoint(midpoint)}`;
+      }
+      return `${path} L${formatPoint(edge.at(-1))}`;
+    };
+    const ribbon = `${smoothEdge(leftEdge, true)} ${smoothEdge(rightEdge)} Z`;
+    const tip = smoothPoints.at(-1);
+    const before = smoothPoints.at(-2);
     const length = Math.hypot(tip[0] - before[0], tip[1] - before[1]) || 1;
     const tangent = [(tip[0] - before[0]) / length, (tip[1] - before[1]) / length];
     const normal = [-tangent[1], tangent[0]];
@@ -374,8 +392,8 @@ export function createWalkPanorama(maps, section) {
     const left = [base[0] + normal[0] * 10, base[1] + normal[1] * 10];
     const right = [base[0] - normal[0] * 10, base[1] - normal[1] * 10];
     ground.innerHTML = `<svg viewBox="0 0 300 200" preserveAspectRatio="none" aria-hidden="true">
-      <polygon points="${ribbon}" fill="rgba(166,246,190,.65)" stroke="rgba(65,190,111,.85)" stroke-width="2" stroke-linejoin="round"/>
-      <polygon points="${[left, tip, right].map(formatPoint).join(' ')}" fill="rgba(166,246,190,.85)" stroke="rgba(65,190,111,.9)" stroke-width="1.5" stroke-linejoin="round"/>
+      <path d="${ribbon}" fill="rgba(53,212,119,.62)" stroke="#35d477" stroke-width="2" stroke-linejoin="round"/>
+      <polygon points="${[left, tip, right].map(formatPoint).join(' ')}" fill="#35d477" stroke="rgba(5,55,31,.72)" stroke-width="1.5" stroke-linejoin="round"/>
     </svg>`;
   };
 
@@ -396,6 +414,7 @@ export function createWalkPanorama(maps, section) {
       arrival.textContent = confirmed
         ? 'GPS 정확도와 목적지 좌표로 실제 도착을 확인했습니다.'
         : '로드뷰 미리보기 종료 · 현재 GPS로 실제 도착을 확인하지 못했습니다.';
+      destinationBadge.querySelector('span').textContent = confirmed ? '도착 확인' : '목적지 주변';
     }, () => {
       if (run === generation && check === arrivalRequest && selected === frames.length - 1) {
         arrival.textContent = '로드뷰 미리보기 종료 · GPS 확인에 실패해 실제 도착을 판정하지 않았습니다.';
@@ -436,7 +455,9 @@ export function createWalkPanorama(maps, section) {
             ? `${frame.crossing ? '갈림길 · ' : ''}${beforeTurnMeters > 12
               ? `약 ${beforeTurnMeters}m 앞 ${frame.action}` : frame.action}`
             : `${frame.action} 후 진행`;
-    turn.hidden = false;
+    turn.hidden = frame.phase === 'arrival';
+    destinationBadge.hidden = frame.phase !== 'arrival' || !destination;
+    destinationBadge.querySelector('span').textContent = '목적지 주변';
     showGroundGuide(frame);
     setStatus(`실제 도보 경로 로드뷰 ${index + 1}/${frames.length} · ${frame.title || '도보 경로'} · ${frame.photodate.slice(0, 10)} 촬영`);
     section.dataset.panoramaId = frame.panoId;
@@ -468,6 +489,7 @@ export function createWalkPanorama(maps, section) {
     panorama = null;
     canvas.replaceChildren();
     ground.replaceChildren();
+    destinationBadge.hidden = true;
     turn.hidden = true;
     canvas.hidden = false;
     section.hidden = true;
