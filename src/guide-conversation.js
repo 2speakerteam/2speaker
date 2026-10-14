@@ -3,6 +3,17 @@ const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => (
 })[character]);
 
 const modeNames = { walk: '도보', subway: '지하철', bus: '버스', taxi: '택시' };
+const AI_HISTORY_KEY = '2speaker:guide-ai-history:v1';
+
+function readAiHistory() {
+  try {
+    const stored = JSON.parse(window.localStorage.getItem(AI_HISTORY_KEY) || '[]');
+    return Array.isArray(stored) ? stored.filter((item) => item
+      && (item.role === 'user' || item.role === 'assistant')
+      && typeof item.text === 'string' && item.text.length <= 5000)
+      .slice(-200).map((item) => ({ id: makeId(), role: item.role, text: item.text })) : [];
+  } catch { return []; }
+}
 
 function placeQuery(message, context) {
   const exit = message.match(/([가-힣A-Za-z0-9]+역)\s*(\d+)번\s*출구/);
@@ -78,7 +89,15 @@ export function createGuideConversation(section, { getContext }) {
   let stream = null;
   let recordTimer = null;
   let counterpartLanguage = 'en';
-  const messages = { ai: [], translation: [] };
+  const messages = { ai: readAiHistory(), translation: [] };
+  const saveAiHistory = () => {
+    try {
+      messages.ai = messages.ai.slice(-200);
+      window.localStorage.setItem(AI_HISTORY_KEY, JSON.stringify(
+        messages.ai.map(({ role, text }) => ({ role, text }))
+      ));
+    } catch { /* Keep the current conversation visible if storage is unavailable. */ }
+  };
 
   section.innerHTML = `<div class="guide-chat-messages" role="log" aria-live="polite"></div>
     <form class="guide-chat-form" aria-label="대화 입력">
@@ -121,6 +140,7 @@ export function createGuideConversation(section, { getContext }) {
     input.value = '';
     if (requestMode === 'ai') {
       messages.ai.push({ id: makeId(), role: 'user', text });
+      saveAiHistory();
     }
     renderMessages();
     setStatus(requestMode === 'ai' ? '답변을 확인하고 있습니다.' : '원문 언어를 확인하고 번역 중입니다.');
@@ -135,7 +155,10 @@ export function createGuideConversation(section, { getContext }) {
               context,
               history: messages.ai.slice(0, -1).slice(-8).map(({ role, text: content }) => ({ role, text: content }))
             }, signal)).text;
-        if (!stopped) messages.ai.push({ id: makeId(), role: 'assistant', text: answer });
+        if (!stopped) {
+          messages.ai.push({ id: makeId(), role: 'assistant', text: answer });
+          saveAiHistory();
+        }
       } else {
         const result = await jsonPost('/api/translation/translate', {
           text, userLanguage: 'ko', counterpartLanguage
@@ -229,6 +252,7 @@ export function createGuideConversation(section, { getContext }) {
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utterance);
   });
+  renderMessages();
   return { stop() {
     stopped = true;
     controller?.abort();

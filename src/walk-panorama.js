@@ -21,8 +21,14 @@ function distanceMeters(a, b) {
 function walkEdges(segments) {
   const edges = [];
   let progress = 0;
-  for (const [segmentIndex, segment] of segments.entries()) {
+  let segmentIndex = 0;
+  let previousEnd = null;
+  for (const segment of segments) {
     if (!Array.isArray(segment.coordinates)) continue;
+    const [firstLng, firstLat] = segment.coordinates[0] || [];
+    const first = { lat: firstLat, lng: firstLng };
+    if (previousEnd && Number.isFinite(first.lat) && Number.isFinite(first.lng)
+      && distanceMeters(previousEnd, first) > 1) segmentIndex += 1;
     for (let index = 1; index < segment.coordinates.length; index += 1) {
       const [startLng, startLat] = segment.coordinates[index - 1];
       const [endLng, endLat] = segment.coordinates[index];
@@ -33,6 +39,10 @@ function walkEdges(segments) {
       if (length < 0.1) continue;
       edges.push({ start, end, from: progress, to: progress + length, segmentIndex });
       progress += length;
+    }
+    const [lastLng, lastLat] = segment.coordinates.at(-1) || [];
+    if (Number.isFinite(lastLat) && Number.isFinite(lastLng)) {
+      previousEnd = { lat: lastLat, lng: lastLng };
     }
   }
   return edges;
@@ -97,7 +107,7 @@ function projectOnPanoramaGround(camera, point, pov, width, height) {
   const focal = width / (2 * Math.tan((pov.fov || 90) * radians / 2));
   const x = width / 2 + focal * right / depth;
   const y = height / 2 - focal * up / depth;
-  if (x < -width * .08 || x > width * 1.08 || y < -height * .08 || y > height * 1.08) {
+  if (x < -width * .3 || x > width * 1.3 || y < -height * .3 || y > height * 1.3) {
     return null;
   }
   return { x, y, radius: Math.min(11, Math.max(1.3, focal * .16 / depth)) };
@@ -397,7 +407,7 @@ export function createWalkPanorama(maps, section) {
     const total = routeEdges.at(-1)?.to || 0;
     const start = Math.max(0, frame.progress - 18);
     const end = Math.min(total, frame.progress + 85);
-    for (let progress = start; progress < end; progress += 2.5) {
+    for (let progress = start; progress < end; progress += 1.25) {
       const point = candidateAt(routeEdges, progress);
       groundPoints.push(point);
     }
@@ -434,8 +444,8 @@ export function createWalkPanorama(maps, section) {
         position: new maps.LatLng(destinationPinLocation.lat, destinationPinLocation.lng),
         title: destinationPinTitle || '목적지',
         icon: {
-          content: '<span class="walk-panorama-arrival-arrow" role="img" aria-label="도보 경로 도착점"><svg viewBox="0 0 36 48" aria-hidden="true"><path d="M18 2 33 17v25a4 4 0 0 1-4 4H7a4 4 0 0 1-4-4V17L18 2Z" fill="#0868b7" stroke="white" stroke-width="3" stroke-linejoin="round"/></svg></span>',
-          size: new maps.Size(36, 48), anchor: new maps.Point(18, 46)
+          content: '<span class="walk-panorama-pin" role="img" aria-label="목적지"><svg viewBox="0 0 34 44" aria-hidden="true"><path d="M17 42C12 35 3 25 3 17a14 14 0 0 1 28 0c0 8-9 18-14 25Z" fill="#080b10" stroke="white" stroke-width="2"/><circle cx="17" cy="17" r="5" fill="white"/></svg></span>',
+          size: new maps.Size(34, 44), anchor: new maps.Point(17, 44)
         },
         zIndex: 500
       });
