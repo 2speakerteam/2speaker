@@ -152,7 +152,7 @@ function routeCandidates(route, edges) {
     .slice(0, MAX_PROBES);
 }
 
-function selectFrames(verified, total) {
+function selectFrames(verified, total, startIsStation = false) {
   if (!verified.length) return [];
   const ordered = [...verified].sort((a, b) => a.progress - b.progress);
   const endpointZone = Math.min(65, Math.max(30, total * .08));
@@ -167,8 +167,12 @@ function selectFrames(verified, total) {
   // An endpoint scene must really be near that end of the route. Never label
   // a mid-route photograph as departure or arrival to make up the count.
   if (!first || !last || first.panoId === last.panoId) return [];
+  // A station is one departure landmark. Use the remaining scenes for the
+  // journey beyond its immediate surroundings instead of repeating it.
+  const departureZone = startIsStation ? Math.min(110, total * .25) : 0;
   const middle = ordered.filter((frame) => frame !== first && frame !== last
-    && frame.progress >= first.progress + 4.5 && frame.progress <= last.progress - 4.5);
+    && frame.progress >= Math.max(first.progress + 4.5, departureZone)
+    && frame.progress <= last.progress - 4.5);
   const chosen = [first, last];
   const targetGap = 7;
   const targetCount = Math.min(MAX_FRAMES, Math.ceil(total / targetGap) + 1);
@@ -225,6 +229,8 @@ export function createWalkPanorama(maps, section) {
   let frames = [];
   let routeEdges = [];
   let destination = null;
+  let destinationPinLocation = null;
+  let destinationPinTitle = '';
   let selected = -1;
   let playing = false;
   let busy = false;
@@ -342,14 +348,15 @@ export function createWalkPanorama(maps, section) {
     scheduleGround();
   };
   const showDestination = (frame) => {
-    if (!destination || !panorama || distanceMeters(frame.camera, destination) > 120) {
+    if (!destinationPinLocation || !panorama
+      || distanceMeters(frame.camera, destinationPinLocation) > 120) {
       destinationMarker?.setMap(null);
       return;
     }
     if (!destinationMarker) {
       destinationMarker = new maps.Marker({
-        position: new maps.LatLng(destination.lat, destination.lng),
-        title: '목적지',
+        position: new maps.LatLng(destinationPinLocation.lat, destinationPinLocation.lng),
+        title: destinationPinTitle || '목적지',
         icon: {
           content: '<span class="walk-panorama-pin" role="img" aria-label="목적지"><svg viewBox="0 0 34 44" aria-hidden="true"><path d="M17 42C12 35 3 25 3 17a14 14 0 0 1 28 0c0 8-9 18-14 25Z" fill="#080b10" stroke="white" stroke-width="2"/><circle cx="17" cy="17" r="5" fill="white"/></svg></span>',
           size: new maps.Size(34, 44), anchor: new maps.Point(17, 44)
@@ -575,14 +582,18 @@ export function createWalkPanorama(maps, section) {
     frames = [];
     routeEdges = [];
     destination = null;
+    destinationPinLocation = null;
+    destinationPinTitle = '';
     selected = -1;
     busy = false;
   };
 
-  const start = async (route, end) => {
+  const start = async (route, end, options = {}) => {
     stop();
     const run = generation;
     destination = end && [end.lat, end.lng].every(Number.isFinite) ? end : null;
+    destinationPinLocation = destination;
+    destinationPinTitle = options.destinationTitle || '목적지';
     if (!maps.Panorama || !Array.isArray(route?.segments)) {
       fallback('네이버 로드뷰를 불러올 수 없습니다.');
       return;
@@ -605,6 +616,35 @@ export function createWalkPanorama(maps, section) {
     section.hidden = false;
     canvas.hidden = false;
     section.classList.add('is-loading');
+    const stationName = options.destinationTitle?.match(/^(.+?역)(?:\s|$)/)?.[1];
+    if (stationName && destination) {
+      // A station's representative coordinate can be underground or in the
+      // roadway. Pin only an actual NAVER station exit near the TMAP endpoint.
+      destinationPinLocation = null;
+      try {
+        const response = await fetch('/api/map/place', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: `${stationName} 출구` })
+        });
+        const payload = response.ok ? await response.json() : {};
+        if (run !== generation) return;
+        const routeEnd = edges.at(-1).end;
+        const exits = (Array.isArray(payload.places) ? payload.places : [])
+          .filter((place) => place.category === '교통시설>지하철출구번호'
+            && place.title?.startsWith(stationName)
+            && Number.isFinite(place.lat) && Number.isFinite(place.lng)
+            && distanceMeters(place, destination) <= 160
+            && distanceMeters(place, routeEnd) <= 120)
+          .sort((a, b) => distanceMeters(a, routeEnd) - distanceMeters(b, routeEnd));
+        if (exits.length) {
+          destinationPinLocation = { lat: exits[0].lat, lng: exits[0].lng };
+          destinationPinTitle = exits[0].title;
+        }
+      } catch {
+        if (run !== generation) return;
+      }
+    }
     if (window.ResizeObserver) {
       sizeObserver = new ResizeObserver(() => {
         if (!panorama) return;
@@ -667,7 +707,7 @@ export function createWalkPanorama(maps, section) {
     }
     if (run !== generation) return;
     section.classList.remove('is-loading');
-    frames = selectFrames(verified, edges.at(-1).to);
+    frames = selectFrames(verified, edges.at(-1).to, options.startIsStation);
     if (!frames.length) {
       fallback('출발지와 도착지 주변 모두에서 실제 경로와 방향이 확인된 로드뷰가 부족합니다.');
       return;
