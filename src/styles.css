@@ -144,9 +144,9 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .guide-chat-speak { flex: 0 0 auto; border: 0; background: transparent; cursor: pointer; }
 .guide-chat-select-row { width: 100%; display: grid; grid-template-columns: 28px minmax(0, 1fr); align-items: end; gap: 8px; }
 .guide-chat-select-row .guide-chat-bubble { min-width: 0; }
-.guide-chat-select { width: 24px; height: 24px; margin: 0 0 3px; appearance: none; border: 1.5px solid #92c8e3; border-radius: 50%; background: #062946; cursor: pointer; }
+.guide-chat-select { position: relative; width: 24px; height: 24px; margin: 0 0 3px; appearance: none; border: 1.5px solid #92c8e3; border-radius: 50%; background: #062946; cursor: pointer; }
 .guide-chat-select:checked { border-color: #00e4f5; background: #00cfe8; box-shadow: 0 0 0 3px rgba(0, 214, 238, .2); }
-.guide-chat-select:checked::after { content: '✓'; display: grid; place-items: center; height: 100%; color: #002d42; font-size: 16px; font-weight: 800; }
+.guide-chat-select:checked::after { content: ''; position: absolute; left: 50%; top: 46%; width: 10px; height: 6px; border-left: 3px solid #002d42; border-bottom: 3px solid #002d42; transform: translate(-50%, -50%) rotate(-45deg); }
 .guide-chat-select:focus-visible, .guide-chat-trash:focus-visible { outline: 2px solid #66e7ff; outline-offset: 3px; }
 .guide-chat-select-row.is-selected .guide-chat-bubble > div { border-color: #21d9f1; }
 .guide-chat-form { height: 43px; min-width: 0; display: flex; gap: 5px; align-items: center; padding: 4px 5px 4px 12px; border: 1px solid rgba(67, 187, 223, .55); border-radius: 14px; background: rgba(0, 31, 54, .88); }

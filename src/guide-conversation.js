@@ -137,7 +137,7 @@ export function createGuideConversation(section, { getContext }) {
 
   const updateDeleteUi = () => {
     if (trash) {
-      trash.hidden = mode !== 'ai';
+      trash.hidden = mode !== 'ai' || selecting;
       trash.setAttribute('aria-pressed', String(selecting));
       trash.setAttribute('aria-label', selecting ? '대화 선택 취소' : 'AI 대화 삭제');
     }
