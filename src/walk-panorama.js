@@ -2,10 +2,8 @@ const CAMERA_TO_ROUTE_LIMIT_METERS = 15;
 const CAMERA_TO_REQUEST_LIMIT_METERS = 25;
 const ROUTE_PROGRESS_LIMIT_METERS = 25;
 const MAX_FIRST_STAGE_ROUTE_METERS = 2000;
-const MAX_PROBES = 48;
-const MAX_FRAMES = 15;
-const FRAME_INTERVAL_MS = 1700;
-const TURN_FRAME_INTERVAL_MS = 850;
+const MAX_PROBES = 460;
+const MAX_FRAMES = 410;
 const PANORAMA_TIMEOUT_MS = 6000;
 const ARRIVAL_RADIUS_METERS = 30;
 const ARRIVAL_MAX_ACCURACY_METERS = 20;
@@ -135,10 +133,13 @@ function routeCandidates(route, edges) {
       phase: !decision ? 'route' : point.progress < decision.progress ? 'approach' : 'after'
     });
   };
-  // Probe the whole real route before adding denser samples around actual decisions.
-  for (let index = 0; index <= 20; index += 1) addProbe(total * index / 20);
+  // Query every 7 m. A frame is added only if Naver actually has a distinct
+  // panorama close enough to the pedestrian route at that progress.
+  const probeSpacing = 7;
+  for (let progress = 0; progress < total; progress += probeSpacing) addProbe(progress);
+  addProbe(total);
   for (const decision of ordered) {
-    for (const offset of [-12, -3, 8]) {
+    for (const offset of [-18, -10, -4, 6, 12, 20]) {
       if (decision.progress + offset > 0 && decision.progress + offset < total) {
         addProbe(decision.progress + offset, decision);
       }
@@ -160,40 +161,21 @@ function selectFrames(verified, total) {
   // An endpoint scene must really be near that end of the route. Never label
   // a mid-route photograph as departure or arrival to make up the count.
   if (!first || !last || first.panoId === last.panoId) return [];
-  const middle = ordered.filter((frame) => frame.progress > endpointZone
-    && frame.progress < total - endpointZone);
+  const middle = ordered.filter((frame) => frame !== first && frame !== last
+    && frame.progress >= first.progress + 4.5 && frame.progress <= last.progress - 4.5);
   const chosen = [first, last];
-  const minimumSpacing = Math.min(24, Math.max(8, total / 55));
-  const decisionGroups = [...new Set(middle.filter((frame) => frame.decisionProgress !== null
-    && frame.action !== '직진' && frame.decisionProgress > endpointZone + 25
-    && frame.decisionProgress < total - endpointZone - 25)
-    .map((frame) => frame.decisionProgress))].sort((a, b) => a - b)
-    .filter((progress, index, all) => index === 0 || progress - all[index - 1] >= 35);
-  for (const progress of decisionGroups) {
-    for (const phase of ['approach', 'after']) {
-      if (chosen.length >= MAX_FRAMES) break;
-      const frame = middle.filter((item) => item.decisionProgress === progress
-        && item.phase === phase && !chosen.includes(item)
-        && chosen.every((other) => Math.abs(other.progress - item.progress) >= 8))
-        .sort((a, b) => Math.abs(a.progress - progress) - Math.abs(b.progress - progress))[0];
-      if (frame) chosen.push(frame);
-    }
+  const targetGap = 7;
+  const targetCount = Math.min(MAX_FRAMES, Math.ceil(total / targetGap) + 1);
+  const canAdd = (frame) => !chosen.includes(frame)
+    && chosen.every((item) => Math.abs(item.progress - frame.progress) >= 4.5);
+  // Keep both sides of verified decisions, then fill the largest real gaps.
+  for (const frame of [...middle].filter((item) => item.priority > 0)
+    .sort((a, b) => b.priority - a.priority)) {
+    if (chosen.length >= targetCount) break;
+    if (canAdd(frame)) chosen.push(frame);
   }
-  const targetGap = (last.progress - first.progress) / (MAX_FRAMES - 1);
-  for (let index = 1; index < MAX_FRAMES - 1 && chosen.length < MAX_FRAMES; index += 1) {
-    const target = first.progress + targetGap * index;
-    const candidate = middle
-      .filter((frame) => !chosen.includes(frame)
-        && chosen.every((item) => Math.abs(item.progress - frame.progress) >= minimumSpacing))
-      .sort((a, b) => (Math.abs(a.progress - target) - (a.priority ? 6 : 0))
-        - (Math.abs(b.progress - target) - (b.priority ? 6 : 0)))[0];
-    if (candidate && Math.abs(candidate.progress - target) <= targetGap * .7) chosen.push(candidate);
-  }
-  // Fill genuine gaps first; do not spend the remaining slots on repeated
-  // photographs clustered around either station.
-  while (chosen.length < MAX_FRAMES) {
-    const candidate = middle.filter((frame) => !chosen.includes(frame)
-      && chosen.every((item) => Math.abs(item.progress - frame.progress) >= minimumSpacing))
+  while (chosen.length < targetCount) {
+    const candidate = middle.filter(canAdd)
       .sort((a, b) => Math.min(...chosen.map((item) => Math.abs(b.progress - item.progress)))
         - Math.min(...chosen.map((item) => Math.abs(a.progress - item.progress))))[0];
     if (!candidate) break;
@@ -279,7 +261,7 @@ export function createWalkPanorama(maps, section) {
         const length = Math.hypot(after.x - before.x, after.y - before.y) || 1;
         const normalX = -(after.y - before.y) / length;
         const normalY = (after.x - before.x) / length;
-        const radius = Math.max(1.8, 8 / (1 + point.distance / 18));
+        const radius = Math.max(2, 22 / (1 + point.distance / 13));
         return {
           left: [point.x + normalX * radius, point.y + normalY * radius],
           right: [point.x - normalX * radius, point.y - normalY * radius]
@@ -291,7 +273,7 @@ export function createWalkPanorama(maps, section) {
     });
     ground.innerHTML = ribbons.length
       ? `<svg viewBox="0 0 ${box.width} ${box.height}" preserveAspectRatio="none" aria-hidden="true">${ribbons.map((path) =>
-        `<path d="${path}" fill="#6ECFF6" fill-opacity=".62"/>`).join('')}</svg>`
+        `<path d="${path}" fill="#6ECFF6" fill-opacity=".52"/>`).join('')}</svg>`
       : '';
   };
   const scheduleGround = () => {
@@ -449,8 +431,10 @@ export function createWalkPanorama(maps, section) {
     const sameTurn = current.decisionProgress !== null && upcoming.decisionProgress !== null
       && current.action !== '직진' && upcoming.action !== '직진'
       && upcoming.progress - current.progress <= 45;
+    const gap = upcoming.progress - current.progress;
+    const previewDelay = Math.max(1100, Math.min(3500, Math.round(gap * 260)));
     timer = window.setTimeout(() => { void showFrame(selected + 1); },
-      sameTurn ? TURN_FRAME_INTERVAL_MS : FRAME_INTERVAL_MS);
+      sameTurn ? Math.min(previewDelay, 1400) : previewDelay);
   };
   const fallback = (message) => {
     pause();
@@ -538,7 +522,7 @@ export function createWalkPanorama(maps, section) {
     if (index === frames.length - 1) verifyArrival(run);
     else {
       const gap = frames[index + 1].progress - frame.progress;
-      arrival.textContent = gap > 75
+      arrival.textContent = gap > 12
         ? `다음 실제 로드뷰까지 경로 약 ${Math.round(gap)}m · 중간 구간은 지도에서 확인해 주세요.`
         : '경로 미리보기 · 실제 도착 판정과는 별개입니다.';
     }
