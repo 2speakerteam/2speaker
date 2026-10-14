@@ -220,6 +220,7 @@ function guideScreen() {
     <header class="guide-header">
       <button class="guide-control" data-action="back" aria-label="뒤로 가기">${icon('back', 34)}</button>
       <strong>2SPEAKER</strong>
+      <button type="button" class="guide-control guide-chat-trash" aria-label="AI 대화 삭제" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6.5 7l.8 13h9.4l.8-13M10 11v6M14 11v6"/></svg></button>
       <button class="guide-control" data-page="language" aria-label="설정">${icon('settings', 30)}</button>
     </header>
     <div class="guide-content" data-guide-view="${guideView}">

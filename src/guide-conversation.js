@@ -100,6 +100,8 @@ export function createGuideConversation(section, { getContext }) {
   let stream = null;
   let recordTimer = null;
   let counterpartLanguage = 'en';
+  let selecting = false;
+  const selectedIds = new Set();
   const messages = { ai: readAiHistory(), translation: [] };
   const saveAiHistory = () => {
     try {
@@ -117,6 +119,11 @@ export function createGuideConversation(section, { getContext }) {
       <button type="submit" class="guide-chat-send" aria-label="메시지 보내기"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m4 4 16 8-16 8 3-8Z"/><path d="M7 12h13"/></svg></button>
     </form>
     <p class="guide-chat-status" role="status" aria-live="polite"></p>
+    <div class="guide-chat-delete-actions" hidden>
+      <span class="guide-chat-selected-count" aria-live="polite">선택 0개</span>
+      <button type="button" class="guide-chat-delete-cancel">취소</button>
+      <button type="button" class="guide-chat-delete-confirm" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6.5 7l.8 13h9.4l.8-13M10 11v6M14 11v6"/></svg>삭제</button>
+    </div>
     <div class="guide-chat-tabs" role="group" aria-label="대화 방식">
       <button type="button" data-chat-mode="ai" aria-pressed="true">AI 대화</button>
       <button type="button" data-chat-mode="translation" aria-pressed="false">실시간 통역</button>
@@ -126,15 +133,41 @@ export function createGuideConversation(section, { getContext }) {
   const input = form.querySelector('input');
   const status = section.querySelector('.guide-chat-status');
   const mic = section.querySelector('.guide-chat-mic');
+  const trash = section.closest('.guide-screen')?.querySelector('.guide-chat-trash');
+  const tabs = section.querySelector('.guide-chat-tabs');
+  const deleteActions = section.querySelector('.guide-chat-delete-actions');
+  const selectedCount = section.querySelector('.guide-chat-selected-count');
+  const cancelDelete = section.querySelector('.guide-chat-delete-cancel');
+  const confirmDelete = section.querySelector('.guide-chat-delete-confirm');
+
+  const updateDeleteUi = () => {
+    section.closest('.guide-screen')?.classList.toggle('is-chat-selecting', selecting);
+    if (trash) {
+      trash.hidden = mode !== 'ai';
+      trash.setAttribute('aria-pressed', String(selecting));
+      trash.setAttribute('aria-label', selecting ? '대화 선택 취소' : 'AI 대화 삭제');
+    }
+    tabs.hidden = selecting;
+    deleteActions.hidden = !selecting;
+    selectedCount.textContent = `선택 ${selectedIds.size}개`;
+    confirmDelete.disabled = selectedIds.size === 0;
+    input.disabled = selecting;
+    mic.disabled = selecting;
+    form.querySelector('.guide-chat-send').disabled = selecting;
+    log.setAttribute('aria-live', selecting ? 'off' : 'polite');
+  };
 
   const renderMessages = (follow = false) => {
     log.innerHTML = messages[mode].map((item) => {
       const name = mode === 'ai' ? item.role === 'user' ? '나' : 'AI' : item.speaker || '화자 확인 필요';
-      return `<article class="guide-chat-bubble ${mode === 'ai' ? item.role : item.speaker === '나' ? 'self' : 'other'}">
+      const bubble = `<article class="guide-chat-bubble ${mode === 'ai' ? item.role : item.speaker === '나' ? 'self' : 'other'}">
         <span>${escapeHtml(name)}</span><div><p>${escapeHtml(item.text)}</p>
         ${item.translation ? `<small>${escapeHtml(item.translation)}</small>` : ''}</div>
         ${item.translation ? `<button type="button" class="guide-chat-speak" data-speak-id="${item.id}" aria-label="번역 음성 재생">🔊</button>` : ''}
       </article>`;
+      return selecting && mode === 'ai'
+        ? `<div class="guide-chat-select-row${selectedIds.has(item.id) ? ' is-selected' : ''}"><input type="checkbox" class="guide-chat-select" data-select-id="${item.id}" aria-label="${name} 대화 선택" ${selectedIds.has(item.id) ? 'checked' : ''}>${bubble}</div>`
+        : bubble;
     }).join('');
     if (follow) {
       const scroller = section.closest('.guide-content');
@@ -145,7 +178,7 @@ export function createGuideConversation(section, { getContext }) {
 
   async function submit(message) {
     const text = message.trim();
-    if (!text || busy || stopped) return;
+    if (!text || busy || stopped || selecting) return;
     busy = true;
     const requestMode = mode;
     controller = new AbortController();
@@ -243,12 +276,52 @@ export function createGuideConversation(section, { getContext }) {
 
   form.addEventListener('submit', (event) => { event.preventDefault(); void submit(input.value); });
   mic.addEventListener('click', () => { void toggleRecording(); });
+  trash?.addEventListener('click', () => {
+    if (mode !== 'ai' || busy) return;
+    if (!selecting && !messages.ai.length) {
+      setStatus('삭제할 AI 대화가 없습니다.');
+      return;
+    }
+    selecting = !selecting;
+    selectedIds.clear();
+    setStatus('');
+    updateDeleteUi();
+    renderMessages(true);
+  });
+  cancelDelete.addEventListener('click', () => {
+    selecting = false;
+    selectedIds.clear();
+    updateDeleteUi();
+    renderMessages(true);
+  });
+  confirmDelete.addEventListener('click', () => {
+    if (!selecting || !selectedIds.size) return;
+    const deletedCount = selectedIds.size;
+    messages.ai = messages.ai.filter((item) => !selectedIds.has(item.id));
+    saveAiHistory();
+    selecting = false;
+    selectedIds.clear();
+    updateDeleteUi();
+    renderMessages(true);
+    setStatus(`선택한 대화 ${deletedCount}개를 삭제했습니다.`);
+  });
+  log.addEventListener('change', (event) => {
+    const checkbox = event.target.closest('[data-select-id]');
+    if (!selecting || !checkbox) return;
+    if (checkbox.checked) selectedIds.add(checkbox.dataset.selectId);
+    else selectedIds.delete(checkbox.dataset.selectId);
+    checkbox.closest('.guide-chat-select-row')?.classList.toggle('is-selected', checkbox.checked);
+    updateDeleteUi();
+  });
   section.querySelectorAll('[data-chat-mode]').forEach((button) => button.addEventListener('click', () => {
     mode = button.dataset.chatMode;
+    selecting = false;
+    selectedIds.clear();
     section.querySelectorAll('[data-chat-mode]').forEach((tab) =>
       tab.setAttribute('aria-pressed', String(tab === button)));
     input.placeholder = mode === 'ai' ? '질문을 입력하세요' : '한국어 또는 영어로 입력하세요';
     setStatus('');
+    updateDeleteUi();
     renderMessages(true);
   }));
   log.addEventListener('click', (event) => {
@@ -266,6 +339,7 @@ export function createGuideConversation(section, { getContext }) {
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utterance);
   });
+  updateDeleteUi();
   renderMessages();
   return { stop() {
     stopped = true;
