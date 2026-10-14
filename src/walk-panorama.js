@@ -806,7 +806,7 @@ export function createWalkPanorama(maps, section) {
     section.classList.remove('is-loading');
     frames = selectFrames(verified, edges.at(-1).to, startStationLocation);
     if (!frames.length) {
-      console.warn('2SPEAKER walk panorama unavailable', { ...probeStats, verified: verified.length });
+      console.warn(`2SPEAKER walk panorama unavailable ${JSON.stringify({ ...probeStats, verified: verified.length })}`);
       fallback('출발지와 도착지 주변 모두에서 실제 경로와 방향이 확인된 로드뷰가 부족합니다.');
       return;
     }
