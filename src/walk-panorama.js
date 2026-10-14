@@ -207,7 +207,6 @@ function selectFrames(verified, total) {
 
 export function createWalkPanorama(maps, section) {
   const canvas = section?.querySelector('.walk-panorama-canvas');
-  const ground = section?.querySelector('.walk-panorama-ground');
   const destinationBadge = section?.querySelector('.walk-panorama-destination');
   const turn = section?.querySelector('.walk-panorama-turn');
   const status = section?.querySelector('.walk-panorama-status');
@@ -215,7 +214,7 @@ export function createWalkPanorama(maps, section) {
   const previous = section?.querySelector('[data-panorama-action="previous"]');
   const playback = section?.querySelector('[data-panorama-action="playback"]');
   const next = section?.querySelector('[data-panorama-action="next"]');
-  if (!section || !canvas || !ground || !destinationBadge || !turn || !status || !arrival || !previous || !playback || !next) {
+  if (!section || !canvas || !destinationBadge || !turn || !status || !arrival || !previous || !playback || !next) {
     return { start() {}, stop() {} };
   }
 
@@ -327,7 +326,6 @@ export function createWalkPanorama(maps, section) {
     pause();
     section.classList.remove('is-loading', 'is-switching');
     canvas.hidden = true;
-    ground.replaceChildren();
     destinationBadge.hidden = true;
     turn.hidden = true;
     section.hidden = false;
@@ -335,75 +333,6 @@ export function createWalkPanorama(maps, section) {
     setStatus(`${message} 기존 지도에서 도보 경로를 확인해 주세요.`);
     selected = -1;
     updateControls();
-  };
-
-  const showGroundGuide = (frame) => {
-    ground.replaceChildren();
-    if (!routeEdges.length || frame.routeOffset > CAMERA_TO_ROUTE_LIMIT_METERS || !panorama) return;
-    const remaining = routeEdges.at(-1).to - frame.progress;
-    if (remaining < .5) return;
-    const pov = panorama.getPov();
-    if (!Number.isFinite(pov?.pan) || !Number.isFinite(pov?.fov)) return;
-    const points = [[150, 199]];
-    const samples = [[0, 199], [2, 188], [6, 174], [12, 151], [19, 121],
-      [28, 87], [40, 62], [55, 42]];
-    const visibleDistance = Math.min(remaining, 55);
-    const distances = samples.slice(1).map(([meters]) => meters)
-      .filter((meters) => meters < visibleDistance);
-    distances.push(visibleDistance);
-    const screenY = (meters) => {
-      const afterIndex = samples.findIndex(([distance]) => distance >= meters);
-      const [beforeDistance, beforeY] = samples[afterIndex - 1];
-      const [afterDistance, afterY] = samples[afterIndex];
-      return beforeY + (afterY - beforeY) * (meters - beforeDistance)
-        / (afterDistance - beforeDistance);
-    };
-    for (const meters of distances) {
-      const point = candidateAt(routeEdges, frame.progress + meters);
-      const difference = signedAngle(pov.pan, headingDegrees(frame.camera, point));
-      if (Math.abs(difference) > Math.min(110, pov.fov / 2 + 55)) break;
-      const projectedX = Math.max(18, Math.min(282, 150 + difference * 2.1));
-      const previousX = points.at(-1)[0];
-      points.push([Math.max(previousX - 35, Math.min(previousX + 35, projectedX)),
-        screenY(meters)]);
-    }
-    if (points.length < 2) return;
-    const formatPoint = ([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`;
-    const smoothPoints = points.map(([x, y], index) => [
-      index === 0 || index === points.length - 1 ? x
-        : (points[index - 1][0] + 2 * x + points[index + 1][0]) / 4,
-      y
-    ]);
-    const sides = smoothPoints.map(([x, y], index) => {
-      const before = smoothPoints[Math.max(0, index - 1)];
-      const after = smoothPoints[Math.min(smoothPoints.length - 1, index + 1)];
-      const length = Math.hypot(after[0] - before[0], after[1] - before[1]) || 1;
-      const normal = [-(after[1] - before[1]) / length, (after[0] - before[0]) / length];
-      const halfWidth = Math.max(12, 29 - index * 2.4);
-      return {
-        left: [x + normal[0] * halfWidth, y + normal[1] * halfWidth],
-        right: [x - normal[0] * halfWidth, y - normal[1] * halfWidth]
-      };
-    });
-    const leftEdge = sides.map((side) => side.left);
-    const rightEdge = sides.map((side) => side.right).reverse();
-    const smoothEdge = (edge, start = false) => {
-      let path = `${start ? 'M' : 'L'}${formatPoint(edge[0])}`;
-      for (let index = 1; index < edge.length - 1; index += 1) {
-        const midpoint = [(edge[index][0] + edge[index + 1][0]) / 2,
-          (edge[index][1] + edge[index + 1][1]) / 2];
-        path += ` Q${formatPoint(edge[index])} ${formatPoint(midpoint)}`;
-      }
-      return `${path} L${formatPoint(edge.at(-1))}`;
-    };
-    const ribbon = `${smoothEdge(leftEdge, true)} ${smoothEdge(rightEdge)} Z`;
-    ground.innerHTML = `<svg viewBox="0 0 300 200" preserveAspectRatio="none" aria-hidden="true">
-      <defs><linearGradient id="walk-ground-blue" x1="0" y1="1" x2="0" y2="0">
-        <stop offset="0" stop-color="#3798f6" stop-opacity=".78"/>
-        <stop offset="1" stop-color="#83ccff" stop-opacity=".66"/>
-      </linearGradient></defs>
-      <path d="${ribbon}" fill="url(#walk-ground-blue)" stroke="rgba(131,204,255,.8)" stroke-width="1.5" stroke-linejoin="round"/>
-    </svg>`;
   };
 
   const verifyArrival = (run) => {
@@ -467,7 +396,6 @@ export function createWalkPanorama(maps, section) {
     turn.hidden = frame.phase === 'arrival';
     destinationBadge.hidden = frame.phase !== 'arrival' || !destination;
     destinationBadge.querySelector('span').textContent = '목적지 주변';
-    showGroundGuide(frame);
     setStatus(`실제 도보 경로 로드뷰 ${index + 1}/${frames.length} · ${frame.title || '도보 경로'} · ${frame.photodate.slice(0, 10)} 촬영`);
     section.dataset.panoramaId = frame.panoId;
     section.dataset.cameraLat = frame.camera.lat.toFixed(7);
@@ -497,7 +425,6 @@ export function createWalkPanorama(maps, section) {
     panorama?.setVisible(false);
     panorama = null;
     canvas.replaceChildren();
-    ground.replaceChildren();
     destinationBadge.hidden = true;
     turn.hidden = true;
     canvas.hidden = false;
