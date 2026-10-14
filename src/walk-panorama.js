@@ -175,9 +175,13 @@ function routeCandidates(route, edges) {
 
 function instructionForFrame(frame, decisions, routeLength) {
   if (frame.phase === 'arrival') return '목적지 주변입니다. 지도에서 위치를 확인하세요.';
-  const next = decisions.find((decision) => decision.progress >= frame.progress - 2);
+  const next = decisions.find((decision) => decision.priority >= 3
+    && decision.progress >= frame.progress - 2);
   if (next) {
     const meters = Math.max(0, Math.round(next.progress - frame.progress));
+    if (next.crossing) return meters > 20
+      ? `약 ${meters}m 계속 직진한 뒤 횡단보도로 건너가세요.`
+      : '여기서 횡단보도로 건너가세요.';
     const direction = next.action === '좌회전' ? '왼쪽' : '오른쪽';
     return meters > 20
       ? `약 ${meters}m 계속 직진한 뒤 ${direction} 길로 가세요.`
