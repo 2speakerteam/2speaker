@@ -3,10 +3,12 @@ const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => (
 })[character]);
 
 const modeNames = { walk: '도보', subway: '지하철', bus: '버스', taxi: '택시' };
-const AI_HISTORY_KEY = '2speaker:guide-ai-history:v1';
+const AI_HISTORY_KEY = '2speaker:guide-ai-history:v2';
 
 function readAiHistory() {
   try {
+    // Discard the previous shared guide history, which included verification messages.
+    window.localStorage.removeItem('2speaker:guide-ai-history:v1');
     const stored = JSON.parse(window.localStorage.getItem(AI_HISTORY_KEY) || '[]');
     return Array.isArray(stored) ? stored.filter((item) => item
       && (item.role === 'user' || item.role === 'assistant')
@@ -116,7 +118,7 @@ export function createGuideConversation(section, { getContext }) {
   const status = section.querySelector('.guide-chat-status');
   const mic = section.querySelector('.guide-chat-mic');
 
-  const renderMessages = () => {
+  const renderMessages = (follow = false) => {
     log.innerHTML = messages[mode].map((item) => {
       const name = mode === 'ai' ? item.role === 'user' ? '나' : 'AI' : item.speaker || '화자 확인 필요';
       return `<article class="guide-chat-bubble ${mode === 'ai' ? item.role : item.speaker === '나' ? 'self' : 'other'}">
@@ -125,7 +127,10 @@ export function createGuideConversation(section, { getContext }) {
         ${item.translation ? `<button type="button" class="guide-chat-speak" data-speak-id="${item.id}" aria-label="번역 음성 재생">🔊</button>` : ''}
       </article>`;
     }).join('');
-    log.scrollTop = log.scrollHeight;
+    if (follow) {
+      const scroller = section.closest('.guide-content');
+      if (scroller) scroller.scrollTop = scroller.scrollHeight;
+    }
   };
   const setStatus = (message) => { status.textContent = message; };
 
@@ -142,7 +147,7 @@ export function createGuideConversation(section, { getContext }) {
       messages.ai.push({ id: makeId(), role: 'user', text });
       saveAiHistory();
     }
-    renderMessages();
+    renderMessages(true);
     setStatus(requestMode === 'ai' ? '답변을 확인하고 있습니다.' : '원문 언어를 확인하고 번역 중입니다.');
     try {
       if (requestMode === 'ai') {
@@ -172,7 +177,7 @@ export function createGuideConversation(section, { getContext }) {
           targetLanguage: result.targetLanguage
         });
       }
-      if (!stopped) renderMessages();
+      if (!stopped) renderMessages(true);
       if (!stopped) setStatus('');
     } catch (error) {
       if (!stopped && error.name !== 'AbortError') setStatus(error.message || '요청에 실패했습니다.');
@@ -235,7 +240,7 @@ export function createGuideConversation(section, { getContext }) {
       tab.setAttribute('aria-pressed', String(tab === button)));
     input.placeholder = mode === 'ai' ? '질문을 입력하세요' : '한국어 또는 영어로 입력하세요';
     setStatus('');
-    renderMessages();
+    renderMessages(true);
   }));
   log.addEventListener('click', (event) => {
     const button = event.target.closest('[data-speak-id]');

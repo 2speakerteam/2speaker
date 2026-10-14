@@ -29,6 +29,8 @@ body {
     linear-gradient(145deg, #00101f, #002e4d 48%, #001522);
 }
 
+body:has(.guide-screen) { height: 100dvh; overflow: hidden; }
+
 .app-shell {
   position: relative;
   width: 100%;
@@ -126,7 +128,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 }
 .guide-dialogue { max-width: 620px; margin: 16px auto 0; display: grid; gap: 14px; }
 .guide-conversation { width: 100%; max-width: 620px; min-height: 0; flex: 0 0 auto; margin: 6px auto 8px; display: flex; flex-direction: column; gap: 7px; }
-.guide-chat-messages { min-height: 0; max-height: min(24dvh, 192px); overflow-y: auto; overscroll-behavior: contain; display: grid; align-content: start; gap: 9px; padding: 0 2px; }
+.guide-chat-messages { min-height: 0; display: grid; align-content: start; gap: 9px; padding: 0 2px; }
 .guide-chat-bubble { max-width: 88%; display: flex; align-items: end; gap: 7px; color: #f3fbff; font-size: 13px; }
 .guide-chat-bubble.user, .guide-chat-bubble.other { justify-self: start; }
 .guide-chat-bubble.assistant, .guide-chat-bubble.self { justify-self: end; flex-direction: row-reverse; }

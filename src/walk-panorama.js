@@ -745,6 +745,7 @@ export function createWalkPanorama(maps, section) {
     updateControls();
     const verified = [];
     const ids = new Set();
+    const probeStats = { candidates: candidates.length, failed: 0, duplicate: 0, distance: 0, direction: 0 };
     for (let index = 0; index < candidates.length; index += 1) {
       if (run !== generation) return;
       const candidate = candidates[index];
@@ -752,22 +753,29 @@ export function createWalkPanorama(maps, section) {
       const found = await query(() => {
         if (index === 0) {
           panorama = new maps.Panorama(canvas, {
-            position: new maps.LatLng(candidate.lat, candidate.lng),
+            size: new maps.Size(canvas.clientWidth, canvas.clientHeight),
             pov: { pan: 0, tilt: 0, fov: 95 },
             flightSpot: false,
             logoControl: false
           });
           attachListeners();
-        } else panorama.setPosition(new maps.LatLng(candidate.lat, candidate.lng));
+        }
+        panorama.setPosition(new maps.LatLng(candidate.lat, candidate.lng));
       });
       if (run !== generation) return;
       if (found.status !== 'OK' || !found.panoId || !found.camera
         || ![found.camera.lat, found.camera.lng].every(Number.isFinite)
-        || ids.has(found.panoId)) continue;
+        || ids.has(found.panoId)) {
+        probeStats[ids.has(found.panoId) ? 'duplicate' : 'failed'] += 1;
+        continue;
+      }
       const routePosition = closestRoutePosition(found.camera, edges, candidate.progress);
       if (distanceMeters(found.camera, candidate) > CAMERA_TO_REQUEST_LIMIT_METERS
         || routePosition.distance > CAMERA_TO_ROUTE_LIMIT_METERS
-        || Math.abs(routePosition.progress - candidate.progress) > ROUTE_PROGRESS_LIMIT_METERS) continue;
+        || Math.abs(routePosition.progress - candidate.progress) > ROUTE_PROGRESS_LIMIT_METERS) {
+        probeStats.distance += 1;
+        continue;
+      }
       const from = candidateAt(edges, Math.max(0, candidate.progress - 2));
       const ahead = candidateAt(edges, candidate.phase === 'approach'
         ? Math.min(candidate.decisionProgress, candidate.progress + 6)
@@ -777,7 +785,10 @@ export function createWalkPanorama(maps, section) {
       const routeHeading = headingDegrees(from, ahead);
       if (!Number.isFinite(projected?.pan)
         || angleDifference(projected.pan, headingDegrees(found.camera, ahead)) > 25
-        || angleDifference(projected.pan, routeHeading) > 80) continue;
+        || angleDifference(projected.pan, routeHeading) > 80) {
+        probeStats.direction += 1;
+        continue;
+      }
       ids.add(found.panoId);
       verified.push({
         ...found,
@@ -795,6 +806,7 @@ export function createWalkPanorama(maps, section) {
     section.classList.remove('is-loading');
     frames = selectFrames(verified, edges.at(-1).to, startStationLocation);
     if (!frames.length) {
+      console.warn('2SPEAKER walk panorama unavailable', { ...probeStats, verified: verified.length });
       fallback('출발지와 도착지 주변 모두에서 실제 경로와 방향이 확인된 로드뷰가 부족합니다.');
       return;
     }

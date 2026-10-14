@@ -233,8 +233,8 @@ function guideScreen() {
       <button class="transport-option" type="button" data-mode="taxi" aria-pressed="${routeTransportMode === 'taxi'}"><strong>택시</strong></button>
     </section>
     <section class="guide-dialogue" aria-label="길찾기 내용"></section>
-    </div>
     <section class="guide-conversation" aria-label="길찾기 대화"></section>
+    </div>
     ${bottomNav()}
   </main>`;
 }
