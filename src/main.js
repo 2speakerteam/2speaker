@@ -898,8 +898,17 @@ function initializeNaverRouteMap() {
         ]);
         updateWalkMapView();
         showWalkRoute(route);
-        setGuideView('panorama');
-        void walkPanorama.start(route, end, { startIsStation, destinationTitle });
+        void walkPanorama.start(route, end, { startIsStation, destinationTitle }).then((ready) => {
+          if (session !== routeMapSession || currentPage !== 'guide'
+            || !walkRequested || requestId !== routeRequestId) return;
+          if (ready) setGuideView('panorama');
+          else setStatus('로드뷰 장면을 확인할 수 없어 지도 경로를 표시합니다.', 'error');
+        }).catch(() => {
+          if (session === routeMapSession && currentPage === 'guide'
+            && walkRequested && requestId === routeRequestId) {
+            setStatus('로드뷰를 불러오지 못해 지도 경로를 표시합니다.', 'error');
+          }
+        });
       }).catch((error) => {
         if (controller.signal.aborted || session !== routeMapSession || currentPage !== 'guide'
           || !walkRequested || requestId !== routeRequestId) return;
@@ -1343,6 +1352,12 @@ function render() {
 
   document.querySelectorAll('.transport-option').forEach((button) => {
     button.addEventListener('click', () => {
+      const panorama = document.querySelector('.walk-panorama');
+      if (button.dataset.mode === 'walk' && routeTransportMode === 'walk'
+        && panorama?.dataset.panoramaId && !panorama.classList.contains('is-loading')) {
+        setGuideView('panorama');
+        return;
+      }
       routeTransportMode = button.dataset.mode;
       document.querySelectorAll('.transport-option').forEach((option) => {
         option.setAttribute('aria-pressed', String(option === button));

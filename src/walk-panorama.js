@@ -138,7 +138,6 @@ function routeCandidates(route, edges) {
   for (const decision of decisions.sort((a, b) => b.priority - a.priority)) {
     if (selected.some((item) => Math.abs(item.progress - decision.progress) < 6)) continue;
     selected.push(decision);
-    if (selected.length >= 7) break;
   }
   const ordered = selected.sort((a, b) => a.progress - b.progress);
   const probes = [];
@@ -159,18 +158,33 @@ function routeCandidates(route, edges) {
   const probeSpacing = Math.max(7, total / (MAX_FRAMES + 10));
   for (let progress = 0; progress < total; progress += probeSpacing) addProbe(progress);
   addProbe(total);
-  for (const decision of ordered) {
+  for (const decision of ordered.slice(0, 7)) {
     for (const offset of [-18, -10, -4, 6, 12, 20]) {
       if (decision.progress + offset > 0 && decision.progress + offset < total) {
         addProbe(decision.progress + offset, decision);
       }
     }
   }
-  return probes.sort((a, b) => b.priority - a.priority)
+  const candidates = probes.sort((a, b) => b.priority - a.priority)
     .filter((probe, index, all) => !all.slice(0, index).some((other) =>
       Math.abs(other.progress - probe.progress) < 3))
     .sort((a, b) => a.progress - b.progress)
     .slice(0, MAX_PROBES);
+  return { candidates, decisions: ordered };
+}
+
+function instructionForFrame(frame, decisions, routeLength) {
+  if (frame.phase === 'arrival') return '목적지 주변입니다. 지도에서 위치를 확인하세요.';
+  const next = decisions.find((decision) => decision.progress >= frame.progress - 2);
+  if (next) {
+    const meters = Math.max(0, Math.round(next.progress - frame.progress));
+    const direction = next.action === '좌회전' ? '왼쪽' : '오른쪽';
+    return meters > 20
+      ? `약 ${meters}m 계속 직진한 뒤 ${direction} 길로 가세요.`
+      : `여기서 ${direction} 길로 가세요.`;
+  }
+  return routeLength - frame.progress <= 20
+    ? '목적지 방향으로 계속 가세요.' : '계속 직진하세요.';
 }
 
 function selectFrames(verified, total, startIsStation = false) {
@@ -249,6 +263,7 @@ export function createWalkPanorama(maps, section) {
   let pending = null;
   let frames = [];
   let routeEdges = [];
+  let routeDecisions = [];
   let destination = null;
   let destinationPinLocation = null;
   let destinationPinTitle = '';
@@ -529,17 +544,15 @@ export function createWalkPanorama(maps, section) {
     canvas.hidden = false;
     const beforeTurnMeters = frame.decisionProgress === null
       ? 0 : Math.round(Math.max(0, frame.decisionProgress - frame.progress));
-    turn.textContent = frame.phase === 'departure' ? '출발 지점 주변'
-      : frame.phase === 'arrival' ? '도착 지점 주변'
-        : frame.phase === 'route' ? '실제 도보 경로 진행'
-          : frame.phase === 'approach'
-            ? `${frame.crossing ? '갈림길 · ' : ''}${beforeTurnMeters > 12
-              ? `약 ${beforeTurnMeters}m 앞 ${frame.action}` : frame.action}`
-            : `${frame.action} 후 진행`;
-    turn.hidden = frame.phase === 'arrival';
+    turn.textContent = frame.phase === 'approach'
+      ? `${frame.crossing ? '갈림길 · ' : ''}${beforeTurnMeters > 12
+        ? `약 ${beforeTurnMeters}m 앞 ${frame.action}` : frame.action}`
+      : frame.action === '좌회전' || frame.action === '우회전'
+        ? `${frame.action} 후 진행` : '';
+    turn.hidden = !['approach', 'after'].includes(frame.phase) || !turn.textContent;
     showGround(frame);
     showDestination(frame);
-    setStatus(`실제 도보 경로 로드뷰 ${index + 1}/${frames.length} · ${frame.title || '도보 경로'} · ${frame.photodate.slice(0, 10)} 촬영`);
+    setStatus(`경로 미리보기 ${index + 1}/${frames.length}`);
     section.dataset.panoramaId = frame.panoId;
     section.dataset.cameraLat = frame.camera.lat.toFixed(7);
     section.dataset.cameraLng = frame.camera.lng.toFixed(7);
@@ -549,10 +562,7 @@ export function createWalkPanorama(maps, section) {
     arrivalRequest += 1;
     if (index === frames.length - 1) verifyArrival(run);
     else {
-      const gap = frames[index + 1].progress - frame.progress;
-      arrival.textContent = gap > 12
-        ? `다음 실제 로드뷰까지 경로 약 ${Math.round(gap)}m · 중간 구간은 지도에서 확인해 주세요.`
-        : '경로 미리보기 · 실제 도착 판정과는 별개입니다.';
+      arrival.textContent = instructionForFrame(frame, routeDecisions, routeEdges.at(-1).to);
     }
     updateControls();
     scheduleNext();
@@ -583,6 +593,7 @@ export function createWalkPanorama(maps, section) {
     arrival.textContent = '';
     frames = [];
     routeEdges = [];
+    routeDecisions = [];
     destination = null;
     destinationPinLocation = null;
     destinationPinTitle = '';
@@ -609,12 +620,13 @@ export function createWalkPanorama(maps, section) {
       fallback('로드뷰 위치와 대조할 실제 도보 경로 좌표가 부족합니다.');
       return;
     }
-    const candidates = routeCandidates(route, edges);
+    const { candidates, decisions } = routeCandidates(route, edges);
     if (!candidates.length) {
       fallback('이 도보 경로에는 확인된 회전·갈림길 판단 지점이 없습니다.');
       return;
     }
     routeEdges = edges;
+    routeDecisions = decisions;
     section.hidden = false;
     canvas.hidden = false;
     section.classList.add('is-loading');
@@ -665,8 +677,7 @@ export function createWalkPanorama(maps, section) {
     for (let index = 0; index < candidates.length; index += 1) {
       if (run !== generation) return;
       const candidate = candidates[index];
-      const verificationPercent = Math.round((index + 1) / candidates.length * 100);
-      setStatus(`로드뷰 ${MAX_FRAMES}장면 준비 중 · 실제 사진 확인 ${verificationPercent}%`);
+      setStatus('경로 미리보기 준비 중');
       const found = await query(() => {
         if (index === 0) {
           panorama = new maps.Panorama(canvas, {
@@ -717,6 +728,7 @@ export function createWalkPanorama(maps, section) {
       return;
     }
     await showFrame(0);
+    return selected === 0;
   };
 
   previous.addEventListener('click', () => { pause(); void showFrame(selected - 1); });
