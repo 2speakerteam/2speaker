@@ -3,12 +3,13 @@ const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => (
 })[character]);
 
 const modeNames = { walk: '도보', subway: '지하철', bus: '버스', taxi: '택시' };
-const AI_HISTORY_KEY = '2speaker:guide-ai-history:v2';
+const AI_HISTORY_KEY = '2speaker:guide-ai-history:v3';
 
 function readAiHistory() {
   try {
-    // Discard the previous shared guide history, which included verification messages.
+    // Clear the old conversation with the unrelated route answer once; keep new turns.
     window.localStorage.removeItem('2speaker:guide-ai-history:v1');
+    window.localStorage.removeItem('2speaker:guide-ai-history:v2');
     const stored = JSON.parse(window.localStorage.getItem(AI_HISTORY_KEY) || '[]');
     return Array.isArray(stored) ? stored.filter((item) => item
       && (item.role === 'user' || item.role === 'assistant')
@@ -27,9 +28,12 @@ function placeQuery(message, context) {
 }
 
 function classifyQuestion(message) {
+  // A request to translate route-related text is still a language task.
+  if (/(?:번역|translate)/i.test(message)) return 'ai';
   if (/(?:왜|만약|추천|괜찮|안전|상황|어떻게 하면|계획|비교|대신|설명)/.test(message)) return 'ai';
   if (/(?:출구|주소|위치|어디|장소|건물|시설)/.test(message)) return 'place';
-  if (/(?:경로|길|도보|지하철|버스|택시|환승|시간|거리|얼마나|가는 법|어떻게 가)/.test(message)) return 'route';
+  if (/(?:현재|지금|이\s*경로|선택한)/.test(message)
+    && /(?:경로|길|도보|지하철|버스|택시|환승|시간|거리|얼마나|가는 법|어떻게 가)/.test(message)) return 'route';
   return 'ai';
 }
 
@@ -44,6 +48,11 @@ async function jsonPost(url, body, signal) {
 }
 
 function routeAnswer(message, context) {
+  const asksAboutNamedTrip = /(?:에서|부터)\s*[^\s?!,.]+(?:까지|으로|로|은|는)/.test(message);
+  if (asksAboutNamedTrip && (!context.start || !context.destination
+    || !message.includes(context.start) || !message.includes(context.destination))) {
+    return `현재 화면의 경로는 ${context.start || '출발지'}에서 ${context.destination || '목적지'}까지입니다. 다른 구간의 이동 시간은 해당 출발지와 목적지로 검색해 확인해 주세요.`;
+  }
   const requested = Object.entries(modeNames).find(([, label]) => message.includes(label));
   const selected = modeNames[context.mode] || '선택한 이동수단';
   if (requested && requested[0] !== context.mode) {
