@@ -639,7 +639,9 @@ export function createWalkPanorama(maps, section) {
     else if (index === frames.length - 1) {
       arrival.textContent = '확인된 로드뷰 구간의 끝입니다. 남은 도보 경로는 지도에서 확인하세요.';
     }
-    else {
+    else if (index === 0 && frame.phase !== 'departure') {
+      arrival.textContent = `출발 후 약 ${Math.round(frame.progress)}m 지점부터 로드뷰가 있습니다. 처음 구간은 지도에서 확인하세요. ${instructionForFrame(frame, routeDecisions, routeEdges.at(-1).to)}`;
+    } else {
       arrival.textContent = instructionForFrame(frame, routeDecisions, routeEdges.at(-1).to);
     }
     updateControls();
