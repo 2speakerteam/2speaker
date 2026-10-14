@@ -3,7 +3,7 @@ const CAMERA_TO_REQUEST_LIMIT_METERS = 25;
 const ROUTE_PROGRESS_LIMIT_METERS = 25;
 const MAX_FIRST_STAGE_ROUTE_METERS = 2000;
 const MAX_PROBES = 460;
-const MAX_FRAMES = 410;
+const MAX_FRAMES = 25;
 const PANORAMA_TIMEOUT_MS = 6000;
 const ARRIVAL_RADIUS_METERS = 30;
 const ARRIVAL_MAX_ACCURACY_METERS = 20;
@@ -279,7 +279,7 @@ export function createWalkPanorama(maps, section) {
     });
     ground.innerHTML = ribbons.length
       ? `<svg viewBox="0 0 ${box.width} ${box.height}" preserveAspectRatio="none" aria-hidden="true">${ribbons.map((path) =>
-        `<path d="${path}" fill="#6ECFF6" fill-opacity=".52"/>`).join('')}</svg>`
+        `<path d="${path}" fill="#459BFF" fill-opacity=".8"/>`).join('')}</svg>`
       : '';
   };
   const scheduleGround = () => {
