@@ -157,7 +157,13 @@ function selectFrames(verified, total) {
   const ordered = [...verified].sort((a, b) => a.progress - b.progress);
   const endpointZone = Math.min(65, Math.max(30, total * .08));
   const first = ordered.find((frame) => frame.progress <= endpointZone);
-  const last = [...ordered].reverse().find((frame) => frame.progress >= total - endpointZone);
+  // Keep the destination in front of the final camera. A panorama almost on
+  // top of the destination can face beyond it and project its marker offscreen.
+  const arrivalOptions = ordered.filter((frame) => frame.progress >= total - endpointZone
+    && frame.progress <= total - 5);
+  const last = arrivalOptions.sort((a, b) => Math.abs(total - 25 - a.progress)
+    - Math.abs(total - 25 - b.progress))[0]
+    || [...ordered].reverse().find((frame) => frame.progress >= total - endpointZone);
   // An endpoint scene must really be near that end of the route. Never label
   // a mid-route photograph as departure or arrival to make up the count.
   if (!first || !last || first.panoId === last.panoId) return [];
