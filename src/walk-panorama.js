@@ -214,13 +214,7 @@ function selectFrames(verified, total, startStationLocation = null) {
   const ordered = [...verified].sort((a, b) => a.progress - b.progress);
   const endpointZone = Math.min(65, Math.max(30, total * .08));
   const departureOptions = ordered.filter((frame) => frame.progress <= endpointZone);
-  const stationViews = startStationLocation ? departureOptions.filter((frame) => {
-    const stationHeading = headingDegrees(frame.camera, startStationLocation);
-    return distanceMeters(frame.camera, startStationLocation) <= 45
-      && angleDifference(frame.pov.pan, stationHeading) <= 115;
-  }) : [];
-  const first = stationViews.sort((a, b) => distanceMeters(a.camera, startStationLocation)
-    - distanceMeters(b.camera, startStationLocation))[0] || departureOptions[0];
+  const first = departureOptions[0];
   // Keep the destination in front of the final camera. A panorama almost on
   // top of the destination can face beyond it and project its marker offscreen.
   const arrivalOptions = ordered.filter((frame) => frame.progress >= total - endpointZone
@@ -791,8 +785,8 @@ export function createWalkPanorama(maps, section) {
     if (startStationLocation && distanceMeters(frames[0].camera, startStationLocation) <= 45) {
       const routePan = frames[0].pov.pan;
       const exitPan = headingDegrees(frames[0].camera, startStationLocation);
-      if (angleDifference(routePan, exitPan) <= 115) {
-        frames[0].pov = { ...frames[0].pov, pan: routePan + signedAngle(routePan, exitPan) * .7, fov: 120 };
+      if (angleDifference(routePan, exitPan) <= 60) {
+        frames[0].pov = { ...frames[0].pov, pan: routePan + signedAngle(routePan, exitPan) * .25, fov: 110 };
       }
     }
     await showFrame(0);
