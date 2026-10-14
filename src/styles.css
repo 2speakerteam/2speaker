@@ -98,9 +98,9 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .conversation-brand-row { height: 42px; display: grid; place-items: center; }
 .conversation-brand-row strong { padding: 7px 22px; border-radius: 24px; color: white; background: #02060b; font-size: 16px; letter-spacing: .03em; }
 .conversation-title { height: 58px; }
-.guide-screen { height: 100dvh; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto calc(94px + env(safe-area-inset-bottom)); padding-inline: 20px; padding-bottom: 0; overflow: hidden; }
+.guide-screen { --guide-nav-height: calc(78px + env(safe-area-inset-bottom)); height: 100dvh; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto var(--guide-nav-height); padding-inline: 20px; padding-bottom: 0; overflow: hidden; }
 .guide-content { grid-row: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 28px; }
-.guide-screen .bottom-nav { grid-row: 3; position: relative; z-index: 1; left: auto; right: auto; bottom: auto; width: auto; height: calc(94px + env(safe-area-inset-bottom)); transform: none; margin: 0 -20px; border-radius: 40px 40px 42px 42px; }
+.guide-screen .bottom-nav { grid-row: 3; position: relative; z-index: 1; left: auto; right: auto; bottom: auto; width: auto; height: var(--guide-nav-height); min-height: 0; transform: none; margin: 0 -20px; border-radius: 40px 40px 42px 42px; }
 .guide-header { position: relative; height: 54px; display: grid; grid-template-columns: 48px 1fr 48px; align-items: center; text-align: center; }
 .guide-header strong { width: max-content; justify-self: center; padding: 8px 22px; border-radius: 24px; color: white; background: #02060b; font-size: 18px; letter-spacing: .03em; }
 .guide-control { width: 44px; height: 44px; display: grid; place-items: center; border: 0; color: var(--cyan); background: transparent; cursor: pointer; }
