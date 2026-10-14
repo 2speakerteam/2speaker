@@ -133,7 +133,7 @@ export function createGuideConversation(section, { getContext }) {
               task: 'guide-chat',
               message: text,
               context,
-              history: messages.ai.slice(-9).map(({ role, text: content }) => ({ role, text: content }))
+              history: messages.ai.slice(0, -1).slice(-8).map(({ role, text: content }) => ({ role, text: content }))
             }, signal)).text;
         if (!stopped) messages.ai.push({ id: makeId(), role: 'assistant', text: answer });
       } else {
@@ -223,7 +223,9 @@ export function createGuideConversation(section, { getContext }) {
       return;
     }
     const utterance = new SpeechSynthesisUtterance(item.translation);
-    utterance.lang = item.targetLanguage?.startsWith('en') ? 'en-US' : 'ko-KR';
+    utterance.lang = item.targetLanguage?.startsWith('en') ? 'en-US'
+      : item.targetLanguage?.startsWith('ko') ? 'ko-KR'
+        : item.targetLanguage || 'ko-KR';
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utterance);
   });
