@@ -7,6 +7,7 @@ const MAX_FRAMES = 25;
 const PANORAMA_TIMEOUT_MS = 6000;
 const ARRIVAL_RADIUS_METERS = 30;
 const ARRIVAL_MAX_ACCURACY_METERS = 20;
+const PANORAMA_CAMERA_HEIGHT_METERS = 2.5;
 const radians = Math.PI / 180;
 
 function distanceMeters(a, b) {
@@ -81,6 +82,26 @@ function signedAngle(a, b) {
   return (((b - a) % 360) + 540) % 360 - 180;
 }
 
+function projectOnPanoramaGround(camera, point, pov, width, height) {
+  const north = (point.lat - camera.lat) * 6371000 * radians;
+  const east = (point.lng - camera.lng) * 6371000 * radians
+    * Math.cos(camera.lat * radians);
+  const pan = pov.pan * radians;
+  const tilt = (pov.tilt || 0) * radians;
+  const forward = north * Math.cos(pan) + east * Math.sin(pan);
+  const right = east * Math.cos(pan) - north * Math.sin(pan);
+  const depth = forward * Math.cos(tilt) - PANORAMA_CAMERA_HEIGHT_METERS * Math.sin(tilt);
+  if (depth < 2) return null;
+  const up = -PANORAMA_CAMERA_HEIGHT_METERS * Math.cos(tilt) - forward * Math.sin(tilt);
+  const focal = width / (2 * Math.tan((pov.fov || 90) * radians / 2));
+  const x = width / 2 + focal * right / depth;
+  const y = height / 2 - focal * up / depth;
+  if (x < -width * .08 || x > width * 1.08 || y < -height * .08 || y > height * 1.08) {
+    return null;
+  }
+  return { x, y, radius: Math.min(28, Math.max(1.4, focal * .48 / depth)) };
+}
+
 function routeCandidates(route, edges) {
   const total = edges.at(-1).to;
   const decisions = [];
@@ -133,9 +154,9 @@ function routeCandidates(route, edges) {
       phase: !decision ? 'route' : point.progress < decision.progress ? 'approach' : 'after'
     });
   };
-  // Query every 7 m. A frame is added only if Naver actually has a distinct
-  // panorama close enough to the pedestrian route at that progress.
-  const probeSpacing = 7;
+  // The preview shows at most 25 scenes. Spread panorama checks over the
+  // route, while retaining 7 m checks on short routes and extra turn probes.
+  const probeSpacing = Math.max(7, total / (MAX_FRAMES + 10));
   for (let progress = 0; progress < total; progress += probeSpacing) addProbe(progress);
   addProbe(total);
   for (const decision of ordered) {
@@ -237,7 +258,7 @@ export function createWalkPanorama(maps, section) {
   let timer = null;
   let generation = 0;
   let arrivalRequest = 0;
-  let routeAnchors = [];
+  let groundPoints = [];
   let destinationMarker = null;
   let groundFrame = null;
   let groundRequest = 0;
@@ -250,24 +271,16 @@ export function createWalkPanorama(maps, section) {
     window.cancelAnimationFrame(groundRequest);
     groundRequest = 0;
     groundFrame = null;
-    routeAnchors.forEach(({ marker }) => marker.setMap(null));
-    routeAnchors = [];
+    groundPoints = [];
     ground.replaceChildren();
   };
   const drawGround = () => {
-    if (!groundFrame || !panorama || !routeAnchors.length || canvas.hidden) return;
+    if (!groundFrame || !panorama || !groundPoints.length || canvas.hidden) return;
     const pov = panorama.getPov();
     const box = canvas.getBoundingClientRect();
     if (!box.width || !box.height || !Number.isFinite(pov?.pan)) return;
-    const points = routeAnchors.map(({ index, distance, bearing }) => {
-      const icon = canvas.querySelector(`.walk-panorama-anchor[data-route-index="${index}"]`);
-      if (!icon || angleDifference(pov.pan, bearing) > pov.fov / 2 + 4) return null;
-      const rect = icon.getBoundingClientRect();
-      const x = rect.left + rect.width / 2 - box.left;
-      const y = rect.top + rect.height / 2 - box.top;
-      if (x < 1 || x > box.width - 1 || y < 1 || y > box.height - 1) return null;
-      return { x, y, distance };
-    });
+    const points = groundPoints.map((point) => projectOnPanoramaGround(
+      groundFrame.camera, point, pov, box.width, box.height));
     const runs = [];
     let current = [];
     for (const point of points) {
@@ -286,7 +299,7 @@ export function createWalkPanorama(maps, section) {
         const length = Math.hypot(after.x - before.x, after.y - before.y) || 1;
         const normalX = -(after.y - before.y) / length;
         const normalY = (after.x - before.x) / length;
-        const radius = Math.max(2, 22 / (1 + point.distance / 13));
+        const radius = point.radius;
         return {
           left: [point.x + normalX * radius, point.y + normalY * radius],
           right: [point.x - normalX * radius, point.y - normalY * radius]
@@ -294,23 +307,25 @@ export function createWalkPanorama(maps, section) {
       });
       const shape = [...sides.map((side) => side.left),
         ...sides.map((side) => side.right).reverse()];
-      return `M${shape.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' L')} Z`;
+      const coords = ([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`;
+      let path = `M${coords(shape[0])}`;
+      for (let index = 1; index < shape.length - 1; index += 1) {
+        const current = shape[index];
+        const next = shape[index + 1];
+        path += ` Q${coords(current)} ${coords([(current[0] + next[0]) / 2,
+          (current[1] + next[1]) / 2])}`;
+      }
+      return `${path} L${coords(shape.at(-1))} Z`;
     });
     ground.innerHTML = ribbons.length
       ? `<svg viewBox="0 0 ${box.width} ${box.height}" preserveAspectRatio="none" aria-hidden="true">${ribbons.map((path) =>
-        `<path d="${path}" fill="#459BFF" fill-opacity=".8"/>`).join('')}</svg>`
+        `<path d="${path}" fill="#459BFF" fill-opacity=".74"/>`).join('')}</svg>`
       : '';
   };
   const scheduleGround = () => {
     window.clearTimeout(projectionTimer);
     projectionTimer = window.setTimeout(() => {
       if (!panorama || !groundFrame) return;
-      // Naver's panorama markers are georeferenced, but programmatic POV
-      // changes can leave their DOM projection stale until they are reattached.
-      for (const { marker } of routeAnchors) {
-        marker.setMap(null);
-        marker.setMap(panorama);
-      }
       if (destinationMarker?.getMap()) {
         destinationMarker.setMap(null);
         destinationMarker.setMap(panorama);
@@ -328,22 +343,9 @@ export function createWalkPanorama(maps, section) {
     const total = routeEdges.at(-1)?.to || 0;
     const start = Math.max(0, frame.progress - 18);
     const end = Math.min(total, frame.progress + 85);
-    let index = 0;
     for (let progress = start; progress < end; progress += 2.5) {
       const point = candidateAt(routeEdges, progress);
-      const projection = panorama.getProjection()?.fromCoordToPov(new maps.LatLng(point.lat, point.lng));
-      if (!Number.isFinite(projection?.pan) || !Number.isFinite(projection?.tilt)) continue;
-      const marker = new maps.Marker({
-        map: panorama,
-        position: new maps.LatLng(point.lat, point.lng),
-        icon: {
-          content: `<span class="walk-panorama-anchor" data-route-index="${index}"></span>`,
-          size: new maps.Size(1, 1), anchor: new maps.Point(0, 0)
-        }
-      });
-      routeAnchors.push({ marker, index, distance: Math.abs(progress - frame.progress),
-        bearing: projection.pan });
-      index += 1;
+      groundPoints.push(point);
     }
     scheduleGround();
   };
@@ -663,7 +665,8 @@ export function createWalkPanorama(maps, section) {
     for (let index = 0; index < candidates.length; index += 1) {
       if (run !== generation) return;
       const candidate = candidates[index];
-      setStatus(`실제 도보 경로의 로드뷰 위치를 확인 중입니다 · ${index + 1}/${candidates.length}`);
+      const verificationPercent = Math.round((index + 1) / candidates.length * 100);
+      setStatus(`로드뷰 ${MAX_FRAMES}장면 준비 중 · 실제 사진 확인 ${verificationPercent}%`);
       const found = await query(() => {
         if (index === 0) {
           panorama = new maps.Panorama(canvas, {
