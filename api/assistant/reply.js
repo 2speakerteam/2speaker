@@ -48,10 +48,13 @@ async function handleTranscribe(req, res) {
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
+      const details = Array.isArray(payload.error?.details) ? payload.error.details : [];
+      const providerReason = details.find((detail) => typeof detail.reason === 'string')?.reason
+        || payload.error?.status || `HTTP_${response.status}`;
       const error = response.status === 403
         ? 'Google 음성 인식 권한 또는 Speech-to-Text API 설정을 확인해 주세요.'
         : 'Google 음성 인식 응답을 받지 못했습니다.';
-      return res.status(response.status === 403 ? 503 : 502).json({ error });
+      return res.status(response.status === 403 ? 503 : 502).json({ error, providerReason });
     }
     const results = Array.isArray(payload.results) ? payload.results : [];
     const text = results.map((result) => result.alternatives?.[0]?.transcript || '').join(' ').trim();
