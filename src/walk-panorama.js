@@ -433,7 +433,9 @@ export function createWalkPanorama(maps, section) {
     if (!panorama || frame.routeOffset > CAMERA_TO_ROUTE_LIMIT_METERS) return;
     groundFrame = frame;
     const total = routeEdges.at(-1)?.to || 0;
-    const start = Math.max(0, frame.progress - 18);
+    // The scene must show the route ahead of the viewer. Drawing the previous
+    // 18 metres wraps the ribbon across buildings when the route turns.
+    const start = Math.max(0, frame.progress);
     const end = Math.min(total, frame.progress + 85);
     for (let progress = start; progress < end; progress += 1.25) {
       const point = candidateAt(routeEdges, progress);
