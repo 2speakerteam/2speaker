@@ -125,7 +125,8 @@ export function createGuideConversation(section, { getContext }) {
         const category = classifyQuestion(text);
         const answer = category === 'route' ? routeAnswer(text, context)
           : category === 'place' ? await placeAnswer(text, context, signal)
-            : (await jsonPost('/api/guide/chat', {
+            : (await jsonPost('/api/assistant/reply', {
+              task: 'guide-chat',
               message: text,
               context,
               history: messages.ai.slice(-9).map(({ role, text: content }) => ({ role, text: content }))
@@ -183,7 +184,7 @@ export function createGuideConversation(section, { getContext }) {
           for (let i = 0; i < bytes.length; i += 8192) {
             binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
           }
-          const result = await jsonPost('/api/guide/transcribe', { audio: btoa(binary) });
+          const result = await jsonPost('/api/assistant/reply', { task: 'transcribe', audio: btoa(binary) });
           if (!stopped && result.text) await submit(result.text);
           else if (!stopped) setStatus('음성을 확인하지 못했습니다. 다시 말해 주세요.');
         } catch (error) {
