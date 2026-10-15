@@ -1,4 +1,5 @@
-import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261015-roadview-arrow-refresh';
+import { findStationExit } from './walk-panorama.js?v=20261015-roadview-arrow-refresh';
+import { createWalkPanorama } from './continuous-walk/player.js?v=20261015-full-route-1';
 import { createGuideConversation } from './guide-conversation.js';
 
 const root = document.querySelector('#root');
@@ -247,6 +248,7 @@ function guideScreen() {
           <button type="button" data-panorama-action="playback">재생</button>
           <button type="button" data-panorama-action="next">다음</button>
         </div>
+        <label class="walk-panorama-speed-label">재생 속도 <select class="walk-panorama-speed" aria-label="로드뷰 재생 속도"><option value="0.75">0.75×</option><option value="1">1×</option><option value="1.25" selected>1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select></label>
         <p class="walk-panorama-arrival" role="status" aria-live="polite"></p>
       </section>
     </section>
