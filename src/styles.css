@@ -337,10 +337,11 @@ input::placeholder { color: var(--muted); opacity: 1; }
 @media (max-width: 719px) {
   body:has(.guide-screen), .app-shell:has(.guide-screen) { height: 100svh; }
   .guide-content { padding-bottom: 2px; }
-  .guide-content[data-guide-view="panorama"] .guide-header { height: 50px; }
+  .guide-content[data-guide-view="panorama"] .guide-header { height: 44px; }
+  .guide-content[data-guide-view="panorama"] .guide-chat-trash { top: 2px; }
   .guide-content[data-guide-view="panorama"] .route-visual { margin-top: 0; }
-  .walk-panorama-heading { min-height: 34px; margin-bottom: 2px; }
-  .walk-panorama-canvas { height: clamp(200px, 40svh, 470px); }
+  .walk-panorama-heading { min-height: 34px; margin-bottom: 0; }
+  .walk-panorama-canvas { height: clamp(200px, 42svh, 490px); }
 }
 
 @media (min-width: 720px) {
