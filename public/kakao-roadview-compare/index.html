@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#001c34" />
+    <title>2SPEAKER 카카오 로드뷰 비교</title>
+    <style>
+      :root { color-scheme: dark; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; background: radial-gradient(ellipse at 85% 5%, #073b5a, #001d34 60%); color: #e9f8ff; }
+      main { width: min(100%, 760px); margin: 0 auto; padding: max(20px, env(safe-area-inset-top)) 16px max(30px, env(safe-area-inset-bottom)); }
+      h1 { margin: 0 0 5px; font-size: 22px; }
+      .sub { margin: 0 0 18px; color: #a9c7d7; font-size: 13px; line-height: 1.5; }
+      section { margin: 12px 0; padding: 14px; border: 1px solid #15506d; border-radius: 18px; background: rgba(2, 31, 52, .88); }
+      h2 { margin: 0 0 12px; font-size: 16px; }
+      label { display: block; margin: 9px 0 5px; color: #b8d6e3; font-size: 12px; }
+      input, select, button { width: 100%; min-height: 42px; border: 1px solid #1b6687; border-radius: 11px; background: #062b45; color: #effaff; font: inherit; }
+      input, select { padding: 9px 11px; }
+      input::placeholder { color: #799baa; }
+      button { padding: 9px 12px; cursor: pointer; font-weight: 650; }
+      button.primary { border-color: #18c9de; background: linear-gradient(130deg, #087e9d, #09627e); }
+      button:disabled { opacity: .48; cursor: default; }
+      .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+      .grid3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+      .note { margin: 8px 0 0; color: #9cbccc; font-size: 12px; line-height: 1.5; }
+      .warn { padding: 10px 11px; border-radius: 12px; background: rgba(18, 87, 105, .35); color: #c8edf2; font-size: 12px; line-height: 1.55; }
+      .status { min-height: 22px; margin: 9px 0 0; color: #9fe8f1; font-size: 13px; line-height: 1.45; }
+      .progress { width: 100%; height: 7px; margin: 8px 0 0; overflow: hidden; border-radius: 10px; background: #0c3951; }
+      .progress > i { display: block; width: 0; height: 100%; background: #25d7e6; transition: width .16s linear; }
+      .metrics { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 10px; }
+      .metric { padding: 10px; border: 1px solid #164966; border-radius: 12px; background: #05243a; }
+      .metric b { display: block; margin-bottom: 3px; color: #90aeba; font-size: 11px; font-weight: 550; }
+      .metric span { font-size: 15px; font-weight: 700; }
+      #roadview { width: 100%; height: min(58vh, 440px); min-height: 280px; overflow: hidden; border: 1px solid #1b607d; border-radius: 17px; background: #0a3148; }
+      .frame-status { display: flex; justify-content: space-between; gap: 8px; margin: 8px 1px 0; color: #b4d2df; font-size: 12px; }
+      .tag { color: #8ce8ef; }
+      .checks { display: grid; gap: 9px; }
+      .check { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px; color: #d5eaf2; font-size: 13px; }
+      .check select { width: 105px; min-height: 36px; padding: 5px 8px; }
+      @media (max-width: 420px) { main { padding-right: 11px; padding-left: 11px; } section { padding: 12px; } .grid { gap: 8px; } #roadview { height: 42vh; min-height: 250px; } }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>2SPEAKER 카카오 로드뷰 비교</h1>
+      <p class="sub">비교 전용 화면 · 기존 네이버 로드뷰, TMAP 경로, AI 기능은 변경하지 않습니다.</p>
+
+      <section>
+        <p class="warn">이 페이지는 입력한 카카오 JavaScript 키를 현재 화면에서만 사용합니다. 키를 파일·주소·저장소에 기록하지 않습니다. 장소 검색과 도보 경로는 기존 2SPEAKER 서버 API를 호출하므로 이 페이지를 2SPEAKER 도메인에서 열어야 합니다.</p>
+        <label for="kakao-key">카카오 JavaScript 키</label>
+        <div class="grid">
+          <input id="kakao-key" type="password" autocomplete="off" spellcheck="false" placeholder="키를 입력하세요" />
+          <button id="connect" class="primary" type="button">카카오 연결</button>
+        </div>
+        <p class="note">키 입력 후 연결을 누르면 입력칸을 비웁니다. 이 페이지에서는 브라우저 저장소를 사용하지 않습니다.</p>
+      </section>
+
+      <section>
+        <h2>같은 TMAP 도보 경로 조회</h2>
+        <div class="grid">
+          <div><label for="start">출발</label><input id="start" value="면목역" autocomplete="off" /></div>
+          <div><label for="end">도착</label><input id="end" value="상봉역" autocomplete="off" /></div>
+        </div>
+        <div class="grid">
+          <div><label for="spacing">촬영 지점 탐색 간격</label><select id="spacing"><option value="10" selected>10m</option><option value="15">15m</option><option value="20">20m</option></select></div>
+          <div><label for="radius">로드뷰 검색 반경</label><select id="radius"><option value="15">15m</option><option value="20" selected>20m</option><option value="30">30m</option></select></div>
+        </div>
+        <div class="grid" style="margin-top:10px">
+          <button id="analyze" class="primary" type="button" disabled>TMAP 경로와 촬영 지점 찾기</button>
+          <button id="cancel" type="button" disabled>조회 취소</button>
+        </div>
+        <p id="status" class="status" role="status" aria-live="polite">카카오 키를 연결한 뒤 경로를 조회하세요.</p>
+        <div class="progress" aria-hidden="true"><i id="progress-bar"></i></div>
+        <div id="metrics" class="metrics" hidden>
+          <div class="metric"><b>TMAP 경로 길이</b><span id="m-distance">-</span></div>
+          <div class="metric"><b>조회 지점 / 응답 지점</b><span id="m-coverage">-</span></div>
+          <div class="metric"><b>연속된 고유 파노라마</b><span id="m-scenes">-</span></div>
+          <div class="metric"><b>가장 긴 미응답 구간(추정)</b><span id="m-gap">-</span></div>
+        </div>
+        <p class="note">10m 간격이면 2km 경로에서 약 200곳을 차례로 조회합니다. 호출을 겹치지 않도록 간격을 두므로 분석에 시간이 걸릴 수 있습니다. 같은 사진이 이어지는 지점은 재생 장면에서 연속 중복을 합칩니다.</p>
+      </section>
+
+      <section>
+        <h2>카카오 로드뷰 재생</h2>
+        <div id="roadview" aria-label="카카오 파노라마 로드뷰"></div>
+        <div class="frame-status"><span id="frame-label">촬영 지점을 조회하면 첫 장면이 표시됩니다.</span><span id="heading-label" class="tag"></span></div>
+        <div class="grid3" style="margin-top:10px">
+          <button id="previous" type="button" disabled>이전</button>
+          <button id="play" class="primary" type="button" disabled>재생</button>
+          <button id="next" type="button" disabled>다음</button>
+        </div>
+        <label for="speed">장면 간격</label>
+        <select id="speed"><option value="800">0.8초</option><option value="1000" selected>1초</option><option value="1200">1.2초</option><option value="1500">1.5초</option></select>
+        <p id="instruction" class="note" aria-live="polite"></p>
+      </section>
+
+      <section>
+        <h2>직접 비교 메모</h2>
+        <div class="checks">
+          <div class="check"><span>촬영 장면 연결이 네이버보다 자연스러운가</span><select data-review="연결"><option>미확인</option><option>좋음</option><option>비슷함</option><option>아쉬움</option></select></div>
+          <div class="check"><span>직진·좌회전·우회전 시점이 맞는가</span><select data-review="회전"><option>미확인</option><option>좋음</option><option>비슷함</option><option>아쉬움</option></select></div>
+          <div class="check"><span>촬영 차량 앞부분 노출이 적은가</span><select data-review="차량 노출"><option>미확인</option><option>적음</option><option>비슷함</option><option>많음</option></select></div>
+          <div class="check"><span>로딩·재생 속도가 괜찮은가</span><select data-review="속도"><option>미확인</option><option>좋음</option><option>비슷함</option><option>아쉬움</option></select></div>
+        </div>
+        <label for="memo">메모 (이 화면을 닫으면 저장되지 않습니다)</label>
+        <input id="memo" placeholder="예: 갈림길 장면, 차량 앞부분 노출 등" />
+      </section>
+    </main>
+    <script src="./compare.js" defer></script>
+  </body>
+</html>
