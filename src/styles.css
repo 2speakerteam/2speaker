@@ -194,11 +194,6 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .walk-panorama-controls button { min-height: 42px; border: 1px solid rgba(72, 198, 226, .38); border-radius: 12px; background: #0b354c; color: #e9f8ff; font: inherit; font-size: 14px; cursor: pointer; }
 .walk-panorama-controls button:disabled { opacity: .45; cursor: default; }
 .walk-panorama-controls button:focus-visible { outline: 2px solid #66e7ff; outline-offset: 2px; }
-.continuous-walk-layer { position: absolute !important; inset: 0; width: 100% !important; height: 100% !important; opacity: 0; pointer-events: none; }
-.continuous-walk-layer.is-front { opacity: 1; pointer-events: auto; }
-.continuous-walk-probe { position: absolute; top: 0; left: 0; width: 100%; height: clamp(200px, 33vh, 410px); opacity: 0; pointer-events: none; overflow: hidden; }
-.walk-panorama-speed-label { display: flex; align-items: center; justify-content: flex-end; gap: 8px; margin-top: 8px; color: #a7c8d6; font-size: 12px; }
-.walk-panorama-speed { min-height: 34px; padding: 4px 8px; border: 1px solid rgba(72, 198, 226, .38); border-radius: 10px; background: #0b354c; color: #e9f8ff; font: inherit; }
 .place-choice-list { overflow: hidden; padding: 8px 14px; border: 1px solid rgba(49, 206, 255, .3); border-radius: 18px; background: rgba(3, 33, 54, .78); }
 .place-choice-heading { margin: 4px 2px 8px; color: #b9d4e7; font-size: 13px; line-height: 1.45; }
 .place-choice { width: 100%; min-width: 0; min-height: 56px; display: grid; align-content: center; gap: 3px; padding: 8px 2px; border: 0; border-top: 1px solid rgba(124, 186, 217, .2); color: #f2f8fd; background: transparent; text-align: left; cursor: pointer; }
