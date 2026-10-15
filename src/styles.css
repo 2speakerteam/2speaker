@@ -180,10 +180,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .walk-panorama-map-button:focus-visible { outline: 2px solid #66e7ff; outline-offset: 2px; }
 .walk-panorama-view { position: relative; overflow: hidden; border: 1px solid rgba(49, 206, 255, .24); border-radius: 23px; background: #12384d; isolation: isolate; }
 .walk-panorama-canvas { width: 100%; height: clamp(200px, 33vh, 410px); overflow: hidden; border-radius: 23px; background: #12384d; opacity: 1; transition: opacity .22s ease; }
-.walk-panorama-directions { position: absolute; z-index: 2; left: 50%; bottom: 10px; display: flex; align-items: center; gap: 8px; transform: translateX(-50%); pointer-events: none; }
-.walk-panorama-directions > span { width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid rgba(233, 248, 255, .62); border-radius: 50%; background: rgba(2, 28, 45, .78); color: #f5fbff; transition: background-color .16s ease, color .16s ease, border-color .16s ease; }
-.walk-panorama-directions svg { width: 25px; height: 25px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
-.walk-panorama-directions > span.is-active { border-color: #f5fbff; background: #f5fbff; color: #06243a; }
+.walk-panorama-canvas img.arrow_image.walk-panorama-native-active { filter: brightness(0) saturate(100%) invert(10%) sepia(34%) saturate(1444%) hue-rotate(172deg) brightness(91%) contrast(95%) !important; }
 .walk-panorama-anchor { display: block; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .walk-panorama-pin { display: block; width: 34px; height: 44px; filter: drop-shadow(0 2px 5px rgba(0,0,0,.65)); pointer-events: none; }
 .walk-panorama-pin svg { display: block; width: 34px; height: 44px; }

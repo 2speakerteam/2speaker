@@ -240,11 +240,6 @@ function guideScreen() {
         </div>
         <div class="walk-panorama-view">
           <div class="walk-panorama-canvas" aria-label="네이버 실제 로드뷰"></div>
-          <div class="walk-panorama-directions" role="img" aria-label="안내 방향 대기 중">
-            <span data-walk-direction="left" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M26 16H7m8-9-9 9 9 9" /></svg></span>
-            <span data-walk-direction="straight" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M16 26V6m-9 9 9-9 9 9" /></svg></span>
-            <span data-walk-direction="right" aria-hidden="true"><svg viewBox="0 0 32 32"><path d="M6 16h19m-8-9 9 9-9 9" /></svg></span>
-          </div>
           <div class="walk-panorama-turn" role="status" aria-live="polite" hidden></div>
         </div>
         <div class="walk-panorama-controls">

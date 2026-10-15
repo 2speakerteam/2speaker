@@ -102,7 +102,7 @@ function routeCandidates(route, edges) {
     const turn = signedAngle(headingDegrees(before, at), headingDegrees(at, after));
     const action = turn < -25 ? '좌회전' : turn > 25 ? '우회전' : '직진';
     if (action === '직진') return;
-    decisions.push({ progress, priority, action, crossing });
+    decisions.push({ progress, priority, action, crossing, turn });
   };
   for (const guide of Array.isArray(route.guidePoints) ? route.guidePoints : []) {
     if (![guide.lat, guide.lng].every(Number.isFinite)) continue;
@@ -180,16 +180,28 @@ function instructionForFrame(frame, decisions, routeLength) {
     ? '목적지 방향으로 계속 가세요.' : '계속 직진하세요.';
 }
 
-function directionForFrame(frame, decisions) {
+function arrowTargetForFrame(frame, decisions) {
   if (frame.phase === 'arrival') return null;
   const next = decisions.find((decision) => decision.priority >= 3
     && decision.progress >= frame.progress - 2);
-  if (next) {
-    const meters = Math.max(0, Math.round(next.progress - frame.progress));
-    if (next.crossing || meters > 20) return 'straight';
-    return next.action === '좌회전' ? 'left' : 'right';
+  if (!next || next.crossing || next.progress - frame.progress > 20) {
+    return { direction: 'straight', angle: 0 };
   }
-  return 'straight';
+  return {
+    direction: next.action === '좌회전' ? 'left' : 'right',
+    angle: next.turn
+  };
+}
+
+function nativeArrowAngle(image) {
+  const transform = image.parentElement?.style.transform || '';
+  const match = /^matrix3d\(([^)]+)\)$/.exec(transform);
+  if (!match) return null;
+  const values = match[1].split(',').map(Number);
+  if (values.length !== 16 || !Number.isFinite(values[0]) || !Number.isFinite(values[2])) {
+    return null;
+  }
+  return Math.atan2(values[2], values[0]) / radians;
 }
 
 export async function findStationExit(stationName, routePoint, stationPoint) {
@@ -281,16 +293,13 @@ function selectFrames(verified, total, startStationLocation = null) {
 
 export function createWalkPanorama(maps, section) {
   const canvas = section?.querySelector('.walk-panorama-canvas');
-  const directions = section?.querySelector('.walk-panorama-directions');
-  const directionArrows = [...(directions?.querySelectorAll('[data-walk-direction]') || [])];
   const turn = section?.querySelector('.walk-panorama-turn');
   const status = section?.querySelector('.walk-panorama-status');
   const arrival = section?.querySelector('.walk-panorama-arrival');
   const previous = section?.querySelector('[data-panorama-action="previous"]');
   const playback = section?.querySelector('[data-panorama-action="playback"]');
   const next = section?.querySelector('[data-panorama-action="next"]');
-  if (!section || !canvas || !directions || directionArrows.length !== 3
-    || !turn || !status || !arrival || !previous || !playback || !next) {
+  if (!section || !canvas || !turn || !status || !arrival || !previous || !playback || !next) {
     return { start() {}, stop() {} };
   }
 
@@ -315,16 +324,53 @@ export function createWalkPanorama(maps, section) {
   let startStationMarker = null;
   let markerRefreshTimer = null;
   let sizeObserver = null;
-  const clearDirection = () => {
-    directionArrows.forEach((arrow) => arrow.classList.remove('is-active'));
-    directions.setAttribute('aria-label', '안내 방향 대기 중');
+  let nativeArrowObserver = null;
+  let nativeArrowTimer = null;
+  let nativeArrowTarget = null;
+  let nativeArrowContainer = null;
+  let nativeArrowReady = false;
+  const clearNativeArrow = () => {
+    window.clearTimeout(nativeArrowTimer);
+    nativeArrowTimer = null;
+    nativeArrowTarget = null;
+    nativeArrowContainer = null;
+    nativeArrowReady = false;
+    canvas.querySelectorAll('img.arrow_image.walk-panorama-native-active')
+      .forEach((image) => image.classList.remove('walk-panorama-native-active'));
   };
-  const showDirection = (direction) => {
-    directionArrows.forEach((arrow) => {
-      arrow.classList.toggle('is-active', arrow.dataset.walkDirection === direction);
+  const paintNativeArrow = () => {
+    if (!nativeArrowReady || !nativeArrowTarget || !panorama || selected < 0
+      || panorama.getPanoId() !== frames[selected]?.panoId) return;
+    const arrows = [...canvas.querySelectorAll('img.arrow_image')];
+    if (!arrows.length) return;
+    let chosen = nativeArrowContainer
+      ? arrows.find((image) => image.parentElement?.className === nativeArrowContainer)
+      : null;
+    if (!nativeArrowContainer) {
+      const candidates = arrows.map((image) => ({ image, angle: nativeArrowAngle(image) }))
+        .filter(({ angle }) => angle !== null && (
+          nativeArrowTarget.direction === 'left' ? angle < -18 && angle > -155
+            : nativeArrowTarget.direction === 'right' ? angle > 18 && angle < 155
+              : Math.abs(angle) < 55
+        ))
+        .sort((a, b) => Math.abs(a.angle - nativeArrowTarget.angle)
+          - Math.abs(b.angle - nativeArrowTarget.angle));
+      chosen = candidates[0]?.image || null;
+      if (chosen) nativeArrowContainer = chosen.parentElement.className;
+    }
+    arrows.forEach((image) => {
+      image.classList.toggle('walk-panorama-native-active', image === chosen);
     });
-    const labels = { left: '좌회전', straight: '직진', right: '우회전' };
-    directions.setAttribute('aria-label', direction ? `현재 안내: ${labels[direction]}` : '안내 방향 없음');
+  };
+  const showNativeArrow = (frame) => {
+    clearNativeArrow();
+    nativeArrowTarget = selected === frames.length - 1
+      ? null : arrowTargetForFrame(frame, routeDecisions);
+    if (!nativeArrowTarget) return;
+    nativeArrowTimer = window.setTimeout(() => {
+      nativeArrowReady = true;
+      paintNativeArrow();
+    }, 160);
   };
   const scheduleMarkerRefresh = () => {
     window.clearTimeout(markerRefreshTimer);
@@ -433,7 +479,12 @@ export function createWalkPanorama(maps, section) {
         else settlePending({ status: value || 'ERROR' });
       }),
       maps.Event.addListener(panorama, 'pano_changed', () => {
-        if (!pending) return;
+        if (!pending) {
+          if (selected >= 0 && panorama.getPanoId() !== frames[selected]?.panoId) {
+            clearNativeArrow();
+          }
+          return;
+        }
         pending.changed = true;
         snapshotIfReady();
       })
@@ -478,7 +529,7 @@ export function createWalkPanorama(maps, section) {
     pause();
     section.classList.remove('is-loading', 'is-switching');
     canvas.hidden = true;
-    clearDirection();
+    clearNativeArrow();
     destinationMarker?.setMap(null);
     startStationMarker?.setMap(null);
     turn.hidden = true;
@@ -517,6 +568,7 @@ export function createWalkPanorama(maps, section) {
     if (busy || index < 0 || index >= frames.length || !panorama) return;
     const run = generation;
     const frame = frames[index];
+    clearNativeArrow();
     busy = true;
     section.classList.add('is-switching');
     updateControls();
@@ -545,8 +597,6 @@ export function createWalkPanorama(maps, section) {
       : frame.action === '좌회전' || frame.action === '우회전'
         ? `${frame.action} 후 진행` : '';
     turn.hidden = !['approach', 'after'].includes(frame.phase) || !turn.textContent;
-    showDirection(index === frames.length - 1
-      ? null : directionForFrame(frame, routeDecisions));
     showStartStation(frame);
     showDestination(frame);
     setStatus(`경로 미리보기 ${index + 1}/${frames.length}`);
@@ -566,6 +616,7 @@ export function createWalkPanorama(maps, section) {
     } else {
       arrival.textContent = instructionForFrame(frame, routeDecisions, routeEdges.at(-1).to);
     }
+    showNativeArrow(frame);
     updateControls();
     scheduleNext();
   }
@@ -576,12 +627,14 @@ export function createWalkPanorama(maps, section) {
     pause();
     sizeObserver?.disconnect();
     sizeObserver = null;
+    nativeArrowObserver?.disconnect();
+    nativeArrowObserver = null;
+    clearNativeArrow();
     settlePending({ status: 'CANCELLED' });
     listeners.forEach((listener) => maps.Event.removeListener(listener));
     listeners = [];
     window.clearTimeout(markerRefreshTimer);
     markerRefreshTimer = null;
-    clearDirection();
     destinationMarker?.setMap(null);
     destinationMarker = null;
     startStationMarker?.setMap(null);
@@ -743,6 +796,8 @@ export function createWalkPanorama(maps, section) {
       fallback('실제 도보 경로와 방향이 확인된 로드뷰 장면이 부족합니다.');
       return;
     }
+    nativeArrowObserver = new MutationObserver(paintNativeArrow);
+    nativeArrowObserver.observe(canvas, { childList: true, subtree: true });
     if (startStationLocation && distanceMeters(frames[0].camera, startStationLocation) <= 45) {
       const routePan = frames[0].pov.pan;
       const exitPan = headingDegrees(frames[0].camera, startStationLocation);
