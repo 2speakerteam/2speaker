@@ -759,7 +759,9 @@ export function createWalkPanorama(maps, section) {
           if (!panorama) {
             panorama = new maps.Panorama(canvas, {
               size: new maps.Size(Math.max(1, canvas.clientWidth), Math.max(200, canvas.clientHeight)),
-              pov: { pan: 0, tilt: 0, fov: 95 }, flightSpot: false, logoControl: false
+              pov: { pan: 0, tilt: 0, fov: 95 }, flightSpot: false, logoControl: false,
+              minZoom: 0, maxZoom: 2, zoomControl: true,
+              zoomControlOptions: { position: maps.Position.TOP_RIGHT, style: maps.ZoomControlStyle.SMALL }
             });
             attachListeners();
           }

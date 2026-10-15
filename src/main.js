@@ -1,4 +1,4 @@
-import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261015-station-start';
+import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261015-pinch-zoom';
 import { createGuideConversation } from './guide-conversation.js?v=20261015-guide-buttons';
 
 const root = document.querySelector('#root');

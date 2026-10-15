@@ -181,7 +181,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .walk-panorama-map-button { flex: 0 0 auto; min-height: 34px; padding: 5px 12px; border: 1px solid rgba(72, 198, 226, .45); border-radius: 11px; background: #0b354c; color: #e9f8ff; font: inherit; font-size: 13px; cursor: pointer; }
 .walk-panorama-map-button:focus-visible { outline: 2px solid #66e7ff; outline-offset: 2px; }
 .walk-panorama-view { position: relative; overflow: hidden; border: 1px solid rgba(49, 206, 255, .24); border-radius: 23px; background: #12384d; isolation: isolate; }
-.walk-panorama-canvas { --walk-arrow-color: brightness(0) saturate(100%) invert(79.854%) sepia(61.364%) saturate(151.287%) hue-rotate(72.319deg) brightness(113.05%) contrast(73.431%); width: 100%; height: clamp(200px, 33vh, 410px); overflow: hidden; border-radius: 23px; background: #12384d; opacity: 1; transition: opacity .22s ease; }
+.walk-panorama-canvas { --walk-arrow-color: brightness(0) saturate(100%) invert(79.854%) sepia(61.364%) saturate(151.287%) hue-rotate(72.319deg) brightness(113.05%) contrast(73.431%); width: 100%; height: clamp(200px, 33vh, 410px); overflow: hidden; border-radius: 23px; background: #12384d; opacity: 1; transition: opacity .22s ease; touch-action: none; }
 .walk-panorama-canvas img.arrow_image.walk-panorama-native-active { filter: var(--walk-arrow-color) !important; }
 .walk-panorama-anchor { display: block; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .walk-panorama-pin { display: block; width: 34px; height: 44px; filter: drop-shadow(0 2px 5px rgba(0,0,0,.65)); pointer-events: none; }
