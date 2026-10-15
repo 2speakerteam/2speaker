@@ -529,8 +529,7 @@ export function createWalkPanorama(maps, section) {
     const run = generation;
     const frame = frames[index];
     const matchesFrame = (found, expected) => found.status === 'OK'
-      && found.panoId === expected.panoId && found.camera
-      && distanceMeters(found.camera, expected.camera) <= 3;
+      && found.panoId === expected.panoId;
     busy = true;
     switchingFrame = frame;
     updateControls();
@@ -690,9 +689,15 @@ export function createWalkPanorama(maps, section) {
     const startStationName = options.startIsStation
       ? options.startTitle?.match(/^(.+?역)(?:\s|\(|$)/)?.[1] : null;
     const destinationStationName = options.destinationTitle?.match(/^(.+?역)(?:\s|\(|$)/)?.[1];
+    if (startStationName && options.startStationLocation
+      && [options.startStationLocation.lat, options.startStationLocation.lng].every(Number.isFinite)) {
+      startStationLocation = options.startStationLocation;
+      startStationTitle = startStationName;
+    }
     // Station markers must not hold up the first Roadview frame.
     void Promise.all([
-      startStationName ? findStationExit(startStationName, routeStart, routeStart).catch(() => null) : null,
+      startStationName && !startStationLocation
+        ? findStationExit(startStationName, routeStart, routeStart).catch(() => null) : null,
       destinationStationName && destination
         ? findStationExit(destinationStationName, routeEnd, destination).catch(() => null) : null
     ]).then(([startExit, destinationExit]) => {

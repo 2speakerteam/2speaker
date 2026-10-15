@@ -1,4 +1,4 @@
-import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261015-progressive-1000';
+import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261015-station-start';
 import { createGuideConversation } from './guide-conversation.js?v=20261015-guide-buttons';
 
 const root = document.querySelector('#root');
@@ -884,15 +884,17 @@ function initializeNaverRouteMap() {
         ? startTitle.match(/^(.+?역)(?:\s|\(|$)/)?.[1] : null;
       const destinationStationName = destinationTitle.match(/^(.+?역)(?:\s|\(|$)/)?.[1];
       let walkEnd = end;
+      let walkStartExit = null;
       Promise.all([
         startStationName ? findStationExit(startStationName, start, start).catch(() => null) : null,
         destinationStationName ? findStationExit(destinationStationName, end, end).catch(() => null) : null
       ]).then(([startExit, destinationExit]) => {
         if (controller.signal.aborted || requestId !== routeRequestId) return null;
-        const walkStart = startExit && Math.hypot(
+        walkStartExit = startExit && Math.hypot(
           (startExit.lat - start.lat) * 111195,
           (startExit.lng - start.lng) * 111195 * Math.cos(start.lat * Math.PI / 180)
-        ) <= 35 ? { lat: startExit.lat, lng: startExit.lng } : start;
+        ) <= 120 ? { lat: startExit.lat, lng: startExit.lng } : null;
+        const walkStart = walkStartExit || start;
         walkEnd = destinationExit && Math.hypot(
           (destinationExit.lat - end.lat) * 111195,
           (destinationExit.lng - end.lng) * 111195 * Math.cos(end.lat * Math.PI / 180)
@@ -950,7 +952,8 @@ function initializeNaverRouteMap() {
         ]);
         updateWalkMapView();
         showWalkRoute(route);
-        void walkPanorama.start(route, walkEnd, { startIsStation, startTitle, destinationTitle }).then((ready) => {
+        void walkPanorama.start(route, walkEnd, { startIsStation, startTitle, destinationTitle,
+          startStationLocation: walkStartExit }).then((ready) => {
           if (session !== routeMapSession || currentPage !== 'guide'
             || !walkRequested || requestId !== routeRequestId) return;
           if (ready) setGuideView('panorama');
