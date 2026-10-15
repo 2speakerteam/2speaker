@@ -274,12 +274,6 @@ export function createWalkPanorama(maps, section) {
   let preparing = false;
   let preparationDone = true;
   let prepareAhead = () => {};
-  let sceneCover = null;
-  let coverDelay = null;
-  let coverRemoval = null;
-  let retryTimer = null;
-  let retryTarget = '';
-  let retryCount = 0;
   const nativeArrowStyle = document.createElement('style');
   section.appendChild(nativeArrowStyle);
   const clearNativeArrow = () => {
@@ -399,54 +393,6 @@ export function createWalkPanorama(maps, section) {
     window.clearTimeout(timer);
     timer = null;
   };
-  const removeSceneCover = () => {
-    window.clearTimeout(coverDelay);
-    window.clearTimeout(coverRemoval);
-    coverDelay = null;
-    coverRemoval = null;
-    sceneCover?.remove();
-    sceneCover = null;
-  };
-  const holdCurrentScene = () => {
-    if (sceneCover) {
-      window.clearTimeout(coverDelay);
-      window.clearTimeout(coverRemoval);
-      sceneCover.classList.remove('is-releasing');
-      return;
-    }
-    removeSceneCover();
-    if (selected < 0 || canvas.hidden || !canvas.parentElement) return;
-    const frozen = canvas.cloneNode(true);
-    frozen.classList.add('walk-panorama-scene-cover');
-    frozen.setAttribute('aria-hidden', 'true');
-    frozen.inert = true;
-    frozen.querySelectorAll('[id]').forEach((element) => element.removeAttribute('id'));
-    const originalCanvases = canvas.querySelectorAll('canvas');
-    const frozenCanvases = frozen.querySelectorAll('canvas');
-    originalCanvases.forEach((source, index) => {
-      const copy = frozenCanvases[index];
-      if (!copy) return;
-      copy.width = source.width;
-      copy.height = source.height;
-      try { copy.getContext('2d')?.drawImage(source, 0, 0); }
-      catch { /* Retain any Roadview image tiles present in the frozen DOM. */ }
-    });
-    canvas.parentElement.appendChild(frozen);
-    sceneCover = frozen;
-  };
-  const releaseSceneCover = () => {
-    const frozen = sceneCover;
-    if (!frozen) return;
-    // pano_status describes SDK lookup completion. Give the browser a paint
-    // opportunity for the new tiles before revealing them.
-    coverDelay = window.setTimeout(() => {
-      if (sceneCover !== frozen) return;
-      frozen.classList.add('is-releasing');
-      coverRemoval = window.setTimeout(() => {
-        if (sceneCover === frozen) removeSceneCover();
-      }, 200);
-    }, 120);
-  };
   const settlePending = (result) => {
     if (!pending) return;
     const active = pending;
@@ -520,8 +466,6 @@ export function createWalkPanorama(maps, section) {
   const pause = () => {
     playing = false;
     clearTimer();
-    window.clearTimeout(retryTimer);
-    retryTimer = null;
     updateControls();
   };
   const scheduleNext = () => {
@@ -582,22 +526,12 @@ export function createWalkPanorama(maps, section) {
 
   async function showFrame(index) {
     if (busy || index < 0 || index >= frames.length || !panorama) return;
-    window.clearTimeout(retryTimer);
-    retryTimer = null;
     const run = generation;
     const frame = frames[index];
-    const target = `${index}:${frame.panoId}`;
-    if (retryTarget !== target) {
-      retryTarget = target;
-      retryCount = 0;
-    }
-    // The probe already verified this panorama against the walking route.
-    // The visible SDK can report its location a moment after pano_changed.
     const matchesFrame = (found, expected) => found.status === 'OK'
-      && found.panoId === expected.panoId;
-    const wasPlaying = playing;
+      && found.panoId === expected.panoId && found.camera
+      && distanceMeters(found.camera, expected.camera) <= 3;
     busy = true;
-    if (selected >= 0 && panorama.getPanoId() !== frame.panoId) holdCurrentScene();
     switchingFrame = frame;
     updateControls();
     const currentCoord = panorama.getLocation()?.coord;
@@ -623,27 +557,9 @@ export function createWalkPanorama(maps, section) {
         panorama.setPov(previousFrame.pov);
         showNativeArrow(previousFrame);
       }
-      if (matchesFrame(restored, previousFrame)) releaseSceneCover();
       setStatus('경로보기');
-      console.warn('2SPEAKER Roadview scene transition failed', {
-        status: found.status, expected: frame.panoId, received: found.panoId || null
-      });
-      const willRetry = wasPlaying && matchesFrame(restored, previousFrame) && retryCount < 1;
-      arrival.textContent = willRetry
-        ? '다음 로드뷰 장면을 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.'
-        : '다음 로드뷰 장면을 불러오지 못했습니다. 다음을 눌러 다시 시도해 주세요.';
+      arrival.textContent = '다음 로드뷰 장면을 불러오지 못했습니다. 다음을 눌러 다시 시도해 주세요.';
       updateControls();
-      if (willRetry) {
-        retryCount += 1;
-        retryTimer = window.setTimeout(() => {
-          retryTimer = null;
-          if (run === generation && selected === index - 1 && !busy) {
-            playing = true;
-            updateControls();
-            void showFrame(index);
-          }
-        }, 600);
-      }
       return;
     }
     busy = false;
@@ -659,8 +575,6 @@ export function createWalkPanorama(maps, section) {
       return;
     }
     selected = index;
-    retryTarget = '';
-    retryCount = 0;
     canvas.hidden = false;
     const beforeTurnMeters = frame.decisionProgress === null
       ? 0 : Math.round(Math.max(0, frame.decisionProgress - frame.progress));
@@ -690,7 +604,6 @@ export function createWalkPanorama(maps, section) {
       arrival.textContent = instructionForFrame(frame, routeDecisions, routeEdges.at(-1).to);
     }
     showNativeArrow(frame);
-    releaseSceneCover();
     section.classList.remove('is-switching');
     updateControls();
     scheduleNext();
@@ -699,11 +612,6 @@ export function createWalkPanorama(maps, section) {
 
   const stop = () => {
     generation += 1;
-    removeSceneCover();
-    window.clearTimeout(retryTimer);
-    retryTimer = null;
-    retryTarget = '';
-    retryCount = 0;
     probe?.stop();
     probe = null;
     preparing = false;
