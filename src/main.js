@@ -1,4 +1,4 @@
-import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261015-arrival-arrow';
+import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261016-walk-mini-map';
 import { createGuideConversation } from './guide-conversation.js?v=20261015-guide-buttons';
 
 const root = document.querySelector('#root');
@@ -240,6 +240,9 @@ function guideScreen() {
         </div>
         <div class="walk-panorama-view">
           <div class="walk-panorama-canvas" aria-label="네이버 실제 로드뷰"></div>
+          <div class="walk-mini-map" role="img" aria-label="도보 경로와 현재 진행 방향을 표시하는 미니 지도" hidden>
+            <div class="walk-mini-map-canvas" aria-hidden="true"></div>
+          </div>
           <div class="walk-panorama-turn" role="status" aria-live="polite" hidden></div>
         </div>
         <div class="walk-panorama-controls">

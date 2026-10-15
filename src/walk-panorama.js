@@ -1,4 +1,5 @@
 import { createPanoramaProbe } from './panorama-probe.js';
+import { createWalkMiniMap } from './walk-mini-map.js';
 
 const CAMERA_TO_ROUTE_LIMIT_METERS = 15;
 const CAMERA_TO_REQUEST_LIMIT_METERS = 25;
@@ -247,6 +248,7 @@ export function createWalkPanorama(maps, section) {
   if (!section || !canvas || !turn || !status || !arrival || !previous || !playback || !next) {
     return { start() {}, stop() {} };
   }
+  const miniMap = createWalkMiniMap(maps, section);
 
   let panorama = null;
   let listeners = [];
@@ -332,6 +334,11 @@ export function createWalkPanorama(maps, section) {
     nativeArrowTarget = arrowTargetForFrame(frame, routeDecisions);
     if (nativeArrowTarget) paintNativeArrow();
     else clearNativeArrow();
+    if (routeEdges.length) {
+      const position = candidateAt(routeEdges, frame.progress);
+      const bearing = frame.pov.pan + (nativeArrowTarget?.angle || 0);
+      miniMap.update(position, bearing, !nativeArrowTarget);
+    }
   };
   const scheduleMarkerRefresh = () => {
     window.clearTimeout(markerRefreshTimer);
@@ -492,6 +499,7 @@ export function createWalkPanorama(maps, section) {
   };
   const fallback = (message) => {
     pause();
+    miniMap.stop();
     canvas.classList.remove('is-arrival');
     section.classList.remove('is-loading', 'is-switching');
     canvas.hidden = true;
@@ -614,6 +622,7 @@ export function createWalkPanorama(maps, section) {
 
   const stop = () => {
     generation += 1;
+    miniMap.stop();
     probe?.stop();
     probe = null;
     preparing = false;
@@ -863,6 +872,13 @@ export function createWalkPanorama(maps, section) {
     await showFrame(0);
     if (run !== generation) return false;
     section.dataset.firstFrameMs = String(Math.round(performance.now() - startedAt));
+    if (selected === 0) {
+      window.setTimeout(() => {
+        if (run !== generation || selected < 0) return;
+        try { miniMap.start(route.segments); }
+        catch { miniMap.stop(); }
+      }, 0);
+    }
     return selected === 0;
   };
 
