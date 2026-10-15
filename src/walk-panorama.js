@@ -344,6 +344,11 @@ export function createWalkPanorama(maps, section) {
     let chosen = nativeArrowContainer
       ? arrows.find((image) => image.parentElement?.classList.contains(nativeArrowContainer))
       : null;
+    if (nativeArrowContainer && !chosen
+      && angleDifference(panorama.getPov()?.pan, frames[selected].pov.pan) < 10) {
+      nativeArrowContainer = null;
+      nativeArrowStyle.textContent = '';
+    }
     if (!nativeArrowContainer) {
       const candidates = arrows.map((image) => ({ image, angle: nativeArrowAngle(image) }))
         .filter(({ angle }) => angle !== null && (
@@ -363,7 +368,9 @@ export function createWalkPanorama(maps, section) {
       }
     }
     arrows.forEach((image) => {
-      image.classList.toggle('walk-panorama-native-active', image === chosen);
+      const active = image.classList.contains('walk-panorama-native-active');
+      if (image === chosen && !active) image.classList.add('walk-panorama-native-active');
+      else if (image !== chosen && active) image.classList.remove('walk-panorama-native-active');
     });
   };
   const showNativeArrow = (frame) => {
@@ -796,8 +803,19 @@ export function createWalkPanorama(maps, section) {
       fallback('실제 도보 경로와 방향이 확인된 로드뷰 장면이 부족합니다.');
       return;
     }
-    nativeArrowObserver = new MutationObserver(paintNativeArrow);
-    nativeArrowObserver.observe(canvas, { childList: true, subtree: true });
+    nativeArrowObserver = new MutationObserver((changes) => {
+      if (changes.some((change) => change.type === 'attributes'
+        ? change.target.matches?.('img.arrow_image, [class*="arrow_container_#"]')
+        : [...change.addedNodes, ...change.removedNodes].some((node) => node.nodeType === 1
+          && (node.matches?.('img.arrow_image, [class*="arrow_container_#"]')
+            || node.querySelector?.('img.arrow_image'))))) {
+        paintNativeArrow();
+      }
+    });
+    nativeArrowObserver.observe(canvas, {
+      childList: true, subtree: true, attributes: true,
+      attributeFilter: ['style', 'class', 'src']
+    });
     if (startStationLocation && distanceMeters(frames[0].camera, startStationLocation) <= 45) {
       const routePan = frames[0].pov.pan;
       const exitPan = headingDegrees(frames[0].camera, startStationLocation);
