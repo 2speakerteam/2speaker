@@ -277,7 +277,6 @@ export function createWalkPanorama(maps, section) {
   let nativeArrowContainer = null;
   let arrowFrame = null;
   let switchingFrame = null;
-  let frameHold = null;
   let probe = null;
   let preparing = false;
   let preparationDone = true;
@@ -409,49 +408,6 @@ export function createWalkPanorama(maps, section) {
     window.clearTimeout(timer);
     timer = null;
   };
-  const clearFrameHold = () => {
-    frameHold?.remove();
-    frameHold = null;
-  };
-  const holdCurrentFrame = () => {
-    clearFrameHold();
-    if (selected < 0 || canvas.hidden || !canvas.hasChildNodes()) return null;
-    const hold = canvas.cloneNode(true);
-    hold.classList.add('walk-panorama-frame-hold');
-    hold.removeAttribute('aria-label');
-    hold.setAttribute('aria-hidden', 'true');
-    hold.inert = true;
-    hold.removeAttribute('id');
-    hold.querySelectorAll('[id]').forEach((node) => node.removeAttribute('id'));
-    const sourceCanvases = canvas.querySelectorAll('canvas');
-    const heldCanvases = hold.querySelectorAll('canvas');
-    sourceCanvases.forEach((source, index) => {
-      try { heldCanvases[index]?.getContext('2d')?.drawImage(source, 0, 0); } catch { /* Keep image layers when a canvas cannot be copied. */ }
-    });
-    canvas.after(hold);
-    frameHold = hold;
-    return hold;
-  };
-  const revealFrame = async (hold, run) => {
-    if (!hold) return;
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-    if (run !== generation || frameHold !== hold) return;
-    const loadingImages = [...canvas.querySelectorAll('img:not(.arrow_image)')]
-      .filter((image) => !image.complete);
-    if (loadingImages.length) {
-      await Promise.race([
-        Promise.all(loadingImages.map((image) => image.decode?.().catch(() => {})
-          || new Promise((resolve) => { image.addEventListener('load', resolve, { once: true });
-            image.addEventListener('error', resolve, { once: true }); }))),
-        new Promise((resolve) => window.setTimeout(resolve, 450))
-      ]);
-    }
-    if (run !== generation || frameHold !== hold) return;
-    hold.classList.add('is-revealing');
-    window.setTimeout(() => {
-      if (frameHold === hold) clearFrameHold();
-    }, 150);
-  };
   const settlePending = (result) => {
     if (!pending) return;
     const active = pending;
@@ -545,7 +501,6 @@ export function createWalkPanorama(maps, section) {
   };
   const fallback = (message) => {
     pause();
-    clearFrameHold();
     miniMap.stop();
     canvas.classList.remove('is-arrival');
     section.classList.remove('is-loading', 'is-switching');
@@ -594,11 +549,6 @@ export function createWalkPanorama(maps, section) {
     busy = true;
     switchingFrame = frame;
     updateControls();
-    const hold = index !== selected ? holdCurrentFrame() : null;
-    if (hold) {
-      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
-      if (run !== generation) return;
-    }
     const currentCoord = panorama.getLocation()?.coord;
     let found = panorama.getPanoId() === frame.panoId && currentCoord
       ? { status: 'OK', panoId: frame.panoId, camera: { lat: currentCoord.lat(), lng: currentCoord.lng() } }
@@ -622,16 +572,14 @@ export function createWalkPanorama(maps, section) {
         panorama.setPov(previousFrame.pov);
         showNativeArrow(previousFrame);
       }
-      await revealFrame(hold, run);
-      if (run !== generation) return;
       setStatus('경로보기');
       arrival.textContent = '다음 로드뷰 장면을 불러오지 못했습니다. 다음을 눌러 다시 시도해 주세요.';
       updateControls();
       return;
     }
+    busy = false;
+    switchingFrame = null;
     if (!matchesFrame(found, frame)) {
-      busy = false;
-      switchingFrame = null;
       fallback('첫 로드뷰 장면을 확인할 수 없습니다.');
       return;
     }
@@ -641,8 +589,6 @@ export function createWalkPanorama(maps, section) {
       applied = panorama.getPov();
     }
     if (!Number.isFinite(applied?.pan) || angleDifference(applied.pan, frame.pov.pan) > 5) {
-      busy = false;
-      switchingFrame = null;
       fallback('실제 도보 진행 방향으로 로드뷰 시야를 맞출 수 없습니다.');
       return;
     }
@@ -671,10 +617,6 @@ export function createWalkPanorama(maps, section) {
     }
     showNativeArrow(frame);
     section.classList.remove('is-switching');
-    await revealFrame(hold, run);
-    if (run !== generation) return;
-    busy = false;
-    switchingFrame = null;
     updateControls();
     scheduleNext();
     void prepareAhead();
@@ -682,7 +624,6 @@ export function createWalkPanorama(maps, section) {
 
   const stop = () => {
     generation += 1;
-    clearFrameHold();
     miniMap.stop();
     probe?.stop();
     probe = null;
