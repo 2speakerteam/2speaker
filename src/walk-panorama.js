@@ -95,6 +95,7 @@ function signedAngle(a, b) {
 function routeCandidates(route, edges) {
   const total = edges.at(-1).to;
   const decisions = [];
+  const junctions = [];
   const addDecision = (progress, priority, crossing = false) => {
     if (progress < 10 || progress > total - 6) return;
     const before = candidateAt(edges, progress - 8);
@@ -109,10 +110,12 @@ function routeCandidates(route, edges) {
     if (![guide.lat, guide.lng].every(Number.isFinite)) continue;
     const crossing = guide.turnType >= 211 && guide.turnType <= 217;
     const turning = [12, 13, 14, 16, 17, 18, 19].includes(guide.turnType);
-    if (!crossing && !turning) continue;
+    const straight = guide.turnType === 11;
+    if (!crossing && !turning && !straight) continue;
     const near = closestRoutePosition(guide, edges);
     if (near.distance > 8) continue;
-    addDecision(near.progress, crossing ? 3 : 4, crossing);
+    junctions.push(near.progress);
+    if (!straight) addDecision(near.progress, crossing ? 3 : 4, crossing);
   }
   for (let index = 0; index < edges.length - 1; index += 1) {
     const progress = edges[index].to;
@@ -122,6 +125,7 @@ function routeCandidates(route, edges) {
     const after = candidateAt(edges, progress + 8);
     if (angleDifference(headingDegrees(before, at), headingDegrees(at, after)) >= 50) {
       addDecision(progress, 2);
+      junctions.push(progress);
     }
   }
   const selected = [];
@@ -156,7 +160,7 @@ function routeCandidates(route, edges) {
     .filter((probe, index, all) => !all.slice(0, index).some((other) =>
       Math.abs(other.progress - probe.progress) < 3))
     .sort((a, b) => a.progress - b.progress);
-  return { candidates, decisions: ordered };
+  return { candidates, decisions: ordered, junctions };
 }
 
 function instructionForFrame(frame, decisions, routeLength) {
@@ -250,6 +254,7 @@ export function createWalkPanorama(maps, section) {
   let frames = [];
   let routeEdges = [];
   let routeDecisions = [];
+  let routeJunctions = [];
   let destination = null;
   let destinationPinLocation = null;
   let destinationPinTitle = '';
@@ -477,13 +482,12 @@ export function createWalkPanorama(maps, section) {
     }
     const current = frames[selected];
     const upcoming = frames[selected + 1];
-    const sameTurn = current.decisionProgress !== null && upcoming.decisionProgress !== null
-      && current.action !== '직진' && upcoming.action !== '직진'
-      && upcoming.progress - current.progress <= 45;
     const gap = upcoming.progress - current.progress;
     const previewDelay = Math.max(500, Math.min(1200, Math.round(gap * 100)));
+    const nearJunction = routeJunctions.some((progress) =>
+      upcoming.progress >= progress - 18 && current.progress <= progress + 8);
     timer = window.setTimeout(() => { timer = null; void showFrame(selected + 1); },
-      sameTurn ? Math.min(previewDelay, 1000) : previewDelay);
+      nearJunction ? Math.min(1550, Math.round(previewDelay * 1.35)) : previewDelay);
   };
   const fallback = (message) => {
     pause();
@@ -644,6 +648,7 @@ export function createWalkPanorama(maps, section) {
     frames = [];
     routeEdges = [];
     routeDecisions = [];
+    routeJunctions = [];
     destination = null;
     destinationPinLocation = null;
     destinationPinTitle = '';
@@ -672,13 +677,14 @@ export function createWalkPanorama(maps, section) {
       fallback('로드뷰 위치와 대조할 실제 도보 경로 좌표가 부족합니다.');
       return;
     }
-    const { candidates, decisions } = routeCandidates(route, edges);
+    const { candidates, decisions, junctions } = routeCandidates(route, edges);
     if (!candidates.length) {
       fallback('이 도보 경로에는 확인된 회전·갈림길 판단 지점이 없습니다.');
       return;
     }
     routeEdges = edges;
     routeDecisions = decisions;
+    routeJunctions = junctions;
     const routeStart = edges[0].start;
     const routeEnd = edges.at(-1).end;
     destinationPinLocation = routeEnd;
