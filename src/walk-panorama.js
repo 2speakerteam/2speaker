@@ -6,7 +6,6 @@ const MAX_FRAMES = 25;
 const PANORAMA_TIMEOUT_MS = 6000;
 const ARRIVAL_RADIUS_METERS = 30;
 const ARRIVAL_MAX_ACCURACY_METERS = 20;
-const PANORAMA_CAMERA_HEIGHT_METERS = 2.5;
 const radians = Math.PI / 180;
 
 function distanceMeters(a, b) {
@@ -90,29 +89,6 @@ function angleDifference(a, b) {
 
 function signedAngle(a, b) {
   return (((b - a) % 360) + 540) % 360 - 180;
-}
-
-function projectOnPanoramaGround(camera, point, pov, width, height) {
-  const north = (point.lat - camera.lat) * 6371000 * radians;
-  const east = (point.lng - camera.lng) * 6371000 * radians
-    * Math.cos(camera.lat * radians);
-  const pan = pov.pan * radians;
-  const tilt = (pov.tilt || 0) * radians;
-  const forward = north * Math.cos(pan) + east * Math.sin(pan);
-  const right = east * Math.cos(pan) - north * Math.sin(pan);
-  const depth = forward * Math.cos(tilt) - PANORAMA_CAMERA_HEIGHT_METERS * Math.sin(tilt);
-  if (depth < 3) return null;
-  const up = -PANORAMA_CAMERA_HEIGHT_METERS * Math.cos(tilt) - forward * Math.sin(tilt);
-  const focal = width / (2 * Math.tan((pov.fov || 90) * radians / 2));
-  const x = width / 2 + focal * right / depth;
-  const y = height / 2 - focal * up / depth;
-  // The panorama SDK exposes a viewing angle but no road-surface depth map.
-  // Only draw where a ground point can appear below the current horizon.
-  const horizonY = height / 2 + focal * Math.tan(tilt);
-  if (x < 0 || x > width || y < Math.max(height * .55, horizonY + 8) || y > height) {
-    return null;
-  }
-  return { x, y, radius: Math.min(26, Math.max(3.2, focal * .4 / depth)) };
 }
 
 function routeCandidates(route, edges) {
@@ -204,6 +180,18 @@ function instructionForFrame(frame, decisions, routeLength) {
     ? '목적지 방향으로 계속 가세요.' : '계속 직진하세요.';
 }
 
+function directionForFrame(frame, decisions) {
+  if (frame.phase === 'arrival') return null;
+  const next = decisions.find((decision) => decision.priority >= 3
+    && decision.progress >= frame.progress - 2);
+  if (next) {
+    const meters = Math.max(0, Math.round(next.progress - frame.progress));
+    if (next.crossing || meters > 20) return 'straight';
+    return next.action === '좌회전' ? 'left' : 'right';
+  }
+  return 'straight';
+}
+
 export async function findStationExit(stationName, routePoint, stationPoint) {
   const response = await fetch('/api/map/place', {
     method: 'POST',
@@ -293,14 +281,16 @@ function selectFrames(verified, total, startStationLocation = null) {
 
 export function createWalkPanorama(maps, section) {
   const canvas = section?.querySelector('.walk-panorama-canvas');
-  const ground = section?.querySelector('.walk-panorama-ground');
+  const directions = section?.querySelector('.walk-panorama-directions');
+  const directionArrows = [...(directions?.querySelectorAll('[data-walk-direction]') || [])];
   const turn = section?.querySelector('.walk-panorama-turn');
   const status = section?.querySelector('.walk-panorama-status');
   const arrival = section?.querySelector('.walk-panorama-arrival');
   const previous = section?.querySelector('[data-panorama-action="previous"]');
   const playback = section?.querySelector('[data-panorama-action="playback"]');
   const next = section?.querySelector('[data-panorama-action="next"]');
-  if (!section || !canvas || !ground || !turn || !status || !arrival || !previous || !playback || !next) {
+  if (!section || !canvas || !directions || directionArrows.length !== 3
+    || !turn || !status || !arrival || !previous || !playback || !next) {
     return { start() {}, stop() {} };
   }
 
@@ -321,96 +311,24 @@ export function createWalkPanorama(maps, section) {
   let timer = null;
   let generation = 0;
   let arrivalRequest = 0;
-  let groundPoints = [];
   let destinationMarker = null;
   let startStationMarker = null;
-  let groundFrame = null;
-  let groundRequest = 0;
-  let groundSuspended = false;
-  let projectionTimer = null;
+  let markerRefreshTimer = null;
   let sizeObserver = null;
-
-  const clearGround = () => {
-    window.clearTimeout(projectionTimer);
-    projectionTimer = null;
-    window.cancelAnimationFrame(groundRequest);
-    groundRequest = 0;
-    groundFrame = null;
-    groundPoints = [];
-    ground.replaceChildren();
+  const clearDirection = () => {
+    directionArrows.forEach((arrow) => arrow.classList.remove('is-active'));
+    directions.setAttribute('aria-label', '안내 방향 대기 중');
   };
-  const suspendGround = () => {
-    groundSuspended = true;
-    window.clearTimeout(projectionTimer);
-    window.cancelAnimationFrame(groundRequest);
-    ground.replaceChildren();
-  };
-  canvas.addEventListener('pointerdown', suspendGround, true);
-  canvas.addEventListener('touchstart', suspendGround, { capture: true, passive: true });
-  canvas.addEventListener('wheel', suspendGround, { capture: true, passive: true });
-  const drawGround = () => {
-    if (groundSuspended || !groundFrame || !panorama || !groundPoints.length || canvas.hidden) return;
-    const pov = panorama.getPov();
-    const box = canvas.getBoundingClientRect();
-    if (!box.width || !box.height || !Number.isFinite(pov?.pan)) return;
-    if (angleDifference(pov.pan, groundFrame.pov.pan) > 8
-      || Math.abs((pov.tilt || 0) - (groundFrame.pov.tilt || 0)) > 4) {
-      ground.replaceChildren();
-      return;
-    }
-    const points = groundPoints.map((point) => {
-      const projected = projectOnPanoramaGround(groundFrame.camera, point, pov, box.width, box.height);
-      return projected ? { ...projected, segmentIndex: point.segmentIndex } : null;
+  const showDirection = (direction) => {
+    directionArrows.forEach((arrow) => {
+      arrow.classList.toggle('is-active', arrow.dataset.walkDirection === direction);
     });
-    const runs = [];
-    let current = [];
-    for (const point of points) {
-      if (!point || current.length && (point.segmentIndex !== current.at(-1).segmentIndex
-        || Math.hypot(point.x - current.at(-1).x,
-          point.y - current.at(-1).y) > Math.max(100, box.width * .26))) {
-        if (current.length > 1) runs.push(current);
-        current = [];
-      }
-      if (point) current.push(point);
-    }
-    if (current.length > 1) runs.push(current);
-    const ribbons = runs.map((run) => {
-      const sides = run.map((point, index) => {
-        const before = run[Math.max(0, index - 1)];
-        const after = run[Math.min(run.length - 1, index + 1)];
-        const length = Math.hypot(after.x - before.x, after.y - before.y) || 1;
-        const normalX = -(after.y - before.y) / length;
-        const normalY = (after.x - before.x) / length;
-        const radius = point.radius;
-        return {
-          left: [point.x + normalX * radius, point.y + normalY * radius],
-          right: [point.x - normalX * radius, point.y - normalY * radius]
-        };
-      });
-      const shape = [...sides.map((side) => side.left),
-        ...sides.map((side) => side.right).reverse()];
-      const coords = ([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`;
-      let path = `M${coords(shape[0])}`;
-      for (let index = 1; index < shape.length - 1; index += 1) {
-        const current = shape[index];
-        const next = shape[index + 1];
-        path += ` Q${coords(current)} ${coords([(current[0] + next[0]) / 2,
-          (current[1] + next[1]) / 2])}`;
-      }
-      return `${path} L${coords(shape.at(-1))} Z`;
-    });
-    ground.innerHTML = ribbons.length
-      ? `<svg viewBox="0 0 ${box.width} ${box.height}" preserveAspectRatio="none" aria-hidden="true">${ribbons.map((path) =>
-        `<path d="${path}" fill="#1685d3" fill-opacity=".8" stroke="#e9faff" stroke-opacity=".9" stroke-width="1.4" stroke-linejoin="round"/>`).join('')}</svg>`
-      : '';
+    const labels = { left: '좌회전', straight: '직진', right: '우회전' };
+    directions.setAttribute('aria-label', direction ? `현재 안내: ${labels[direction]}` : '안내 방향 없음');
   };
-  const scheduleGround = () => {
-    // Clear the old camera projection as soon as the user rotates the view.
-    // Keeping it during the trailing redraw makes the route float over the sky.
-    ground.replaceChildren();
-    window.clearTimeout(projectionTimer);
-    projectionTimer = window.setTimeout(() => {
-      if (!panorama || !groundFrame) return;
+  const scheduleMarkerRefresh = () => {
+    window.clearTimeout(markerRefreshTimer);
+    markerRefreshTimer = window.setTimeout(() => {
       if (destinationMarker?.getMap()) {
         destinationMarker.setMap(null);
         destinationMarker.setMap(panorama);
@@ -419,25 +337,7 @@ export function createWalkPanorama(maps, section) {
         startStationMarker.setMap(null);
         startStationMarker.setMap(panorama);
       }
-      window.cancelAnimationFrame(groundRequest);
-      groundRequest = window.requestAnimationFrame(() => {
-        groundRequest = window.requestAnimationFrame(drawGround);
-      });
     }, 70);
-  };
-  const showGround = (frame) => {
-    clearGround();
-    groundSuspended = false;
-    if (!panorama || frame.routeOffset > CAMERA_TO_ROUTE_LIMIT_METERS) return;
-    groundFrame = frame;
-    const total = routeEdges.at(-1)?.to || 0;
-    const start = Math.max(0, frame.progress - 18);
-    const end = Math.min(total, frame.progress + 85);
-    for (let progress = start; progress < end; progress += 1.25) {
-      const point = candidateAt(routeEdges, progress);
-      groundPoints.push(point);
-    }
-    scheduleGround();
   };
   const showStartStation = (frame) => {
     if (frame.phase !== 'departure' || !startStationLocation || !panorama
@@ -514,7 +414,7 @@ export function createWalkPanorama(maps, section) {
   };
   const attachListeners = () => {
     listeners = [
-      maps.Event.addListener(panorama, 'pov_changed', scheduleGround),
+      maps.Event.addListener(panorama, 'pov_changed', scheduleMarkerRefresh),
       maps.Event.addListener(panorama, 'pano_status', (value) => {
         if (!pending) return;
         pending.status = value;
@@ -578,7 +478,7 @@ export function createWalkPanorama(maps, section) {
     pause();
     section.classList.remove('is-loading', 'is-switching');
     canvas.hidden = true;
-    clearGround();
+    clearDirection();
     destinationMarker?.setMap(null);
     startStationMarker?.setMap(null);
     turn.hidden = true;
@@ -619,7 +519,6 @@ export function createWalkPanorama(maps, section) {
     const frame = frames[index];
     busy = true;
     section.classList.add('is-switching');
-    clearGround();
     updateControls();
     const found = await query(() => panorama.setPanoIdWithPov(frame.panoId, frame.pov));
     if (run !== generation) return;
@@ -646,7 +545,8 @@ export function createWalkPanorama(maps, section) {
       : frame.action === '좌회전' || frame.action === '우회전'
         ? `${frame.action} 후 진행` : '';
     turn.hidden = !['approach', 'after'].includes(frame.phase) || !turn.textContent;
-    showGround(frame);
+    showDirection(index === frames.length - 1
+      ? null : directionForFrame(frame, routeDecisions));
     showStartStation(frame);
     showDestination(frame);
     setStatus(`경로 미리보기 ${index + 1}/${frames.length}`);
@@ -679,7 +579,9 @@ export function createWalkPanorama(maps, section) {
     settlePending({ status: 'CANCELLED' });
     listeners.forEach((listener) => maps.Event.removeListener(listener));
     listeners = [];
-    clearGround();
+    window.clearTimeout(markerRefreshTimer);
+    markerRefreshTimer = null;
+    clearDirection();
     destinationMarker?.setMap(null);
     destinationMarker = null;
     startStationMarker?.setMap(null);
@@ -767,7 +669,7 @@ export function createWalkPanorama(maps, section) {
         const bounds = canvas.getBoundingClientRect();
         if (bounds.width > 0 && bounds.height > 0) {
           panorama.setSize(new maps.Size(bounds.width, bounds.height));
-          scheduleGround();
+          scheduleMarkerRefresh();
         }
       });
       sizeObserver.observe(canvas);
