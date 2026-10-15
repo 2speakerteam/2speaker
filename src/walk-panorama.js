@@ -522,9 +522,9 @@ export function createWalkPanorama(maps, section) {
       && current.action !== '직진' && upcoming.action !== '직진'
       && upcoming.progress - current.progress <= 45;
     const gap = upcoming.progress - current.progress;
-    const previewDelay = Math.max(240, Math.min(700, Math.round(gap * 35)));
+    const previewDelay = Math.max(350, Math.min(900, Math.round(gap * 50)));
     timer = window.setTimeout(() => { void showFrame(selected + 1); },
-      sameTurn ? Math.min(previewDelay, 500) : previewDelay);
+      sameTurn ? Math.min(previewDelay, 650) : previewDelay);
   };
   const fallback = (message) => {
     pause();
