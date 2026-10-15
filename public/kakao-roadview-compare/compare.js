@@ -381,7 +381,7 @@
       await new Promise((resolve, reject) => {
         const script = document.createElement('script');
         script.async = true;
-        script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(key)}`;
+        script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(key)}&autoload=false`;
         script.onload = () => {
           if (!window.kakao?.maps?.load) { reject(new Error('카카오 지도 SDK를 사용할 수 없습니다.')); return; }
           window.kakao.maps.load(resolve);
