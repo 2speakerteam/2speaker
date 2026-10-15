@@ -183,6 +183,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .walk-panorama-view { position: relative; overflow: hidden; border: 1px solid rgba(49, 206, 255, .24); border-radius: 23px; background: #12384d; isolation: isolate; }
 .walk-panorama-canvas { --walk-arrow-color: brightness(0) saturate(100%) invert(79.854%) sepia(61.364%) saturate(151.287%) hue-rotate(72.319deg) brightness(113.05%) contrast(73.431%); width: 100%; height: clamp(200px, 33vh, 410px); overflow: hidden; border-radius: 23px; background: #12384d; opacity: 1; transition: opacity .22s ease; touch-action: none; }
 .walk-panorama-canvas img.arrow_image.walk-panorama-native-active { filter: var(--walk-arrow-color) !important; }
+.walk-panorama-canvas.is-arrival [class*="arrow_container_#"], .walk-panorama-canvas.is-arrival img.arrow_image { visibility: hidden !important; pointer-events: none !important; }
 .walk-panorama-anchor { display: block; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .walk-panorama-pin { display: block; width: 34px; height: 44px; filter: drop-shadow(0 2px 5px rgba(0,0,0,.65)); pointer-events: none; }
 .walk-panorama-pin svg { display: block; width: 34px; height: 44px; }

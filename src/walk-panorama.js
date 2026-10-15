@@ -326,6 +326,7 @@ export function createWalkPanorama(maps, section) {
     });
   };
   const showNativeArrow = (frame) => {
+    canvas.classList.toggle('is-arrival', frame.phase === 'arrival');
     if (arrowFrame?.panoId !== frame.panoId) nativeArrowContainer = null;
     arrowFrame = frame;
     nativeArrowTarget = arrowTargetForFrame(frame, routeDecisions);
@@ -491,6 +492,7 @@ export function createWalkPanorama(maps, section) {
   };
   const fallback = (message) => {
     pause();
+    canvas.classList.remove('is-arrival');
     section.classList.remove('is-loading', 'is-switching');
     canvas.hidden = true;
     clearNativeArrow();
@@ -625,6 +627,7 @@ export function createWalkPanorama(maps, section) {
     nativeArrowObserver?.disconnect();
     nativeArrowObserver = null;
     clearNativeArrow();
+    canvas.classList.remove('is-arrival');
     settlePending({ status: 'CANCELLED' });
     listeners.forEach((listener) => maps.Event.removeListener(listener));
     listeners = [];
