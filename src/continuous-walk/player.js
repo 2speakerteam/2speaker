@@ -105,7 +105,10 @@ export function createWalkPanorama(maps, section) {
       }
       const ready = await engine.start();
       if (run !== generation) return false;
-      if (!ready) return startLegacy(route, end, options);
+      if (!ready) {
+        console.warn('2SPEAKER continuous walk initial frame unavailable', engine.state());
+        return startLegacy(route, end, options);
+      }
       section.classList.remove('is-loading');
       return true;
     } catch (error) {

@@ -93,7 +93,7 @@ export class NaverPanoramaAdapter {
     const position = new this.maps.LatLng(point.lat, point.lng);
     if (!this.probePanorama) {
       const panorama = new this.maps.Panorama(this.probeElement, {
-        size: new this.maps.Size(1, 1), flightSpot: false,
+        size: new this.maps.Size(this.probeElement.clientWidth, this.probeElement.clientHeight), flightSpot: false,
         logoControl: false, zoomControl: false, aroundControl: false
       });
       const found = await waitForPanorama(this.maps, panorama, () => panorama.setPosition(position));
