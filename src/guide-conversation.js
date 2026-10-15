@@ -114,6 +114,7 @@ export function createGuideConversation(section, { getContext }) {
   const mic = section.querySelector('.guide-chat-mic');
   const trash = section.closest('.guide-screen')?.querySelector('.guide-chat-trash');
   const tabs = section.querySelector('.guide-chat-tabs');
+  const guideContent = section.closest('.guide-content');
   const deleteActions = section.closest('.guide-screen').querySelector('.guide-chat-delete-actions');
   const selectedCount = deleteActions.querySelector('.guide-chat-selected-count');
   const cancelDelete = deleteActions.querySelector('.guide-chat-delete-cancel');
@@ -297,17 +298,32 @@ export function createGuideConversation(section, { getContext }) {
     checkbox.closest('.guide-chat-select-row')?.classList.toggle('is-selected', checkbox.checked);
     updateDeleteUi();
   });
-  section.querySelectorAll('[data-chat-mode]').forEach((button) => button.addEventListener('click', () => {
-    mode = button.dataset.chatMode;
-    selecting = false;
-    selectedIds.clear();
-    section.querySelectorAll('[data-chat-mode]').forEach((tab) =>
-      tab.setAttribute('aria-pressed', String(tab === button)));
-    input.placeholder = mode === 'ai' ? '질문을 입력하세요' : '한국어 또는 영어로 입력하세요';
-    setStatus('');
-    updateDeleteUi();
-    renderMessages(true);
-  }));
+  section.querySelectorAll('[data-chat-mode]').forEach((button) => {
+    button.setAttribute('aria-expanded', String(guideContent?.dataset.guideView !== 'panorama'));
+    button.addEventListener('click', () => {
+      const requestedMode = button.dataset.chatMode;
+      const inPanorama = guideContent?.dataset.guideView === 'panorama';
+      const chatExpanded = guideContent?.dataset.chatExpanded !== 'false';
+      if (inPanorama && chatExpanded && requestedMode === mode) {
+        guideContent.dataset.chatExpanded = 'false';
+        section.querySelectorAll('[data-chat-mode]').forEach((tab) => tab.setAttribute('aria-expanded', 'false'));
+        return;
+      }
+      mode = requestedMode;
+      selecting = false;
+      selectedIds.clear();
+      section.querySelectorAll('[data-chat-mode]').forEach((tab) =>
+        tab.setAttribute('aria-pressed', String(tab === button)));
+      if (inPanorama) {
+        guideContent.dataset.chatExpanded = 'true';
+        section.querySelectorAll('[data-chat-mode]').forEach((tab) => tab.setAttribute('aria-expanded', 'true'));
+      }
+      input.placeholder = mode === 'ai' ? '질문을 입력하세요' : '한국어 또는 영어로 입력하세요';
+      setStatus('');
+      updateDeleteUi();
+      renderMessages(true);
+    });
+  });
   log.addEventListener('click', (event) => {
     const button = event.target.closest('[data-speak-id]');
     if (!button) return;

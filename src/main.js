@@ -1,5 +1,5 @@
 import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261016-no-frame-clone';
-import { createGuideConversation } from './guide-conversation.js?v=20261015-guide-buttons';
+import { createGuideConversation } from './guide-conversation.js?v=20261016-chat-collapse';
 
 const root = document.querySelector('#root');
 let currentPage = 'home';
@@ -221,7 +221,7 @@ function routeScreen() {
 
 function guideScreen() {
   return `<main class="screen guide-screen">
-    <div class="guide-content" data-guide-view="${guideView}">
+    <div class="guide-content" data-guide-view="${guideView}" data-chat-expanded="${guideView !== 'panorama'}">
     <header class="guide-header">
       <button class="guide-control" data-action="back" aria-label="뒤로 가기">${icon('back', 34)}</button>
       <button type="button" class="guide-control guide-chat-trash" aria-label="AI 대화 삭제" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6.5 7l.8 13h9.4l.8-13M10 11v6M14 11v6"/></svg></button>
@@ -1833,6 +1833,9 @@ function setGuideView(view) {
   const content = document.querySelector('.guide-content');
   if (!content) return;
   content.dataset.guideView = view;
+  content.dataset.chatExpanded = String(view !== 'panorama');
+  content.querySelectorAll('.guide-chat-tabs [data-chat-mode]').forEach((button) =>
+    button.setAttribute('aria-expanded', String(view !== 'panorama')));
   content.scrollTop = 0;
 }
 
