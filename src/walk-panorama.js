@@ -481,9 +481,9 @@ export function createWalkPanorama(maps, section) {
       && current.action !== '직진' && upcoming.action !== '직진'
       && upcoming.progress - current.progress <= 45;
     const gap = upcoming.progress - current.progress;
-    const previewDelay = Math.max(500, Math.min(1200, Math.round(gap * 75)));
+    const previewDelay = Math.max(500, Math.min(1200, Math.round(gap * 100)));
     timer = window.setTimeout(() => { timer = null; void showFrame(selected + 1); },
-      sameTurn ? Math.min(previewDelay, 900) : previewDelay);
+      sameTurn ? Math.min(previewDelay, 1000) : previewDelay);
   };
   const fallback = (message) => {
     pause();
@@ -568,22 +568,19 @@ export function createWalkPanorama(maps, section) {
       fallback('첫 로드뷰 장면을 확인할 수 없습니다.');
       return;
     }
-    panorama.setPov(frame.pov);
-    const applied = panorama.getPov();
+    let applied = panorama.getPov();
+    if (!Number.isFinite(applied?.pan) || angleDifference(applied.pan, frame.pov.pan) > 5) {
+      panorama.setPov(frame.pov);
+      applied = panorama.getPov();
+    }
     if (!Number.isFinite(applied?.pan) || angleDifference(applied.pan, frame.pov.pan) > 5) {
       fallback('실제 도보 진행 방향으로 로드뷰 시야를 맞출 수 없습니다.');
       return;
     }
     selected = index;
     canvas.hidden = false;
-    const beforeTurnMeters = frame.decisionProgress === null
-      ? 0 : Math.round(Math.max(0, frame.decisionProgress - frame.progress));
-    turn.textContent = frame.phase === 'approach'
-      ? `${frame.crossing ? '갈림길 · ' : ''}${beforeTurnMeters > 12
-        ? `약 ${beforeTurnMeters}m 앞 ${frame.action}` : frame.action}`
-      : frame.action === '좌회전' || frame.action === '우회전'
-        ? `${frame.action} 후 진행` : '';
-    turn.hidden = !['approach', 'after'].includes(frame.phase) || !turn.textContent;
+    turn.textContent = '';
+    turn.hidden = true;
     showStartStation(frame);
     showDestination(frame);
     setStatus('경로보기');
