@@ -1,8 +1,7 @@
 const CAMERA_TO_ROUTE_LIMIT_METERS = 15;
 const CAMERA_TO_REQUEST_LIMIT_METERS = 25;
 const ROUTE_PROGRESS_LIMIT_METERS = 25;
-const MAX_PROBES = 460;
-const MAX_FRAMES = 25;
+const PROBE_SPACING_METERS = 10;
 const PANORAMA_TIMEOUT_MS = 6000;
 const ARRIVAL_RADIUS_METERS = 30;
 const ARRIVAL_MAX_ACCURACY_METERS = 20;
@@ -142,12 +141,9 @@ function routeCandidates(route, edges) {
       phase: !decision ? 'route' : point.progress < decision.progress ? 'approach' : 'after'
     });
   };
-  // The preview shows at most 25 scenes. Spread panorama checks over the
-  // route, while retaining 7 m checks on short routes and extra turn probes.
-  const probeSpacing = Math.max(7, total / (MAX_FRAMES + 10));
-  for (let progress = 0; progress < total; progress += probeSpacing) addProbe(progress);
+  for (let progress = 0; progress < total; progress += PROBE_SPACING_METERS) addProbe(progress);
   addProbe(total);
-  for (const decision of ordered.slice(0, 7)) {
+  for (const decision of ordered) {
     for (const offset of [-18, -10, -4, 6, 12, 20]) {
       if (decision.progress + offset > 0 && decision.progress + offset < total) {
         addProbe(decision.progress + offset, decision);
@@ -157,8 +153,7 @@ function routeCandidates(route, edges) {
   const candidates = probes.sort((a, b) => b.priority - a.priority)
     .filter((probe, index, all) => !all.slice(0, index).some((other) =>
       Math.abs(other.progress - probe.progress) < 3))
-    .sort((a, b) => a.progress - b.progress)
-    .slice(0, MAX_PROBES);
+    .sort((a, b) => a.progress - b.progress);
   return { candidates, decisions: ordered };
 }
 
@@ -254,12 +249,11 @@ function selectFrames(verified, total, startStationLocation = null) {
     && frame.progress >= Math.max(first.progress + 4.5, departureZone)
     && frame.progress <= last.progress - 4.5);
   const chosen = [first, last];
-  const targetGap = 7;
-  const targetCount = Math.min(MAX_FRAMES, Math.ceil(total / targetGap) + 1);
+  const targetGap = PROBE_SPACING_METERS;
+  const targetCount = Math.ceil(total / targetGap) + 1;
   const canAdd = (frame) => !chosen.includes(frame)
     && chosen.every((item) => Math.abs(item.progress - frame.progress) >= 4.5);
-  // Retain at most one real scene on each side of a turn. Reserving every
-  // turn probe would exhaust a 25-scene preview and leave long straight gaps.
+  // Retain one real scene on each side of a turn.
   const decisionGroups = new Map();
   for (const frame of middle.filter((item) => item.priority > 0
     && Number.isFinite(item.decisionProgress))) {
@@ -605,7 +599,7 @@ export function createWalkPanorama(maps, section) {
     turn.hidden = !['approach', 'after'].includes(frame.phase) || !turn.textContent;
     showStartStation(frame);
     showDestination(frame);
-    setStatus(`경로 미리보기 ${index + 1}/${frames.length}`);
+    setStatus('경로보기');
     section.dataset.panoramaId = frame.panoId;
     section.dataset.cameraLat = frame.camera.lat.toFixed(7);
     section.dataset.cameraLng = frame.camera.lng.toFixed(7);
@@ -734,7 +728,7 @@ export function createWalkPanorama(maps, section) {
       });
       sizeObserver.observe(canvas);
     }
-    arrival.textContent = '경로 미리보기 · 실제 도착 판정과는 별개입니다.';
+    arrival.textContent = '실제 도착 판정과는 별개입니다.';
     updateControls();
     const verified = [];
     const ids = new Set();
@@ -742,7 +736,7 @@ export function createWalkPanorama(maps, section) {
     for (let index = 0; index < candidates.length; index += 1) {
       if (run !== generation) return;
       const candidate = candidates[index];
-      setStatus('경로 미리보기 준비 중');
+      setStatus('경로보기');
       const found = await query(() => {
         if (index === 0) {
           panorama = new maps.Panorama(canvas, {
