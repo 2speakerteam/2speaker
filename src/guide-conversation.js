@@ -104,8 +104,8 @@ export function createGuideConversation(section, { getContext }) {
     </form>
     <p class="guide-chat-status" role="status" aria-live="polite"></p>
     <div class="guide-chat-tabs" role="group" aria-label="대화 방식">
-      <button type="button" data-chat-mode="ai" aria-pressed="true">AI 대화</button>
-      <button type="button" data-chat-mode="translation" aria-pressed="false">실시간 통역</button>
+      <button type="button" data-chat-mode="ai" aria-pressed="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11.5a8 8 0 0 1-8.5 8l-5 2 .9-4A8 8 0 1 1 20 11.5Z"/><path d="M8 11.5h.01M12 11.5h.01M16 11.5h.01"/></svg><span>AI 대화</span></button>
+      <button type="button" data-chat-mode="translation" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 13v-2a9 9 0 0 1 18 0v2M3 13h3a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6ZM21 13h-3a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-6Z"/></svg><span>실시간 통역</span></button>
     </div>`;
   const log = section.querySelector('.guide-chat-messages');
   const form = section.querySelector('.guide-chat-form');
