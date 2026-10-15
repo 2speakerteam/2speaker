@@ -522,9 +522,9 @@ export function createWalkPanorama(maps, section) {
       && current.action !== '직진' && upcoming.action !== '직진'
       && upcoming.progress - current.progress <= 45;
     const gap = upcoming.progress - current.progress;
-    const previewDelay = Math.max(1100, Math.min(3500, Math.round(gap * 260)));
+    const previewDelay = Math.max(240, Math.min(700, Math.round(gap * 35)));
     timer = window.setTimeout(() => { void showFrame(selected + 1); },
-      sameTurn ? Math.min(previewDelay, 1400) : previewDelay);
+      sameTurn ? Math.min(previewDelay, 500) : previewDelay);
   };
   const fallback = (message) => {
     pause();
@@ -569,16 +569,38 @@ export function createWalkPanorama(maps, section) {
     if (busy || index < 0 || index >= frames.length || !panorama) return;
     const run = generation;
     const frame = frames[index];
+    const matchesFrame = (found, expected) => found.status === 'OK'
+      && found.panoId === expected.panoId && found.camera
+      && distanceMeters(found.camera, expected.camera) <= 3;
     busy = true;
-    section.classList.add('is-switching');
     clearNativeArrow();
     updateControls();
-    const found = await query(() => panorama.setPanoIdWithPov(frame.panoId, frame.pov));
+    let found = await query(() => panorama.setPanoIdWithPov(frame.panoId, frame.pov));
     if (run !== generation) return;
+    if (!matchesFrame(found, frame)) {
+      found = await query(() => panorama.setPanoIdWithPov(frame.panoId, frame.pov));
+      if (run !== generation) return;
+    }
+    if (!matchesFrame(found, frame) && selected >= 0) {
+      const previousFrame = frames[selected];
+      const restored = await query(() => panorama.setPanoIdWithPov(previousFrame.panoId, previousFrame.pov));
+      if (run !== generation) return;
+      busy = false;
+      pause();
+      section.classList.remove('is-switching');
+      canvas.hidden = false;
+      if (matchesFrame(restored, previousFrame)) {
+        panorama.setPov(previousFrame.pov);
+        showNativeArrow(previousFrame);
+      }
+      setStatus('경로보기');
+      arrival.textContent = '다음 로드뷰 장면을 불러오지 못했습니다. 다음을 눌러 다시 시도해 주세요.';
+      updateControls();
+      return;
+    }
     busy = false;
-    if (found.status !== 'OK' || found.panoId !== frame.panoId || !found.camera
-      || distanceMeters(found.camera, frame.camera) > 3) {
-      fallback('이 장면의 실제 로드뷰를 다시 확인할 수 없습니다.');
+    if (!matchesFrame(found, frame)) {
+      fallback('첫 로드뷰 장면을 확인할 수 없습니다.');
       return;
     }
     panorama.setPov(frame.pov);
