@@ -1,5 +1,5 @@
-import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261015-roadview-arrow-refresh';
-import { createGuideConversation } from './guide-conversation.js';
+import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261015-progressive-750';
+import { createGuideConversation } from './guide-conversation.js?v=20261015-history-preserve';
 
 const root = document.querySelector('#root');
 let currentPage = 'home';

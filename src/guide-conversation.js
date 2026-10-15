@@ -1,22 +1,10 @@
+import { readAiHistory, saveAiHistory as persistAiHistory } from './guide-history.js';
+
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
 })[character]);
 
 const modeNames = { walk: '도보', subway: '지하철', bus: '버스', taxi: '택시' };
-const AI_HISTORY_KEY = '2speaker:guide-ai-history:v3';
-
-function readAiHistory() {
-  try {
-    // Clear the old conversation with the unrelated route answer once; keep new turns.
-    window.localStorage.removeItem('2speaker:guide-ai-history:v1');
-    window.localStorage.removeItem('2speaker:guide-ai-history:v2');
-    const stored = JSON.parse(window.localStorage.getItem(AI_HISTORY_KEY) || '[]');
-    return Array.isArray(stored) ? stored.filter((item) => item
-      && (item.role === 'user' || item.role === 'assistant')
-      && typeof item.text === 'string' && item.text.length <= 5000)
-      .slice(-200).map((item) => ({ id: makeId(), role: item.role, text: item.text })) : [];
-  } catch { return []; }
-}
 
 function placeQuery(message, context) {
   const exit = message.match(/([가-힣A-Za-z0-9]+역)\s*(\d+)번\s*출구/);
@@ -103,13 +91,9 @@ export function createGuideConversation(section, { getContext }) {
   let selecting = false;
   const selectedIds = new Set();
   const messages = { ai: readAiHistory(), translation: [] };
+  let historySaved = true;
   const saveAiHistory = () => {
-    try {
-      messages.ai = messages.ai.slice(-200);
-      window.localStorage.setItem(AI_HISTORY_KEY, JSON.stringify(
-        messages.ai.map(({ role, text }) => ({ role, text }))
-      ));
-    } catch { /* Keep the current conversation visible if storage is unavailable. */ }
+    historySaved = persistAiHistory(messages.ai);
   };
 
   section.innerHTML = `<div class="guide-chat-messages" role="log" aria-live="polite"></div>
@@ -168,7 +152,11 @@ export function createGuideConversation(section, { getContext }) {
       if (scroller) scroller.scrollTop = scroller.scrollHeight;
     }
   };
-  const setStatus = (message) => { status.textContent = message; };
+  const setStatus = (message) => {
+    status.textContent = [message, !historySaved
+      ? '대화를 브라우저에 저장하지 못했습니다. 이 화면을 닫기 전에 필요한 내용을 복사해 주세요.' : '']
+      .filter(Boolean).join(' ');
+  };
 
   async function submit(message) {
     const text = message.trim();
@@ -180,6 +168,7 @@ export function createGuideConversation(section, { getContext }) {
     const context = getContext();
     input.value = '';
     if (requestMode === 'ai') {
+      messages.ai = readAiHistory();
       messages.ai.push({ id: makeId(), role: 'user', text });
       saveAiHistory();
     }
@@ -197,6 +186,7 @@ export function createGuideConversation(section, { getContext }) {
               history: messages.ai.slice(0, -1).slice(-8).map(({ role, text: content }) => ({ role, text: content }))
             }, signal)).text;
         if (!stopped) {
+          messages.ai = readAiHistory();
           messages.ai.push({ id: makeId(), role: 'assistant', text: answer });
           saveAiHistory();
         }
@@ -333,10 +323,21 @@ export function createGuideConversation(section, { getContext }) {
     window.speechSynthesis.cancel();
     window.speechSynthesis.speak(utterance);
   });
+  const syncHistory = (event) => {
+    if (event.key !== '2speaker:guide-ai-history:v3') return;
+    messages.ai = readAiHistory();
+    for (const id of selectedIds) {
+      if (!messages.ai.some((item) => item.id === id)) selectedIds.delete(id);
+    }
+    updateDeleteUi();
+    if (mode === 'ai') renderMessages();
+  };
+  window.addEventListener('storage', syncHistory);
   updateDeleteUi();
   renderMessages();
   return { stop() {
     stopped = true;
+    window.removeEventListener('storage', syncHistory);
     controller?.abort();
     clearTimeout(recordTimer);
     if (recorder?.state === 'recording') recorder.stop();

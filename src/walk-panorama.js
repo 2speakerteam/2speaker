@@ -1,3 +1,5 @@
+import { createPanoramaProbe } from './panorama-probe.js';
+
 const CAMERA_TO_ROUTE_LIMIT_METERS = 15;
 const CAMERA_TO_REQUEST_LIMIT_METERS = 25;
 const ROUTE_PROGRESS_LIMIT_METERS = 25;
@@ -199,90 +201,35 @@ function nativeArrowAngle(image) {
   return Math.atan2(values[2], values[0]) / radians;
 }
 
+const stationExitRequests = new Map();
 export async function findStationExit(stationName, routePoint, stationPoint) {
-  const response = await fetch('/api/map/place', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: `${stationName} 출구` })
-  });
-  if (!response.ok) return null;
-  const payload = await response.json();
-  return (Array.isArray(payload.places) ? payload.places : [])
+  let cached = stationExitRequests.get(stationName);
+  if (!cached || Date.now() - cached.createdAt > 60000) {
+    const request = fetch('/api/map/place', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: `${stationName} 출구` })
+    }).then(async (response) => {
+      if (!response.ok) throw new Error('Station lookup failed');
+      const payload = await response.json();
+      return Array.isArray(payload.places) ? payload.places : [];
+    });
+    cached = { request, createdAt: Date.now() };
+    if (stationExitRequests.size >= 32) stationExitRequests.delete(stationExitRequests.keys().next().value);
+    stationExitRequests.set(stationName, cached);
+  }
+  let places;
+  try { places = await cached.request; }
+  catch {
+    if (stationExitRequests.get(stationName) === cached) stationExitRequests.delete(stationName);
+    return null;
+  }
+  return places
     .filter((place) => place.category === '교통시설>지하철출구번호'
       && place.title?.startsWith(stationName)
       && Number.isFinite(place.lat) && Number.isFinite(place.lng)
       && distanceMeters(place, stationPoint) <= 160
       && distanceMeters(place, routePoint) <= 120)
     .sort((a, b) => distanceMeters(a, routePoint) - distanceMeters(b, routePoint))[0] || null;
-}
-
-function selectFrames(verified, total, startStationLocation = null) {
-  if (!verified.length) return [];
-  const ordered = [...verified].sort((a, b) => a.progress - b.progress);
-  const endpointZone = Math.min(65, Math.max(30, total * .08));
-  const departureOptions = ordered.filter((frame) => frame.progress <= endpointZone);
-  const stationViews = startStationLocation ? departureOptions.filter((frame) => {
-    const stationHeading = headingDegrees(frame.camera, startStationLocation);
-    return distanceMeters(frame.camera, startStationLocation) <= 45
-      && angleDifference(frame.pov.pan, stationHeading) <= 115;
-  }) : [];
-  const first = stationViews.sort((a, b) => distanceMeters(a.camera, startStationLocation)
-    - distanceMeters(b.camera, startStationLocation))[0] || departureOptions[0] || ordered[0];
-  // Keep the destination in front of the final camera. A panorama almost on
-  // top of the destination can face beyond it and project its marker offscreen.
-  const arrivalOptions = ordered.filter((frame) => frame.progress >= total - endpointZone
-    && frame.progress <= total - 5);
-  const last = arrivalOptions.sort((a, b) => Math.abs(total - 25 - a.progress)
-    - Math.abs(total - 25 - b.progress))[0]
-    || [...ordered].reverse().find((frame) => frame.progress >= total - endpointZone)
-    || ordered.at(-1);
-  if (!first || !last) return [];
-  if (first.panoId === last.panoId) return [{ ...first, phase: 'route' }];
-  // Show the verified portion even if one endpoint lacks a panorama. Only
-  // scenes inside an endpoint zone may be called departure or arrival.
-  const hasDeparture = first.progress <= endpointZone;
-  const hasArrival = last.progress >= total - endpointZone;
-  // A station is one departure landmark. Use the remaining scenes for the
-  // journey beyond its immediate surroundings instead of repeating it.
-  const departureZone = startStationLocation ? Math.min(45, total * .08) : 0;
-  const middle = ordered.filter((frame) => frame !== first && frame !== last
-    && frame.progress >= Math.max(first.progress + 4.5, departureZone)
-    && frame.progress <= last.progress - 4.5);
-  const chosen = [first, last];
-  const targetGap = PROBE_SPACING_METERS;
-  const targetCount = Math.ceil(total / targetGap) + 1;
-  const canAdd = (frame) => !chosen.includes(frame)
-    && chosen.every((item) => Math.abs(item.progress - frame.progress) >= 4.5);
-  // Retain one real scene on each side of a turn.
-  const decisionGroups = new Map();
-  for (const frame of middle.filter((item) => item.priority > 0
-    && Number.isFinite(item.decisionProgress))) {
-    const group = decisionGroups.get(frame.decisionProgress) || [];
-    group.push(frame);
-    decisionGroups.set(frame.decisionProgress, group);
-  }
-  for (const [progress, group] of decisionGroups) {
-    const before = group.filter((frame) => frame.progress <= progress)
-      .sort((a, b) => b.progress - a.progress)[0];
-    const after = group.filter((frame) => frame.progress > progress)
-      .sort((a, b) => a.progress - b.progress)[0];
-    for (const frame of [before, after]) {
-      if (chosen.length >= targetCount) break;
-      if (frame && canAdd(frame)) chosen.push(frame);
-    }
-  }
-  while (chosen.length < targetCount) {
-    const candidate = middle.filter(canAdd)
-      .sort((a, b) => Math.min(...chosen.map((item) => Math.abs(b.progress - item.progress)))
-        - Math.min(...chosen.map((item) => Math.abs(a.progress - item.progress))))[0];
-    if (!candidate) break;
-    chosen.push(candidate);
-  }
-  return chosen.sort((a, b) => a.progress - b.progress).map((frame, index, all) => ({
-    ...frame,
-    phase: index === 0 && hasDeparture ? 'departure'
-      : index === all.length - 1 && hasArrival ? 'arrival' : frame.phase
-  }));
 }
 
 export function createWalkPanorama(maps, section) {
@@ -321,27 +268,33 @@ export function createWalkPanorama(maps, section) {
   let nativeArrowObserver = null;
   let nativeArrowTarget = null;
   let nativeArrowContainer = null;
+  let arrowFrame = null;
+  let switchingFrame = null;
+  let probe = null;
+  let preparing = false;
+  let preparationDone = true;
+  let prepareAhead = () => {};
   const nativeArrowStyle = document.createElement('style');
   section.appendChild(nativeArrowStyle);
   const clearNativeArrow = () => {
     nativeArrowTarget = null;
+    arrowFrame = null;
     nativeArrowContainer = null;
     nativeArrowStyle.textContent = '';
     canvas.querySelectorAll('img.arrow_image.walk-panorama-native-active')
       .forEach((image) => image.classList.remove('walk-panorama-native-active'));
   };
   const paintNativeArrow = () => {
-    if (!nativeArrowTarget || !panorama || selected < 0
-      || panorama.getPanoId() !== frames[selected]?.panoId) return;
+    if (!nativeArrowTarget || !panorama || !arrowFrame
+      || panorama.getPanoId() !== arrowFrame.panoId) return;
     const arrows = [...canvas.querySelectorAll('img.arrow_image')];
     if (!arrows.length) return;
     let chosen = nativeArrowContainer
       ? arrows.find((image) => image.parentElement?.classList.contains(nativeArrowContainer))
       : null;
     if (nativeArrowContainer && !chosen
-      && angleDifference(panorama.getPov()?.pan, frames[selected].pov.pan) < 10) {
+      && angleDifference(panorama.getPov()?.pan, arrowFrame.pov.pan) < 10) {
       nativeArrowContainer = null;
-      nativeArrowStyle.textContent = '';
     }
     if (!nativeArrowContainer) {
       const candidates = arrows.map((image) => ({ image, angle: nativeArrowAngle(image) }))
@@ -368,10 +321,11 @@ export function createWalkPanorama(maps, section) {
     });
   };
   const showNativeArrow = (frame) => {
-    clearNativeArrow();
-    nativeArrowTarget = selected === frames.length - 1
-      ? null : arrowTargetForFrame(frame, routeDecisions);
+    if (arrowFrame?.panoId !== frame.panoId) nativeArrowContainer = null;
+    arrowFrame = frame;
+    nativeArrowTarget = arrowTargetForFrame(frame, routeDecisions);
     if (nativeArrowTarget) paintNativeArrow();
+    else clearNativeArrow();
   };
   const scheduleMarkerRefresh = () => {
     window.clearTimeout(markerRefreshTimer);
@@ -431,7 +385,7 @@ export function createWalkPanorama(maps, section) {
   const updateControls = () => {
     previous.disabled = busy || selected <= 0;
     next.disabled = busy || selected < 0 || selected >= frames.length - 1;
-    playback.disabled = busy || selected < 0 || selected >= frames.length - 1;
+    playback.disabled = busy || selected < 0 || (preparationDone && selected >= frames.length - 1);
     playback.textContent = playing ? '일시정지' : '재생';
     playback.setAttribute('aria-label', playing ? '로드뷰 일시정지' : '로드뷰 재생');
   };
@@ -461,11 +415,12 @@ export function createWalkPanorama(maps, section) {
   };
   const attachListeners = () => {
     listeners = [
-      maps.Event.addListener(panorama, 'pov_changed', scheduleMarkerRefresh),
+      maps.Event.addListener(panorama, 'pov_changed', () => { scheduleMarkerRefresh(); paintNativeArrow(); }),
       maps.Event.addListener(panorama, 'pano_status', (value) => {
         if (!pending) return;
         pending.status = value;
         if (value === 'OK') {
+          if (switchingFrame && panorama.getPanoId() === switchingFrame.panoId) showNativeArrow(switchingFrame);
           snapshotIfReady();
           if (pending) {
             const active = pending;
@@ -480,8 +435,11 @@ export function createWalkPanorama(maps, section) {
         else settlePending({ status: value || 'ERROR' });
       }),
       maps.Event.addListener(panorama, 'pano_changed', () => {
+        if (switchingFrame && panorama.getPanoId() === switchingFrame.panoId) {
+          showNativeArrow(switchingFrame);
+        }
         if (!pending) {
-          if (selected >= 0 && panorama.getPanoId() !== frames[selected]?.panoId) {
+          if (!switchingFrame && selected >= 0 && panorama.getPanoId() !== frames[selected]?.panoId) {
             clearNativeArrow();
           }
           return;
@@ -513,7 +471,8 @@ export function createWalkPanorama(maps, section) {
   const scheduleNext = () => {
     clearTimer();
     if (!playing || selected >= frames.length - 1) {
-      if (playing) pause();
+      if (playing && preparationDone) pause();
+      else if (playing) void prepareAhead();
       return;
     }
     const current = frames[selected];
@@ -522,9 +481,9 @@ export function createWalkPanorama(maps, section) {
       && current.action !== '직진' && upcoming.action !== '직진'
       && upcoming.progress - current.progress <= 45;
     const gap = upcoming.progress - current.progress;
-    const previewDelay = Math.max(350, Math.min(900, Math.round(gap * 50)));
-    timer = window.setTimeout(() => { void showFrame(selected + 1); },
-      sameTurn ? Math.min(previewDelay, 650) : previewDelay);
+    const previewDelay = Math.max(500, Math.min(1200, Math.round(gap * 75)));
+    timer = window.setTimeout(() => { timer = null; void showFrame(selected + 1); },
+      sameTurn ? Math.min(previewDelay, 900) : previewDelay);
   };
   const fallback = (message) => {
     pause();
@@ -573,9 +532,12 @@ export function createWalkPanorama(maps, section) {
       && found.panoId === expected.panoId && found.camera
       && distanceMeters(found.camera, expected.camera) <= 3;
     busy = true;
-    clearNativeArrow();
+    switchingFrame = frame;
     updateControls();
-    let found = await query(() => panorama.setPanoIdWithPov(frame.panoId, frame.pov));
+    const currentCoord = panorama.getLocation()?.coord;
+    let found = panorama.getPanoId() === frame.panoId && currentCoord
+      ? { status: 'OK', panoId: frame.panoId, camera: { lat: currentCoord.lat(), lng: currentCoord.lng() } }
+      : await query(() => panorama.setPanoIdWithPov(frame.panoId, frame.pov));
     if (run !== generation) return;
     if (!matchesFrame(found, frame)) {
       found = await query(() => panorama.setPanoIdWithPov(frame.panoId, frame.pov));
@@ -583,9 +545,11 @@ export function createWalkPanorama(maps, section) {
     }
     if (!matchesFrame(found, frame) && selected >= 0) {
       const previousFrame = frames[selected];
+      switchingFrame = previousFrame;
       const restored = await query(() => panorama.setPanoIdWithPov(previousFrame.panoId, previousFrame.pov));
       if (run !== generation) return;
       busy = false;
+      switchingFrame = null;
       pause();
       section.classList.remove('is-switching');
       canvas.hidden = false;
@@ -599,6 +563,7 @@ export function createWalkPanorama(maps, section) {
       return;
     }
     busy = false;
+    switchingFrame = null;
     if (!matchesFrame(found, frame)) {
       fallback('첫 로드뷰 장면을 확인할 수 없습니다.');
       return;
@@ -629,8 +594,8 @@ export function createWalkPanorama(maps, section) {
     section.dataset.progressMeters = frame.progress.toFixed(1);
     section.dataset.headingDegrees = applied.pan.toFixed(1);
     arrivalRequest += 1;
-    if (index === frames.length - 1 && frame.phase === 'arrival') verifyArrival(run);
-    else if (index === frames.length - 1) {
+    if (preparationDone && index === frames.length - 1 && frame.phase === 'arrival') verifyArrival(run);
+    else if (preparationDone && index === frames.length - 1) {
       arrival.textContent = '확인된 로드뷰 구간의 끝입니다. 남은 도보 경로는 지도에서 확인하세요.';
     }
     else if (index === 0 && frame.phase !== 'departure') {
@@ -642,10 +607,17 @@ export function createWalkPanorama(maps, section) {
     section.classList.remove('is-switching');
     updateControls();
     scheduleNext();
+    void prepareAhead();
   }
 
   const stop = () => {
     generation += 1;
+    probe?.stop();
+    probe = null;
+    preparing = false;
+    preparationDone = true;
+    prepareAhead = () => {};
+    switchingFrame = null;
     arrivalRequest += 1;
     pause();
     sizeObserver?.disconnect();
@@ -669,7 +641,7 @@ export function createWalkPanorama(maps, section) {
     canvas.hidden = false;
     section.hidden = true;
     section.classList.remove('is-loading', 'is-switching');
-    for (const key of ['panoramaId', 'cameraLat', 'cameraLng', 'routeOffsetMeters', 'progressMeters', 'headingDegrees']) {
+    for (const key of ['panoramaId', 'cameraLat', 'cameraLng', 'routeOffsetMeters', 'progressMeters', 'headingDegrees', 'firstFrameMs']) {
       delete section.dataset[key];
     }
     arrival.textContent = '';
@@ -721,24 +693,30 @@ export function createWalkPanorama(maps, section) {
     const startStationName = options.startIsStation
       ? options.startTitle?.match(/^(.+?역)(?:\s|\(|$)/)?.[1] : null;
     const destinationStationName = options.destinationTitle?.match(/^(.+?역)(?:\s|\(|$)/)?.[1];
-    const [startExit, destinationExit] = await Promise.all([
+    // Station markers must not hold up the first Roadview frame.
+    void Promise.all([
       startStationName ? findStationExit(startStationName, routeStart, routeStart).catch(() => null) : null,
       destinationStationName && destination
         ? findStationExit(destinationStationName, routeEnd, destination).catch(() => null) : null
-    ]);
-    if (run !== generation) return;
-    if (startExit) {
-      startStationLocation = { lat: startExit.lat, lng: startExit.lng };
-      startStationTitle = startStationName;
-    }
-    if (destinationExit && distanceMeters(destinationExit, routeEnd) <= 30) {
-      destinationPinLocation = { lat: destinationExit.lat, lng: destinationExit.lng };
-      destinationPinTitle = destinationExit.title;
-    } else if (!destinationStationName && destination
-      && distanceMeters(destination, routeEnd) <= 30) {
-      destinationPinLocation = destination;
-      destinationPinTitle = options.destinationTitle || '목적지';
-    }
+    ]).then(([startExit, destinationExit]) => {
+      if (run !== generation) return;
+      if (startExit) {
+        startStationLocation = { lat: startExit.lat, lng: startExit.lng };
+        startStationTitle = startStationName;
+      }
+      if (destinationExit && distanceMeters(destinationExit, routeEnd) <= 30) {
+        destinationPinLocation = { lat: destinationExit.lat, lng: destinationExit.lng };
+        destinationPinTitle = destinationExit.title;
+      } else if (!destinationStationName && destination
+        && distanceMeters(destination, routeEnd) <= 30) {
+        destinationPinLocation = destination;
+        destinationPinTitle = options.destinationTitle || '목적지';
+      }
+      if (selected >= 0) {
+        showStartStation(frames[selected]);
+        showDestination(frames[selected]);
+      }
+    });
     if (window.ResizeObserver) {
       sizeObserver = new ResizeObserver(() => {
         if (!panorama) return;
@@ -752,73 +730,108 @@ export function createWalkPanorama(maps, section) {
     }
     arrival.textContent = '실제 도착 판정과는 별개입니다.';
     updateControls();
-    const verified = [];
     const ids = new Set();
-    const probeStats = { candidates: candidates.length, failed: 0, duplicate: 0, distance: 0, direction: 0 };
-    for (let index = 0; index < candidates.length; index += 1) {
-      if (run !== generation) return;
-      const candidate = candidates[index];
-      setStatus('경로보기');
-      const found = await query(() => {
-        if (index === 0) {
-          panorama = new maps.Panorama(canvas, {
-            size: new maps.Size(canvas.clientWidth, canvas.clientHeight),
-            pov: { pan: 0, tilt: 0, fov: 95 },
-            flightSpot: false,
-            logoControl: false
-          });
-          attachListeners();
-        }
-        panorama.setPosition(new maps.LatLng(candidate.lat, candidate.lng));
-      });
-      if (run !== generation) return;
-      if (found.status !== 'OK' || !found.panoId || !found.camera
-        || ![found.camera.lat, found.camera.lng].every(Number.isFinite)
-        || ids.has(found.panoId)) {
-        probeStats[ids.has(found.panoId) ? 'duplicate' : 'failed'] += 1;
-        continue;
-      }
-      const routePosition = closestRoutePosition(found.camera, edges, candidate.progress);
-      if (distanceMeters(found.camera, candidate) > CAMERA_TO_REQUEST_LIMIT_METERS
-        || routePosition.distance > CAMERA_TO_ROUTE_LIMIT_METERS
-        || Math.abs(routePosition.progress - candidate.progress) > ROUTE_PROGRESS_LIMIT_METERS) {
-        probeStats.distance += 1;
-        continue;
-      }
+    let cursor = 0;
+    const startedAt = performance.now();
+    const endpointZone = Math.min(65, Math.max(30, edges.at(-1).to * .08));
+    preparationDone = false;
+    const readCandidate = async (useProbe) => {
+      const candidate = candidates[cursor++];
       const from = candidateAt(edges, Math.max(0, candidate.progress - 2));
       const ahead = candidateAt(edges, candidate.phase === 'approach'
         ? Math.min(candidate.decisionProgress, candidate.progress + 6)
         : Math.min(candidate.windowEnd, candidate.progress + 6));
-      if (distanceMeters(from, ahead) < 2) continue;
-      const projected = panorama.getProjection()?.fromCoordToPov(new maps.LatLng(ahead.lat, ahead.lng));
-      const routeHeading = headingDegrees(from, ahead);
-      if (!Number.isFinite(projected?.pan)
-        || angleDifference(projected.pan, headingDegrees(found.camera, ahead)) > 25
-        || angleDifference(projected.pan, routeHeading) > 80) {
-        probeStats.direction += 1;
-        continue;
+      if (distanceMeters(from, ahead) < 2) return null;
+      let found;
+      if (useProbe) {
+        if (!probe) probe = createPanoramaProbe(maps, PANORAMA_TIMEOUT_MS);
+        found = await probe.lookup(candidate, ahead);
+      } else {
+        found = await query(() => {
+          if (!panorama) {
+            panorama = new maps.Panorama(canvas, {
+              size: new maps.Size(Math.max(1, canvas.clientWidth), Math.max(200, canvas.clientHeight)),
+              pov: { pan: 0, tilt: 0, fov: 95 }, flightSpot: false, logoControl: false
+            });
+            attachListeners();
+          }
+          panorama.setPosition(new maps.LatLng(candidate.lat, candidate.lng));
+        });
       }
+      if (run !== generation) return null;
+      if (found.status !== 'OK' || !found.panoId || !found.camera
+        || ![found.camera.lat, found.camera.lng].every(Number.isFinite) || ids.has(found.panoId)) return null;
+      const routePosition = closestRoutePosition(found.camera, edges, candidate.progress);
+      if (distanceMeters(found.camera, candidate) > CAMERA_TO_REQUEST_LIMIT_METERS
+        || routePosition.distance > CAMERA_TO_ROUTE_LIMIT_METERS
+        || Math.abs(routePosition.progress - candidate.progress) > ROUTE_PROGRESS_LIMIT_METERS
+        || (frames.length && routePosition.progress <= frames.at(-1).progress + 1)) return null;
+      const projectedPan = useProbe ? found.projectedPan
+        : panorama.getProjection()?.fromCoordToPov(new maps.LatLng(ahead.lat, ahead.lng))?.pan;
+      const routeHeading = headingDegrees(from, ahead);
+      if (!Number.isFinite(projectedPan)
+        || angleDifference(projectedPan, headingDegrees(found.camera, ahead)) > 25
+        || angleDifference(projectedPan, routeHeading) > 80) return null;
       ids.add(found.panoId);
-      verified.push({
-        ...found,
-        progress: routePosition.progress,
-        decisionProgress: candidate.decisionProgress,
-        routeOffset: routePosition.distance,
-        priority: candidate.priority,
-        action: candidate.action,
-        crossing: candidate.crossing,
-        phase: candidate.phase,
+      return {
+        ...found, progress: routePosition.progress, decisionProgress: candidate.decisionProgress,
+        routeOffset: routePosition.distance, priority: candidate.priority, action: candidate.action,
+        crossing: candidate.crossing, phase: candidate.phase,
         pov: { pan: routeHeading, tilt: 0, fov: 95 }
-      });
+      };
+    };
+    // Only the first valid scene is required before opening Roadview.
+    while (cursor < candidates.length && !frames.length) {
+      const frame = await readCandidate(false);
+      if (run !== generation) return false;
+      if (frame) frames.push({ ...frame, phase: frame.progress <= endpointZone ? 'departure' : frame.phase });
     }
-    if (run !== generation) return;
-    section.classList.remove('is-loading');
-    frames = selectFrames(verified, edges.at(-1).to, startStationLocation);
     if (!frames.length) {
-      console.warn(`2SPEAKER walk panorama unavailable ${JSON.stringify({ ...probeStats, verified: verified.length, firstProgress: verified.length ? Math.min(...verified.map((item) => item.progress)) : null, lastProgress: verified.length ? Math.max(...verified.map((item) => item.progress)) : null, total: edges.at(-1).to })}`);
+      preparationDone = true;
       fallback('실제 도보 경로와 방향이 확인된 로드뷰 장면이 부족합니다.');
-      return;
+      return false;
     }
+    prepareAhead = async () => {
+      if (run !== generation || preparing || preparationDone) return;
+      preparing = true;
+      try {
+        // This is a look-ahead buffer, not a route/scene limit. Continue as the viewer advances.
+        while (run === generation && cursor < candidates.length && frames.length - selected - 1 < 8) {
+          const frame = await readCandidate(true);
+          if (run !== generation) return;
+          if (frame) {
+            frames.push(frame);
+            updateControls();
+            if (playing && !busy && timer === null) scheduleNext();
+          }
+        }
+        if (run !== generation) return;
+        if (cursor >= candidates.length) {
+          preparationDone = true;
+          probe?.stop();
+          probe = null;
+          if (edges.at(-1).to - frames.at(-1).progress <= endpointZone) frames.at(-1).phase = 'arrival';
+          if (selected === frames.length - 1 && !busy) {
+            pause();
+            showDestination(frames[selected]);
+            showNativeArrow(frames[selected]);
+            if (frames[selected].phase === 'arrival') verifyArrival(run);
+            else arrival.textContent = '확인된 로드뷰 구간의 끝입니다. 남은 도보 경로는 지도에서 확인하세요.';
+          }
+          updateControls();
+        }
+      } catch {
+        if (run === generation) {
+          preparationDone = true;
+          probe?.stop();
+          probe = null;
+          pause();
+          arrival.textContent = '다음 로드뷰 준비에 실패했습니다. 지도에서 남은 경로를 확인해 주세요.';
+        }
+      } finally {
+        if (run === generation) preparing = false;
+      }
+    };
     nativeArrowObserver = new MutationObserver((changes) => {
       if (changes.some((change) => change.type === 'attributes'
         ? change.target.matches?.('img.arrow_image, [class*="arrow_container_#"]')
@@ -832,14 +845,11 @@ export function createWalkPanorama(maps, section) {
       childList: true, subtree: true, attributes: true,
       attributeFilter: ['style', 'class', 'src']
     });
-    if (startStationLocation && distanceMeters(frames[0].camera, startStationLocation) <= 45) {
-      const routePan = frames[0].pov.pan;
-      const exitPan = headingDegrees(frames[0].camera, startStationLocation);
-      if (angleDifference(routePan, exitPan) <= 115) {
-        frames[0].pov = { ...frames[0].pov, pan: routePan + signedAngle(routePan, exitPan) * .7, fov: 120 };
-      }
-    }
+    section.classList.remove('is-loading');
+    setStatus('경로보기');
     await showFrame(0);
+    if (run !== generation) return false;
+    section.dataset.firstFrameMs = String(Math.round(performance.now() - startedAt));
     return selected === 0;
   };
 
@@ -847,7 +857,7 @@ export function createWalkPanorama(maps, section) {
   next.addEventListener('click', () => { pause(); void showFrame(selected + 1); });
   playback.addEventListener('click', () => {
     if (playing) pause();
-    else if (selected >= 0 && selected < frames.length - 1) {
+    else if (selected >= 0 && (!preparationDone || selected < frames.length - 1)) {
       playing = true;
       updateControls();
       scheduleNext();
