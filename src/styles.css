@@ -104,6 +104,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .guide-content { grid-row: 1; min-width: 0; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 28px; }
 .guide-screen .bottom-nav { grid-row: 3; position: static; left: auto; right: auto; bottom: auto; justify-self: center; width: min(520px, 100vw); height: var(--guide-nav-height); min-height: 0; transform: none; margin: 0; border-radius: 40px 40px 42px 42px; }
 .guide-header { position: relative; height: 54px; display: grid; grid-template-columns: 48px 1fr 48px; align-items: center; text-align: center; }
+.guide-header > [data-page="language"] { grid-column: 3; }
 .guide-header strong { width: max-content; justify-self: center; padding: 8px 22px; border-radius: 24px; color: white; background: #02060b; font-size: 18px; letter-spacing: .03em; }
 .guide-control { width: 44px; height: 44px; display: grid; place-items: center; border: 0; color: var(--cyan); background: transparent; cursor: pointer; }
 .guide-control svg { display: block; width: 30px; height: 30px; flex: 0 0 30px; aspect-ratio: 1; }
