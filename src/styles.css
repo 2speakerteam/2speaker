@@ -215,7 +215,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .guide-content[data-guide-view="panorama"][data-chat-expanded="false"] .walk-panorama-controls,
 .guide-content[data-guide-view="panorama"][data-chat-expanded="false"] .walk-panorama-arrival { flex: 0 0 auto; }
 .guide-content[data-guide-view="panorama"][data-chat-expanded="false"] .walk-panorama-view { min-height: 0; flex: 1 1 auto; }
-.guide-content[data-guide-view="panorama"][data-chat-expanded="false"] .walk-panorama-canvas { position: absolute; inset: 0; height: 100%; min-height: 0; }
+.guide-content[data-guide-view="panorama"][data-chat-expanded="false"] .walk-panorama-canvas { position: absolute; inset: 0; width: 100% !important; height: 100% !important; min-height: 0; }
 .guide-content[data-guide-view="panorama"][data-chat-expanded="false"] .guide-conversation { flex: 0 0 auto; margin: 6px auto 8px; }
 .guide-content[data-guide-view="panorama"][data-chat-expanded="false"] .guide-chat-messages,
 .guide-content[data-guide-view="panorama"][data-chat-expanded="false"] .guide-chat-form,

@@ -239,6 +239,7 @@ export async function findStationExit(stationName, routePoint, stationPoint) {
 
 export function createWalkPanorama(maps, section) {
   const canvas = section?.querySelector('.walk-panorama-canvas');
+  const view = section?.querySelector('.walk-panorama-view');
   const turn = section?.querySelector('.walk-panorama-turn');
   const status = section?.querySelector('.walk-panorama-status');
   const arrival = section?.querySelector('.walk-panorama-arrival');
@@ -742,13 +743,14 @@ export function createWalkPanorama(maps, section) {
     if (window.ResizeObserver) {
       sizeObserver = new ResizeObserver(() => {
         if (!panorama) return;
-        const bounds = canvas.getBoundingClientRect();
-        if (bounds.width > 0 && bounds.height > 0) {
-          panorama.setSize(new maps.Size(bounds.width, bounds.height));
+        const width = view.clientWidth;
+        const height = view.clientHeight;
+        if (width > 0 && height > 0) {
+          panorama.setSize(new maps.Size(width, height));
           scheduleMarkerRefresh();
         }
       });
-      sizeObserver.observe(canvas);
+      sizeObserver.observe(view);
     }
     arrival.textContent = '실제 도착 판정과는 별개입니다.';
     updateControls();
