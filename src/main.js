@@ -380,6 +380,7 @@ function initializeNaverRouteMap() {
   let changeBusMode = null;
   let changeWalkMode = null;
   let changeTaxiMode = null;
+  let changeMapType = null;
   let activeTransportMode = routeTransportMode || 'preview';
   mapElement.addEventListener('transport-mode-change', (event) => {
     const nextMode = event.detail?.mode || 'preview';
@@ -391,6 +392,7 @@ function initializeNaverRouteMap() {
         || (activeTransportMode === 'preview' && nextMode !== 'walk')) changeWalkMode?.(false);
     }
     activeTransportMode = nextMode;
+    changeMapType?.(nextMode === 'subway' ? 'subway' : 'normal');
     subwayRequested = nextMode === 'subway';
     busRequested = nextMode === 'bus';
     walkRequested = nextMode === 'walk';
@@ -415,14 +417,21 @@ function initializeNaverRouteMap() {
   loadNaverMaps().then((maps) => {
     if (session !== routeMapSession || currentPage !== 'guide' || !mapElement.isConnected) return;
 
+    const mapTypes = new maps.MapTypeRegistry({
+      normal: maps.NaverStyleMapTypeOptions.getNormalMap({ overlayType: 'bg.ol.lko' }),
+      subway: maps.NaverStyleMapTypeOptions.getNormalMap({ overlayType: 'bg.ol.ts.lko' })
+    });
     const map = new maps.Map(mapElement, {
       center: new maps.LatLng(36.5, 127.8),
       zoom: 7,
+      mapTypes,
+      mapTypeId: subwayRequested ? 'subway' : 'normal',
       draggable: true,
       pinchZoom: true,
       scrollWheel: true,
       zoomControl: false
     });
+    changeMapType = (type) => map.setMapTypeId(type);
     mapElement.addEventListener('guide-layout-change', () => {
       window.requestAnimationFrame(() => {
         if (session === routeMapSession && mapElement.isConnected) map.autoResize();
