@@ -1,4 +1,4 @@
-import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261016-boarding-location-1';
+import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261016-boarding-gesture-1';
 import { createGuideConversation } from './guide-conversation.js?v=20261016-guide-spoken-reply-1';
 
 const root = document.querySelector('#root');
@@ -957,8 +957,8 @@ function initializeNaverRouteMap() {
             if (!response.ok) throw new Error(payload.error || '택시 승강장 검색에 실패했습니다.');
             const stand = payload.stand;
             if (!stand?.location || ![stand.location.lat, stand.location.lng].every(Number.isFinite)
-              || pointDistanceMeters(target.point, stand.location) > 1500) {
-              throw new Error('출발지 가까이에서 확인된 택시 승강장을 찾지 못했습니다.');
+              || pointDistanceMeters(target.point, stand.location) > 500) {
+              throw new Error('검색한 장소 근처 500m 안에서 확인된 택시 승강장이 없습니다.');
             }
             location = stand.location;
             title = `${stand.name} · 출발지에서 약 ${stand.distanceMeters}m`;

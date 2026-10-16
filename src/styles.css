@@ -206,6 +206,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .walk-mini-map.is-point-only .walk-mini-map-pointer::after { content: ''; width: 9px; height: 9px; border-radius: 50%; background: #beefc0; }
 .walk-panorama-canvas img.arrow_image.walk-panorama-native-active { filter: var(--walk-arrow-color) !important; }
 .walk-panorama-canvas img.arrow_image:not(.walk-panorama-native-active) { visibility: hidden !important; pointer-events: none !important; }
+.walk-panorama.is-boarding .walk-panorama-canvas img.arrow_image { visibility: visible !important; pointer-events: auto !important; }
 .walk-panorama-canvas.is-arrival [class*="arrow_container_#"], .walk-panorama-canvas.is-arrival img.arrow_image { visibility: hidden !important; pointer-events: none !important; }
 .walk-panorama-anchor { display: block; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .walk-panorama-pin { display: block; width: 34px; height: 44px; filter: drop-shadow(0 2px 5px rgba(0,0,0,.65)); pointer-events: none; }

@@ -280,6 +280,9 @@ export function createWalkPanorama(maps, section) {
   let preparing = false;
   let preparationDone = true;
   let prepareAhead = () => {};
+  let lastBoardingTouch = null;
+  let boardingTouchStart = null;
+  let lastBoardingZoomAt = 0;
   const nativeArrowStyle = document.createElement('style');
   section.appendChild(nativeArrowStyle);
   const clearNativeArrow = () => {
@@ -652,6 +655,9 @@ export function createWalkPanorama(maps, section) {
     canvas.hidden = false;
     section.hidden = true;
     section.classList.remove('is-loading', 'is-switching', 'is-preloading', 'is-boarding');
+    lastBoardingTouch = null;
+    boardingTouchStart = null;
+    lastBoardingZoomAt = 0;
     delete section.dataset.entryReady;
     delete section.dataset.boardingMode;
     for (const key of ['panoramaId', 'cameraLat', 'cameraLng', 'routeOffsetMeters', 'progressMeters', 'headingDegrees', 'firstFrameMs']) {
@@ -684,7 +690,7 @@ export function createWalkPanorama(maps, section) {
       panorama = new maps.Panorama(canvas, {
         size: new maps.Size(Math.max(1, canvas.clientWidth), Math.max(200, canvas.clientHeight)),
         pov: { pan: 0, tilt: 0, fov: 95 }, flightSpot: false, logoControl: false,
-        minZoom: 0, maxZoom: 2, zoomControl: false
+        minZoom: 0, maxZoom: 4, zoomControl: false
       });
       attachListeners();
       const found = await query(() => panorama.setPosition(new maps.LatLng(point.lat, point.lng)));
@@ -951,6 +957,7 @@ export function createWalkPanorama(maps, section) {
   // on the same validated frame sequence used by the mini map and Next button.
   let lastArrowTap = 0;
   const handleRouteArrow = (event) => {
+    if (section.classList.contains('is-boarding')) return;
     const arrow = event.target.closest?.('img.arrow_image, [class*="arrow_container_#"]');
     if (!arrow) return;
     const image = arrow.matches('img.arrow_image') ? arrow : arrow.querySelector('img.arrow_image');
@@ -965,6 +972,46 @@ export function createWalkPanorama(maps, section) {
   };
   view.addEventListener('pointerdown', handleRouteArrow, true);
   view.addEventListener('click', handleRouteArrow, true);
+
+  const isBoardingScene = (event) => section.classList.contains('is-boarding')
+    && panorama && !event.target.closest?.('img.arrow_image, [class*="arrow_container_#"]');
+  const zoomBoardingScene = (event) => {
+    if (!isBoardingScene(event)) return;
+    if (event.type === 'dblclick') {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }
+    if (Date.now() - lastBoardingZoomAt < 450) return;
+    lastBoardingZoomAt = Date.now();
+    panorama.zoomIn();
+  };
+  canvas.addEventListener('dblclick', zoomBoardingScene, true);
+  canvas.addEventListener('pointerdown', (event) => {
+    boardingTouchStart = event.pointerType === 'touch' && isBoardingScene(event)
+      ? { id: event.pointerId, x: event.clientX, y: event.clientY } : null;
+  }, true);
+  canvas.addEventListener('pointerup', (event) => {
+    const touchStart = boardingTouchStart;
+    boardingTouchStart = null;
+    if (event.pointerType !== 'touch' || !isBoardingScene(event)
+      || touchStart?.id !== event.pointerId
+      || Math.hypot(event.clientX - touchStart.x, event.clientY - touchStart.y) > 12) {
+      lastBoardingTouch = null;
+      return;
+    }
+    const now = Date.now();
+    if (lastBoardingTouch && now - lastBoardingTouch.time < 350
+      && Math.hypot(event.clientX - lastBoardingTouch.x, event.clientY - lastBoardingTouch.y) < 30) {
+      lastBoardingTouch = null;
+      zoomBoardingScene(event);
+      return;
+    }
+    lastBoardingTouch = { time: now, x: event.clientX, y: event.clientY };
+  }, true);
+  canvas.addEventListener('pointercancel', () => {
+    boardingTouchStart = null;
+    lastBoardingTouch = null;
+  }, true);
 
   previous.addEventListener('click', () => { pause(); void showFrame(selected - 1); });
   next.addEventListener('click', () => { pause(); void showFrame(selected + 1); });

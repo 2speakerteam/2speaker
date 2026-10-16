@@ -1,4 +1,5 @@
 const POI_URL = 'https://apis.openapi.sk.com/tmap/pois';
+const MAX_BOARDING_DISTANCE_METERS = 500;
 
 function point(value) {
   if (value?.lat === null || value?.lat === undefined || String(value.lat).trim() === ''
@@ -69,7 +70,8 @@ module.exports = async function handler(req, res) {
         ].filter(Boolean).sort((a, b) => distanceMeters(start, a) - distanceMeters(start, b))[0];
         if (!location) return [];
         const distance = distanceMeters(start, location);
-        return distance <= 1500 ? [{ name, location, distanceMeters: Math.round(distance) }] : [];
+        return distance <= MAX_BOARDING_DISTANCE_METERS
+          ? [{ name, location, distanceMeters: Math.round(distance) }] : [];
       });
     };
     const tmapResults = appKey
@@ -94,7 +96,8 @@ module.exports = async function handler(req, res) {
           const location = naverPoint(item);
           if (!location) return [];
           const distance = distanceMeters(start, location);
-          return distance <= 1500 ? [{ name, location, distanceMeters: Math.round(distance) }] : [];
+          return distance <= MAX_BOARDING_DISTANCE_METERS
+            ? [{ name, location, distanceMeters: Math.round(distance) }] : [];
         });
       };
       const naverResults = await Promise.allSettled(['택시승강장', '택시승차대'].map(naverSearch));
