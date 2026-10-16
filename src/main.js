@@ -39,6 +39,7 @@ let voiceListenLanguageCode = '';
 let activeVoiceRecognition = null;
 const sentTextMessages = [];
 const pageHistory = [];
+const guideHistoryStateKey = '__2speakerGuideStep';
 let faqOpenIndex = 3;
 
 function directRouteIntent(query, entryMode) {
@@ -1836,8 +1837,25 @@ async function processVoiceTurn(message) {
   window.speechSynthesis.speak(utterance);
 }
 
-function setGuideView(view) {
-  if (view === 'route' && guideView === 'panorama') activeWalkPanorama?.pause?.();
+function guideHistoryStep() {
+  return window.history.state?.[guideHistoryStateKey];
+}
+
+function pushGuideHistory(step) {
+  const state = window.history.state;
+  window.history.pushState({
+    ...(state && typeof state === 'object' ? state : {}),
+    [guideHistoryStateKey]: step
+  }, '', window.location.href);
+}
+
+function setGuideView(view, { fromHistory = false } = {}) {
+  const previousView = guideView;
+  if (view === 'route' && previousView === 'panorama') activeWalkPanorama?.pause?.();
+  if (!fromHistory && currentPage === 'guide' && view !== previousView) {
+    if (view === 'panorama') pushGuideHistory('panorama');
+    else if (previousView === 'panorama' && guideHistoryStep() === 'panorama') window.history.back();
+  }
   guideView = view;
   const content = document.querySelector('.guide-content');
   if (!content) return;
@@ -1856,7 +1874,10 @@ function navigate(page) {
   if (currentPage === 'voice' && page !== 'voice') stopVoiceConversation();
   if (page !== currentPage) pageHistory.push(currentPage);
   currentPage = page;
-  if (page === 'guide') guideView = 'route';
+  if (page === 'guide') {
+    guideView = 'route';
+    pushGuideHistory('route');
+  }
   if (page === 'voice') {
     voicePaused = false;
     voiceConversationError = '';
@@ -1878,6 +1899,33 @@ function goBack() {
   render();
   window.scrollTo({ top: 0, behavior: 'instant' });
 }
+
+window.history.replaceState({
+  ...(window.history.state && typeof window.history.state === 'object' ? window.history.state : {}),
+  [guideHistoryStateKey]: 'home'
+}, '', window.location.href);
+
+window.addEventListener('popstate', (event) => {
+  const step = event.state?.[guideHistoryStateKey];
+  if (step === 'panorama' || step === 'route') {
+    if (currentPage !== 'guide') {
+      currentPage = 'guide';
+      guideView = step;
+      render();
+    } else {
+      setGuideView(step, { fromHistory: true });
+    }
+    return;
+  }
+  if (currentPage === 'guide' || step === 'home') {
+    activeWalkPanorama?.pause?.();
+    currentPage = 'home';
+    guideView = 'route';
+    pageHistory.length = 0;
+    render();
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }
+});
 
 render();
 
