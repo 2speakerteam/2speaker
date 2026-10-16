@@ -222,15 +222,11 @@ function routeScreen() {
 function guideScreen() {
   return `<main class="screen guide-screen">
     <div class="guide-content" data-guide-view="${guideView}" data-chat-expanded="${guideView !== 'panorama'}">
-    <header class="guide-header">
-      <button class="guide-control" data-action="back" aria-label="뒤로 가기">${icon('back', 34)}</button>
-      <button type="button" class="guide-control guide-chat-trash" aria-label="AI 대화 삭제" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6.5 7l.8 13h9.4l.8-13M10 11v6M14 11v6"/></svg></button>
-      <button class="guide-control" data-page="language" aria-label="설정">${icon('settings', 30)}</button>
-    </header>
     <section class="route-visual" aria-label="네이버 지도">
       <div class="route-scene route-map-scene">
         <div id="route-map" class="route-map-canvas" role="application" aria-label="확대·축소 및 이동할 수 있는 지도"></div>
         <p id="route-map-status" class="route-map-status" role="status" aria-live="polite">네이버 지도를 불러오는 중입니다.</p>
+        <button type="button" class="guide-map-settings guide-control" data-page="language" aria-label="설정">${icon('settings', 30)}</button>
       </div>
       <section class="walk-panorama" aria-label="네이버 도보 로드뷰" hidden>
         <div class="walk-panorama-heading sr-only">
@@ -271,7 +267,6 @@ function guideScreen() {
     <div class="guide-chat-delete-actions" hidden>
       <span class="guide-chat-selected-count" aria-live="polite">선택 0개</span>
       <button type="button" class="guide-chat-delete-cancel">취소</button>
-      <button type="button" class="guide-chat-delete-confirm" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6.5 7l.8 13h9.4l.8-13M10 11v6M14 11v6"/></svg>삭제</button>
     </div>
     ${bottomNav()}
   </main>`;
@@ -404,7 +399,7 @@ function initializeNaverRouteMap() {
       pinchZoom: true,
       scrollWheel: true,
       zoomControl: true,
-      zoomControlOptions: { position: maps.Position.TOP_RIGHT }
+      zoomControlOptions: { position: maps.Position.RIGHT_CENTER }
     });
     const walkPanorama = createWalkPanorama(maps, document.querySelector('.walk-panorama'));
     activeWalkPanorama = walkPanorama;

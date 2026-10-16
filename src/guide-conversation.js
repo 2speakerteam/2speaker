@@ -101,6 +101,7 @@ export function createGuideConversation(section, { getContext }) {
       <input type="text" maxlength="2000" autocomplete="off" aria-label="대화 메시지" placeholder="질문을 입력하세요">
       <button type="button" class="guide-chat-mic" aria-label="음성 입력"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6"/></svg></button>
       <button type="submit" class="guide-chat-send" aria-label="메시지 보내기"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m4 4 16 8-16 8 3-8Z"/><path d="M7 12h13"/></svg></button>
+      <button type="button" class="guide-chat-trash" aria-label="선택한 AI 대화 삭제" hidden disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6.5 7l.8 13h9.4l.8-13M10 11v6M14 11v6"/></svg></button>
     </form>
     <p class="guide-chat-status" role="status" aria-live="polite"></p>
     <div class="guide-chat-tabs" role="group" aria-label="대화 방식">
@@ -112,24 +113,22 @@ export function createGuideConversation(section, { getContext }) {
   const input = form.querySelector('input');
   const status = section.querySelector('.guide-chat-status');
   const mic = section.querySelector('.guide-chat-mic');
-  const trash = section.closest('.guide-screen')?.querySelector('.guide-chat-trash');
+  const trash = form.querySelector('.guide-chat-trash');
   const tabs = section.querySelector('.guide-chat-tabs');
   const guideContent = section.closest('.guide-content');
   const deleteActions = section.closest('.guide-screen').querySelector('.guide-chat-delete-actions');
   const selectedCount = deleteActions.querySelector('.guide-chat-selected-count');
   const cancelDelete = deleteActions.querySelector('.guide-chat-delete-cancel');
-  const confirmDelete = deleteActions.querySelector('.guide-chat-delete-confirm');
+  const confirmDelete = trash;
 
   const updateDeleteUi = () => {
     if (trash) {
-      trash.hidden = mode !== 'ai' || selecting;
-      trash.setAttribute('aria-pressed', String(selecting));
-      trash.setAttribute('aria-label', selecting ? '대화 선택 취소' : 'AI 대화 삭제');
+      trash.hidden = mode !== 'ai' || !selecting;
+      trash.disabled = selectedIds.size === 0;
     }
     tabs.hidden = selecting;
     deleteActions.hidden = !selecting;
     selectedCount.textContent = `선택 ${selectedIds.size}개`;
-    confirmDelete.disabled = selectedIds.size === 0;
     input.disabled = selecting;
     mic.disabled = selecting;
     form.querySelector('.guide-chat-send').disabled = selecting;
@@ -262,17 +261,38 @@ export function createGuideConversation(section, { getContext }) {
 
   form.addEventListener('submit', (event) => { event.preventDefault(); void submit(input.value); });
   mic.addEventListener('click', () => { void toggleRecording(); });
-  trash?.addEventListener('click', () => {
-    if (mode !== 'ai' || busy) return;
-    if (!selecting && !messages.ai.length) {
-      setStatus('삭제할 AI 대화가 없습니다.');
-      return;
-    }
-    selecting = !selecting;
-    selectedIds.clear();
-    setStatus('');
-    updateDeleteUi();
-    renderMessages(true);
+  let holdTimer = null;
+  let holdPointer = null;
+  const cancelHold = () => {
+    clearTimeout(holdTimer);
+    holdTimer = null;
+    holdPointer = null;
+  };
+  log.addEventListener('pointerdown', (event) => {
+    if (mode !== 'ai' || selecting || busy || stopped || event.button !== 0
+      || !event.target.closest('.guide-chat-bubble')) return;
+    cancelHold();
+    holdPointer = { id: event.pointerId, x: event.clientX, y: event.clientY };
+    holdTimer = setTimeout(() => {
+      holdTimer = null;
+      holdPointer = null;
+      if (mode !== 'ai' || selecting || busy || stopped) return;
+      selecting = true;
+      selectedIds.clear();
+      setStatus('');
+      updateDeleteUi();
+      renderMessages();
+    }, 1000);
+  });
+  log.addEventListener('pointermove', (event) => {
+    if (holdPointer?.id === event.pointerId
+      && Math.hypot(event.clientX - holdPointer.x, event.clientY - holdPointer.y) > 12) cancelHold();
+  });
+  log.addEventListener('pointerup', cancelHold);
+  log.addEventListener('pointercancel', cancelHold);
+  log.addEventListener('pointerleave', cancelHold);
+  log.addEventListener('contextmenu', (event) => {
+    if (mode === 'ai' && event.target.closest('.guide-chat-bubble')) event.preventDefault();
   });
   cancelDelete.addEventListener('click', () => {
     selecting = false;
@@ -354,6 +374,7 @@ export function createGuideConversation(section, { getContext }) {
   renderMessages();
   return { stop() {
     stopped = true;
+    cancelHold();
     window.removeEventListener('storage', syncHistory);
     controller?.abort();
     clearTimeout(recordTimer);
