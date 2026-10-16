@@ -531,7 +531,7 @@ export function createWalkPanorama(maps, section) {
     const nearJunction = routeJunctions.some((progress) =>
       upcoming.progress >= progress - 18 && current.progress <= progress + 8);
     timer = window.setTimeout(() => { timer = null; void showFrame(selected + 1); },
-      Math.round((nearJunction ? Math.min(1550, Math.round(previewDelay * 1.35)) : previewDelay) * 1.573));
+      Math.round((nearJunction ? Math.min(1550, Math.round(previewDelay * 1.35)) : previewDelay) * 1.7303));
   };
   const fallback = (message) => {
     pause();
