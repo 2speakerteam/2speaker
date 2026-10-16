@@ -997,7 +997,7 @@ export function createWalkPanorama(maps, section) {
   const boardingTravel = createBoardingPanoramaTravel({
     maps,
     isActive: () => section.classList.contains('is-boarding') && panorama
-      && ['bus', 'taxi'].includes(section.dataset.boardingMode)
+      && ['subway', 'bus', 'taxi'].includes(section.dataset.boardingMode)
       && section.dataset.entryReady === 'true' && !section.classList.contains('is-preloading'),
     getPanorama: () => panorama
   });
