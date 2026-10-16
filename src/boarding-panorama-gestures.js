@@ -2,7 +2,7 @@ const DOUBLE_TAP_MS = 350;
 const TAP_SLOP_PX = 12;
 
 export function bindBoardingPanoramaGestures({
-  canvas, isActive, getPanorama, getBaseFov
+  canvas, isActive, getPanorama, getBaseFov, onSingleTap = () => {}, allowNativeClick = () => false
 }) {
   const pointers = new Map();
   let lastTap = null;
@@ -15,7 +15,7 @@ export function bindBoardingPanoramaGestures({
   };
   const reset = () => { cancelTap(); pointers.clear(); };
   const blockNativeClick = (event) => {
-    if (!isActive()) return;
+    if (!isActive() || allowNativeClick()) return;
     event.preventDefault();
     event.stopImmediatePropagation();
   };
@@ -45,7 +45,7 @@ export function bindBoardingPanoramaGestures({
       || Date.now() - pointer.time > 500
       || Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) > TAP_SLOP_PX) return;
     const viewer = getPanorama();
-    const tap = { x: event.clientX, y: event.clientY, time: Date.now(), panoId: viewer.getPanoId() };
+    const tap = { x: event.clientX, y: event.clientY, time: Date.now(), panoId: viewer.getPanoId(), pov: { ...viewer.getPov() } };
     if (lastTap && tap.time - lastTap.time < DOUBLE_TAP_MS
       && Math.hypot(tap.x - lastTap.x, tap.y - lastTap.y) < 30) {
       cancelTap();
@@ -58,6 +58,9 @@ export function bindBoardingPanoramaGestures({
     lastTap = tap;
     tapTimer = setTimeout(() => {
       cancelTap();
+      if (!pointers.size && isActive() && getPanorama() === viewer && viewer.getPanoId() === tap.panoId) {
+        onSingleTap(tap);
+      }
     }, DOUBLE_TAP_MS);
   }, true);
   canvas.addEventListener('pointercancel', reset, true);

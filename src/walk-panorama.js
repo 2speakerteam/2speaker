@@ -1,6 +1,7 @@
 import { createPanoramaProbe } from './panorama-probe.js?v=20261017-panorama-isolation-2';
 import { createWalkMiniMap } from './walk-mini-map.js?v=20261016-route-arrow-sync-1';
-import { bindBoardingPanoramaGestures } from './boarding-panorama-gestures.js?v=20261017-boarding-zoom-only-1';
+import { bindBoardingPanoramaGestures } from './boarding-panorama-gestures.js?v=20261017-boarding-direction-tap-1';
+import { createBoardingPanoramaTravel } from './boarding-panorama-travel.js?v=20261017-boarding-direction-tap-1';
 
 const CAMERA_TO_ROUTE_LIMIT_METERS = 15;
 const CAMERA_TO_REQUEST_LIMIT_METERS = 25;
@@ -690,6 +691,7 @@ export function createWalkPanorama(maps, section) {
     section.hidden = true;
     section.classList.remove('is-loading', 'is-switching', 'is-preloading', 'is-boarding');
     boardingGestures.reset();
+    boardingTravel.reset();
     boardingBaseFov = 95;
     delete section.dataset.entryReady;
     delete section.dataset.boardingMode;
@@ -992,12 +994,22 @@ export function createWalkPanorama(maps, section) {
   view.addEventListener('pointerdown', handleRouteArrow, true);
   view.addEventListener('click', handleRouteArrow, true);
 
+  const boardingTravel = createBoardingPanoramaTravel({
+    maps,
+    isActive: () => section.classList.contains('is-boarding') && panorama
+      && ['bus', 'taxi'].includes(section.dataset.boardingMode)
+      && section.dataset.entryReady === 'true' && !section.classList.contains('is-preloading'),
+    getPanorama: () => panorama
+  });
+
   const boardingGestures = bindBoardingPanoramaGestures({
     canvas,
     isActive: () => section.classList.contains('is-boarding') && panorama
       && section.dataset.entryReady === 'true' && !section.classList.contains('is-preloading'),
     getPanorama: () => panorama,
-    getBaseFov: () => boardingBaseFov
+    getBaseFov: () => boardingBaseFov,
+    onSingleTap: (tap) => boardingTravel.move(tap),
+    allowNativeClick: () => boardingTravel.isDispatchingLink()
   });
 
   previous.addEventListener('click', () => { pause(); void showFrame(selected - 1); });
