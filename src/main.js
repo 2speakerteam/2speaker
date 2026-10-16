@@ -233,9 +233,8 @@ function guideScreen() {
         <p id="route-map-status" class="route-map-status" role="status" aria-live="polite">네이버 지도를 불러오는 중입니다.</p>
       </div>
       <section class="walk-panorama" aria-label="네이버 도보 로드뷰" hidden>
-        <div class="walk-panorama-heading">
+        <div class="walk-panorama-heading sr-only">
           <p class="walk-panorama-status" role="status" aria-live="polite"></p>
-          <button type="button" class="walk-panorama-map-button" data-action="show-guide-map">지도 보기</button>
         </div>
         <div class="walk-panorama-view">
           <div class="walk-panorama-canvas" aria-label="네이버 실제 로드뷰"></div>

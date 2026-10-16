@@ -776,7 +776,7 @@ export function createWalkPanorama(maps, section) {
             panorama = new maps.Panorama(canvas, {
               size: new maps.Size(Math.max(1, canvas.clientWidth), Math.max(200, canvas.clientHeight)),
               pov: { pan: 0, tilt: 0, fov: 95 }, flightSpot: false, logoControl: false,
-              minZoom: 0, maxZoom: 2, zoomControl: true,
+              minZoom: 0, maxZoom: 2, zoomControl: false,
               zoomControlOptions: { position: maps.Position.TOP_RIGHT, style: maps.ZoomControlStyle.SMALL }
             });
             attachListeners();
