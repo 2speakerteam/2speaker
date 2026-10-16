@@ -223,7 +223,7 @@ function routeScreen() {
     <section class="page-body route-entry-body">
       <form class="route-form" id="route-form"><div class="large-input"><label class="sr-only" for="route-destination">목적지</label>
         <input id="route-destination" name="destination-query" type="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="어디로 가세요?" inputmode="search">
-        <button class="route-voice-button" type="button" aria-label="음성으로 목적지 말하기" aria-pressed="false">${icon('mic', 27)}</button>
+        ${routeEntryMode === 'dual' ? `<button class="route-voice-button" type="button" aria-label="음성으로 목적지 말하기" aria-pressed="false">${icon('mic', 27)}</button>` : ''}
         ${routeEntryMode === 'dual' ? `<button class="route-text-button" type="button" data-action="route-text" aria-label="문자로 목적지 입력">${icon('message', 27)}</button>` : `<button class="route-submit" type="submit" aria-label="목적지 검색" hidden>${icon('arrow', 25)}</button>`}
       </div><p class="route-search-feedback" role="status" aria-live="polite"></p></form>
     </section>
