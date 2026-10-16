@@ -182,6 +182,12 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .guide-content[data-guide-view="panorama"] .guide-dialogue { display: none; }
 /* A mounted, invisible panorama still extends the conversation's scroll area. */
 .guide-content[data-guide-view="route"] .walk-panorama { display: none; }
+/* Prepare the first scene at its viewing size without adding scrollable space. */
+.guide-content[data-guide-view="route"] .walk-panorama.is-preloading:not([hidden]) { position: fixed; top: 0; left: 50%; transform: translateX(-50%); width: min(100%, 620px); height: 100dvh; display: flex; flex-direction: column; visibility: hidden; pointer-events: none; contain: strict; overflow: hidden; }
+.walk-panorama.is-preloading .walk-panorama-view { flex: 1 1 auto; min-height: 0; }
+.walk-panorama.is-preloading .walk-panorama-canvas { position: absolute; inset: 0; width: 100% !important; height: 100% !important; }
+.walk-panorama.is-preloading .walk-panorama-arrival { position: absolute; }
+.walk-panorama.is-preloading .walk-panorama-controls { flex: 0 0 auto; }
 .walk-panorama { width: 100%; margin: 0; color: #e9f8ff; }
 .walk-panorama[hidden], .walk-panorama-canvas[hidden] { display: none; }
 .walk-panorama-heading { min-height: 38px; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
@@ -207,7 +213,6 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .walk-panorama-turn { position: absolute; right: 10px; bottom: 10px; padding: 5px 9px; border: 1px solid rgba(40, 220, 239, .62); border-radius: 10px; background: rgba(2, 28, 45, .83); color: #ecfdff; font-size: 13px; font-weight: 700; pointer-events: none; }
 .walk-panorama-turn[hidden] { display: none; }
 .walk-panorama.is-loading .walk-panorama-canvas { visibility: hidden; }
-.walk-panorama.is-loading .walk-panorama-view::after { content: '로드뷰를 준비하고 있습니다.'; position: absolute; z-index: 4; inset: 0; display: grid; place-items: center; background: #12384d; color: #d9f8ff; font-size: 15px; }
 .walk-panorama.is-switching .walk-panorama-canvas { visibility: hidden; opacity: 0; transition: none; }
 .walk-panorama-arrival { margin: 9px 0 0; color: #a7c8d6; font-size: 12px; line-height: 1.4; }
 .walk-panorama-controls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
@@ -456,3 +461,4 @@ input::placeholder { color: var(--muted); opacity: 1; }
 
 
 /* Preserve the route as context when there is no trustworthy photograph at a junction. */
+.app-shell.map-entry-origin { position: fixed; z-index: 50; inset: 0; width: 100%; height: 100dvh; margin: 0 auto; }

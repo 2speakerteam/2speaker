@@ -1,4 +1,4 @@
-import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261016-fill-view';
+import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261016-preload-entry-1';
 import { createGuideConversation } from './guide-conversation.js?v=20261016-guide-viewport-1';
 
 const root = document.querySelector('#root');
@@ -16,6 +16,11 @@ let routeMapAuthError = '';
 let routeMapAuthFailureInstalled = false;
 let activeWalkPanorama = null;
 let activeGuideConversation = null;
+let mapEntryOrigin = null;
+function finishMapEntry() {
+  mapEntryOrigin?.remove();
+  mapEntryOrigin = null;
+}
 let selectedAppLanguage = '한국어';
 let selectedUserLanguage = '한국어';
 let selectedUserLanguageCode = 'ko';
@@ -393,6 +398,7 @@ function initializeNaverRouteMap() {
   const setStatus = (message, state = 'info') => {
     if (session !== routeMapSession || currentPage !== 'guide') return;
     if (state === 'error' || routeMapAuthError) {
+      finishMapEntry();
       if (walkRequested && guideView === 'panorama') setGuideView('route');
     }
     statusElement.textContent = routeMapAuthError || message;
@@ -441,8 +447,12 @@ function initializeNaverRouteMap() {
     const revealMap = () => {
       if (session === routeMapSession && currentPage === 'guide' && mapElement.isConnected) {
         mapElement.classList.remove('is-awaiting-location');
+        finishMapEntry();
       }
     };
+    maps.Event.addListener(map, 'tilesloaded', () => {
+      if (initialMapRevealScheduled) revealMap();
+    });
 
     const shortPlaceName = (name) => String(name || '').replace(/\s*\([^)]*\)\s*$/, '').slice(0, 12);
     const updateStatus = () => {
@@ -477,6 +487,7 @@ function initializeNaverRouteMap() {
     };
     const renderPlaceChoices = (places, role, onSelect) => {
       if (!destinationChoicesElement) return;
+      finishMapEntry();
       destinationChoicesElement.innerHTML = `<div class="place-choice-list" role="group" aria-label="네이버 장소 검색 결과">
         <p class="place-choice-heading">검색 결과 ${places.length}곳 · ${role}를 선택해 주세요</p>
         ${places.map((place, index) => {
@@ -496,6 +507,7 @@ function initializeNaverRouteMap() {
       });
     };
     const updateMapView = () => {
+      if (destinationLocation) initialMapRevealScheduled = true;
       if (currentLocation && destinationLocation) {
         let bounds = maps.LatLngBounds.bounds(currentLocation, destinationLocation);
         if (routeCoordinates.length) {
@@ -522,12 +534,6 @@ function initializeNaverRouteMap() {
       } else if (currentLocation) {
         map.setCenter(currentLocation);
         map.setZoom(15);
-      }
-      if (destinationLocation && !initialMapRevealScheduled) {
-        initialMapRevealScheduled = true;
-        maps.Event.once(map, 'tilesloaded', revealMap);
-        maps.Event.once(map, 'idle', () => window.requestAnimationFrame(revealMap));
-        window.setTimeout(revealMap, 900);
       }
     };
     const removeRouteLines = () => {
@@ -894,17 +900,26 @@ function initializeNaverRouteMap() {
       })) map.setZoom(Math.min(map.getZoom() + 1, 17));
     };
     const beginWalkPanorama = (prepared) => {
-      if (!walkRequested || walkPanoramaPreparing) return;
+      if ((!walkRequested && routeTransportMode !== '') || walkPanoramaPreparing) return;
+      const section = document.querySelector('.walk-panorama');
+      if (section.dataset.entryReady === 'true') {
+        if (walkRequested) setGuideView('panorama');
+        return;
+      }
       walkPanoramaPreparing = true;
       const preparationId = ++walkPreparationId;
       const requestId = routeRequestId;
       void walkPanorama.start(prepared.route, prepared.end, {
+        preload: true,
         startIsStation, startTitle, destinationTitle,
         startStationLocation: prepared.startExit
       }).then((ready) => {
         if (session !== routeMapSession || currentPage !== 'guide'
-          || !walkRequested || requestId !== routeRequestId) return;
-        if (!ready) {
+          || (!walkRequested && routeTransportMode !== '') || requestId !== routeRequestId) return;
+        if (ready) {
+          section.dataset.entryReady = 'true';
+          if (walkRequested) setGuideView('panorama');
+        } else if (walkRequested) {
           if (guideView === 'panorama') setGuideView('route');
           setStatus('로드뷰 장면을 확인할 수 없어 지도 경로를 표시합니다.', 'error');
         }
@@ -1222,7 +1237,7 @@ function initializeNaverRouteMap() {
   }).catch((error) => {
     if (session !== routeMapSession || currentPage !== 'guide') return;
     const message = error instanceof Error ? error.message : '네이버 지도를 불러오지 못했습니다.';
-    setStatus(message);
+    setStatus(message, 'error');
   });
 }
 
@@ -1434,7 +1449,9 @@ function legalScreen(title, sections) {
   </main>`;
 }
 
-function render() {
+function render({ preserveSearch = false } = {}) {
+  finishMapEntry();
+  const origin = preserveSearch ? root.querySelector('.app-shell')?.cloneNode(true) : null;
   const screens = {
     home: homeScreen, route: routeScreen, guide: guideScreen, translation: translationScreen,
     voice: voiceScreen, text: textScreen, more: moreScreen, login: loginScreen,
@@ -1468,6 +1485,14 @@ function render() {
   activeGuideConversation?.stop();
   activeGuideConversation = null;
   root.innerHTML = `<div class="app-shell">${screens[currentPage]()}</div>`;
+  if (origin) {
+    origin.classList.add('map-entry-origin');
+    origin.inert = true;
+    origin.setAttribute('aria-hidden', 'true');
+    origin.querySelector('.route-search-feedback')?.replaceChildren();
+    root.append(origin);
+    mapEntryOrigin = origin;
+  }
   syncGuideChatButtons();
   if (currentPage === 'guide') {
     initializeNaverRouteMap();
@@ -1488,24 +1513,16 @@ function render() {
     document.querySelector('.guide-chat-tabs')?.addEventListener('click', syncGuideChatButtons);
   }
   else routeMapSession += 1;
+  if (currentPage === 'route') void loadNaverMaps().catch(() => {});
 
   document.querySelectorAll('.transport-option').forEach((button) => {
     button.addEventListener('click', () => {
       const panorama = document.querySelector('.walk-panorama');
-      if (button.dataset.mode === 'walk' && routeTransportMode === 'walk'
-        && panorama?.dataset.panoramaId && !panorama.classList.contains('is-loading')) {
-        setGuideView('panorama');
-        return;
-      }
       routeTransportMode = button.dataset.mode;
       document.querySelectorAll('.transport-option').forEach((option) => {
         option.setAttribute('aria-pressed', String(option === button));
       });
-      if (button.dataset.mode === 'walk') {
-        if (panorama) {
-          panorama.hidden = false;
-          panorama.classList.add('is-loading');
-        }
+      if (button.dataset.mode === 'walk' && panorama?.dataset.entryReady === 'true') {
         setGuideView('panorama');
       }
       document.querySelector('#route-map')?.dispatchEvent(new CustomEvent('transport-mode-change', {
@@ -1629,7 +1646,7 @@ if (currentPage === 'user-language-list' && !supportedUserLanguagesLoaded && !su
     const feedback = document.querySelector('.route-search-feedback');
     const directIntent = directRouteIntent(query, routeEntryMode);
     if (feedback) {
-      feedback.textContent = directIntent ? '장소를 확인하고 있습니다.' : '요청을 확인하고 있습니다.';
+      feedback.textContent = '';
       feedback.classList.remove('is-error');
     }
     const requestId = ++routeIntentRequestId;
@@ -1955,6 +1972,7 @@ function setGuideView(view, { fromHistory = false } = {}) {
   const content = document.querySelector('.guide-content');
   if (!content) return;
   content.dataset.guideView = view;
+  if (view === 'panorama') content.querySelector('.walk-panorama')?.classList.remove('is-preloading');
   if (view !== previousView) content.dataset.chatExpanded = 'false';
   syncGuideChatButtons();
   content.scrollTop = 0;
@@ -1962,6 +1980,7 @@ function setGuideView(view, { fromHistory = false } = {}) {
 }
 
 function navigate(page) {
+  const preserveSearch = currentPage === 'route' && page === 'guide';
   if (currentPage === 'voice' && page !== 'voice') stopVoiceConversation();
   if (page !== currentPage) pageHistory.push(currentPage);
   currentPage = page;
@@ -1976,7 +1995,7 @@ function navigate(page) {
     voiceConversationState = 'idle';
     voiceListenLanguageCode ||= selectedUserLanguageCode;
   }
-  render();
+  render({ preserveSearch });
   if (page === 'voice') startVoiceConversation();
   window.scrollTo({ top: 0, behavior: 'instant' });
 }

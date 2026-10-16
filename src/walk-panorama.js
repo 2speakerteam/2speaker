@@ -655,7 +655,8 @@ export function createWalkPanorama(maps, section) {
     turn.hidden = true;
     canvas.hidden = false;
     section.hidden = true;
-    section.classList.remove('is-loading', 'is-switching');
+    section.classList.remove('is-loading', 'is-switching', 'is-preloading');
+    delete section.dataset.entryReady;
     for (const key of ['panoramaId', 'cameraLat', 'cameraLng', 'routeOffsetMeters', 'progressMeters', 'headingDegrees', 'firstFrameMs']) {
       delete section.dataset[key];
     }
@@ -675,6 +676,7 @@ export function createWalkPanorama(maps, section) {
 
   const start = async (route, end, options = {}) => {
     stop();
+    if (options.preload) section.classList.add('is-preloading');
     const run = generation;
     destination = end && [end.lat, end.lng].every(Number.isFinite) ? end : null;
     destinationPinLocation = destination;
@@ -874,6 +876,9 @@ export function createWalkPanorama(maps, section) {
     section.classList.remove('is-loading');
     setStatus('경로보기');
     await showFrame(0);
+    if (run !== generation) return false;
+    // Let the SDK paint the first scene before the page reveals this viewer.
+    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     if (run !== generation) return false;
     section.dataset.firstFrameMs = String(Math.round(performance.now() - startedAt));
     if (selected === 0) {
