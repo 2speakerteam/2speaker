@@ -911,6 +911,7 @@ function initializeNaverRouteMap() {
       map.fitBounds(bounds, { top: 22, right: 70, bottom: 28, left: 22, maxZoom: 17 });
       const size = map.getSize();
       const projection = map.getProjection();
+      if (!size || !projection) return;
       const offsets = points.map((point) => projection.fromCoordToOffset(point));
       const centerX = size.width / 2;
       const centerY = size.height / 2;
@@ -922,19 +923,21 @@ function initializeNaverRouteMap() {
       })) map.setZoom(Math.min(map.getZoom() + 1, 17));
     };
     const paintWalkRoute = () => {
-      if (!walkRequested || !walkRouteReady || routeLines.length) return;
-      routeLines = walkRouteReady.paths.flatMap((path) => [
-        new maps.Polyline({
-          map, path, strokeColor: '#07334d', strokeWeight: 9,
-          strokeOpacity: 0.95, strokeLineCap: 'round', strokeLineJoin: 'round', zIndex: 60
-        }),
-        new maps.Polyline({
-          map, path, strokeColor: '#26e7ed', strokeWeight: 5,
-          strokeOpacity: 1, strokeLineCap: 'round', strokeLineJoin: 'round', zIndex: 61
-        })
-      ]);
-      updateWalkMapView();
-      showWalkRoute(walkRouteReady.route);
+      if (!walkRouteReady) return;
+      if (!routeLines.length) {
+        routeLines = walkRouteReady.paths.flatMap((path) => [
+          new maps.Polyline({
+            map, path, strokeColor: '#07334d', strokeWeight: 9,
+            strokeOpacity: 0.95, strokeLineCap: 'round', strokeLineJoin: 'round', zIndex: 60
+          }),
+          new maps.Polyline({
+            map, path, strokeColor: '#26e7ed', strokeWeight: 5,
+            strokeOpacity: 1, strokeLineCap: 'round', strokeLineJoin: 'round', zIndex: 61
+          })
+        ]);
+        updateWalkMapView();
+      }
+      if (walkRequested) showWalkRoute(walkRouteReady.route);
     };
     const beginWalkPanorama = (prepared) => {
       if ((!walkRequested && routeTransportMode !== '') || walkPanoramaPreparing) return;
@@ -1072,6 +1075,7 @@ function initializeNaverRouteMap() {
           }
         }
         walkRouteReady = { key: requestKey, route, end: walkEnd, startExit: walkStartExit, paths };
+        paintWalkRoute();
         beginWalkPanorama(walkRouteReady);
       }).catch((error) => {
         if (controller.signal.aborted || session !== routeMapSession || currentPage !== 'guide'
