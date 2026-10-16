@@ -150,7 +150,7 @@ export function createGuideConversation(section, { getContext }) {
     }).join('');
     if (follow && guideContent?.dataset.chatExpanded === 'true') {
       window.requestAnimationFrame(() => {
-        tabs.scrollIntoView({ block: 'end', behavior: 'instant' });
+        guideContent.scrollTop = guideContent.scrollHeight;
       });
     }
   };

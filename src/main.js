@@ -1,5 +1,5 @@
 import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261016-fill-view';
-import { createGuideConversation } from './guide-conversation.js?v=20261016-chat-end-2';
+import { createGuideConversation } from './guide-conversation.js?v=20261016-guide-viewport-1';
 
 const root = document.querySelector('#root');
 let currentPage = 'home';
@@ -1929,9 +1929,6 @@ function pushGuideHistory(step) {
 function syncGuideChatButtons() {
   const content = document.querySelector('.guide-content');
   const expanded = content?.dataset.guideView === 'route' && content.dataset.chatExpanded === 'true';
-  [document.documentElement, document.body, root, root.querySelector('.app-shell'),
-    root.querySelector('.guide-screen'), content].forEach((element) =>
-    element?.classList.toggle('guide-chat-expanded', expanded));
   if (!content) return;
   const activeMode = content.querySelector('.guide-chat-tabs [aria-pressed="true"]')?.dataset.chatMode;
   content.querySelectorAll('[data-panorama-chat]').forEach((button) => {
@@ -1971,6 +1968,7 @@ function setGuideView(view, { fromHistory = false } = {}) {
   if (view !== previousView) content.dataset.chatExpanded = 'false';
   syncGuideChatButtons();
   content.scrollTop = 0;
+  window.scrollTo({ top: 0, behavior: 'instant' });
 }
 
 function navigate(page) {
@@ -2042,8 +2040,3 @@ window.addEventListener('popstate', (event) => {
 });
 
 render();
-
-
-
-
-
