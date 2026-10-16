@@ -444,14 +444,23 @@ function initializeNaverRouteMap() {
     let walkPanoramaPreparing = false;
     let walkPreparationId = 0;
     let initialMapRevealScheduled = false;
+    let initialMapViewportReady = false;
+    const targetMapViewportReady = () => {
+      const bounds = map.getBounds();
+      return Boolean(bounds?.hasLatLng(destinationLocation)
+        && (!currentLocation || bounds.hasLatLng(currentLocation)));
+    };
     const revealMap = () => {
-      if (session === routeMapSession && currentPage === 'guide' && mapElement.isConnected) {
+      if (session === routeMapSession && currentPage === 'guide'
+        && mapElement.isConnected && targetMapViewportReady()) {
         mapElement.classList.remove('is-awaiting-location');
         finishMapEntry();
       }
     };
     maps.Event.addListener(map, 'tilesloaded', () => {
-      if (initialMapRevealScheduled) revealMap();
+      if (initialMapRevealScheduled && initialMapViewportReady) {
+        window.requestAnimationFrame(() => window.requestAnimationFrame(revealMap));
+      }
     });
 
     const shortPlaceName = (name) => String(name || '').replace(/\s*\([^)]*\)\s*$/, '').slice(0, 12);
@@ -507,7 +516,14 @@ function initializeNaverRouteMap() {
       });
     };
     const updateMapView = () => {
-      if (destinationLocation) initialMapRevealScheduled = true;
+      if (!initialMapRevealScheduled && destinationLocation && locationState !== 'pending') {
+        initialMapRevealScheduled = true;
+        const waitForTargetViewport = () => {
+          if (targetMapViewportReady()) initialMapViewportReady = true;
+          else maps.Event.once(map, 'idle', waitForTargetViewport);
+        };
+        maps.Event.once(map, 'idle', waitForTargetViewport);
+      }
       if (currentLocation && destinationLocation) {
         let bounds = maps.LatLngBounds.bounds(currentLocation, destinationLocation);
         if (routeCoordinates.length) {
@@ -899,11 +915,29 @@ function initializeNaverRouteMap() {
           && nextY >= 36 && nextY <= size.height - 36;
       })) map.setZoom(Math.min(map.getZoom() + 1, 17));
     };
+    const paintWalkRoute = () => {
+      if (!walkRequested || !walkRouteReady || routeLines.length) return;
+      routeLines = walkRouteReady.paths.flatMap((path) => [
+        new maps.Polyline({
+          map, path, strokeColor: '#07334d', strokeWeight: 9,
+          strokeOpacity: 0.95, strokeLineCap: 'round', strokeLineJoin: 'round', zIndex: 60
+        }),
+        new maps.Polyline({
+          map, path, strokeColor: '#26e7ed', strokeWeight: 5,
+          strokeOpacity: 1, strokeLineCap: 'round', strokeLineJoin: 'round', zIndex: 61
+        })
+      ]);
+      updateWalkMapView();
+      showWalkRoute(walkRouteReady.route);
+    };
     const beginWalkPanorama = (prepared) => {
       if ((!walkRequested && routeTransportMode !== '') || walkPanoramaPreparing) return;
       const section = document.querySelector('.walk-panorama');
       if (section.dataset.entryReady === 'true') {
-        if (walkRequested) setGuideView('panorama');
+        if (walkRequested) {
+          setGuideView('panorama');
+          paintWalkRoute();
+        }
         return;
       }
       walkPanoramaPreparing = true;
@@ -918,15 +952,20 @@ function initializeNaverRouteMap() {
           || (!walkRequested && routeTransportMode !== '') || requestId !== routeRequestId) return;
         if (ready) {
           section.dataset.entryReady = 'true';
-          if (walkRequested) setGuideView('panorama');
+          if (walkRequested) {
+            setGuideView('panorama');
+            paintWalkRoute();
+          }
         } else if (walkRequested) {
           if (guideView === 'panorama') setGuideView('route');
+          paintWalkRoute();
           setStatus('로드뷰 장면을 확인할 수 없어 지도 경로를 표시합니다.', 'error');
         }
       }).catch(() => {
         if (session !== routeMapSession || currentPage !== 'guide'
           || !walkRequested || requestId !== routeRequestId) return;
         if (guideView === 'panorama') setGuideView('route');
+        paintWalkRoute();
         setStatus('로드뷰를 불러오지 못해 지도 경로를 표시합니다.', 'error');
       }).finally(() => {
         if (preparationId === walkPreparationId) walkPanoramaPreparing = false;
@@ -1026,19 +1065,7 @@ function initializeNaverRouteMap() {
             paths.push([...segment.points]);
           }
         }
-        routeLines = paths.flatMap((path) => [
-          new maps.Polyline({
-            map, path, strokeColor: '#07334d', strokeWeight: 9,
-            strokeOpacity: 0.95, strokeLineCap: 'round', strokeLineJoin: 'round', zIndex: 60
-          }),
-          new maps.Polyline({
-            map, path, strokeColor: '#26e7ed', strokeWeight: 5,
-            strokeOpacity: 1, strokeLineCap: 'round', strokeLineJoin: 'round', zIndex: 61
-          })
-        ]);
-        updateWalkMapView();
-        showWalkRoute(route);
-        walkRouteReady = { key: requestKey, route, end: walkEnd, startExit: walkStartExit };
+        walkRouteReady = { key: requestKey, route, end: walkEnd, startExit: walkStartExit, paths };
         beginWalkPanorama(walkRouteReady);
       }).catch((error) => {
         if (controller.signal.aborted || session !== routeMapSession || currentPage !== 'guide'
@@ -1222,6 +1249,7 @@ function initializeNaverRouteMap() {
           ? '위치 권한이 없어 현재 위치를 표시하지 않습니다.'
           : '현재 위치를 확인하지 못했습니다.';
         locationState = 'error';
+        updateMapView();
         updateStatus();
         requestSubwayRoute();
         requestBusRoute();
