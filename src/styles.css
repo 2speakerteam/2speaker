@@ -459,3 +459,33 @@ body:has(.guide-content[data-guide-view="route"][data-chat-expanded="true"]),
 
 /* Preserve the route as context when there is no trustworthy photograph at a junction. */
 
+.app-shell.guide-entry-cover {
+  position: fixed;
+  z-index: 50;
+  inset: 0;
+  width: 100%;
+  height: 100dvh;
+  margin: 0 auto;
+  pointer-events: none;
+}
+
+html.guide-chat-expanded,
+body.guide-chat-expanded,
+#root.guide-chat-expanded,
+.app-shell.guide-chat-expanded,
+.guide-screen.guide-chat-expanded,
+.guide-content.guide-chat-expanded {
+  height: auto !important;
+  min-height: 0 !important;
+}
+
+.guide-screen.guide-chat-expanded {
+  display: block !important;
+  overflow: visible !important;
+}
+
+body.guide-chat-expanded {
+  overflow-y: auto !important;
+  overscroll-behavior-y: none;
+}
+

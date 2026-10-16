@@ -148,7 +148,7 @@ export function createGuideConversation(section, { getContext }) {
         ? `<div class="guide-chat-select-row${selectedIds.has(item.id) ? ' is-selected' : ''}"><input type="checkbox" class="guide-chat-select" data-select-id="${item.id}" aria-label="${name} 대화 선택" ${selectedIds.has(item.id) ? 'checked' : ''}>${bubble}</div>`
         : bubble;
     }).join('');
-    if (follow) {
+    if (follow && guideContent?.dataset.chatExpanded === 'true') {
       window.requestAnimationFrame(() => {
         tabs.scrollIntoView({ block: 'end', behavior: 'instant' });
       });
