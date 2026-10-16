@@ -116,6 +116,7 @@ export function createGuideConversation(section, { getContext }) {
   const trash = form.querySelector('.guide-chat-trash');
   const tabs = section.querySelector('.guide-chat-tabs');
   const guideContent = section.closest('.guide-content');
+  const resizeMap = () => guideContent?.querySelector('#route-map')?.dispatchEvent(new Event('guide-layout-change'));
   const deleteActions = section.closest('.guide-screen').querySelector('.guide-chat-delete-actions');
   const selectedCount = deleteActions.querySelector('.guide-chat-selected-count');
   const cancelDelete = deleteActions.querySelector('.guide-chat-delete-cancel');
@@ -325,11 +326,16 @@ export function createGuideConversation(section, { getContext }) {
     button.setAttribute('aria-expanded', String(guideContent?.dataset.chatExpanded === 'true'));
     button.addEventListener('click', () => {
       const requestedMode = button.dataset.chatMode;
-      const inPanorama = guideContent?.dataset.guideView === 'panorama';
       const chatExpanded = guideContent?.dataset.chatExpanded !== 'false';
-      if (inPanorama && chatExpanded && requestedMode === mode) {
+      if (chatExpanded && requestedMode === mode) {
+        cancelSelection();
         guideContent.dataset.chatExpanded = 'false';
         section.querySelectorAll('[data-chat-mode]').forEach((tab) => tab.setAttribute('aria-expanded', 'false'));
+        resizeMap();
+        window.requestAnimationFrame(() => {
+          window.scrollTo({ top: 0, behavior: 'instant' });
+          guideContent.scrollTop = 0;
+        });
         return;
       }
       mode = requestedMode;
@@ -340,6 +346,7 @@ export function createGuideConversation(section, { getContext }) {
       if (guideContent) {
         guideContent.dataset.chatExpanded = 'true';
         section.querySelectorAll('[data-chat-mode]').forEach((tab) => tab.setAttribute('aria-expanded', 'true'));
+        resizeMap();
       }
       input.placeholder = mode === 'ai' ? '질문을 입력하세요' : '한국어 또는 영어로 입력하세요';
       setStatus('');

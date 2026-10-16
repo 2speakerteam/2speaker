@@ -1,5 +1,5 @@
 import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261016-fill-view';
-import { createGuideConversation } from './guide-conversation.js?v=20261016-guide-map-fill';
+import { createGuideConversation } from './guide-conversation.js?v=20261016-chat-toggle';
 
 const root = document.querySelector('#root');
 let currentPage = 'home';
@@ -401,6 +401,11 @@ function initializeNaverRouteMap() {
       pinchZoom: true,
       scrollWheel: true,
       zoomControl: false
+    });
+    mapElement.addEventListener('guide-layout-change', () => {
+      window.requestAnimationFrame(() => {
+        if (session === routeMapSession && mapElement.isConnected) map.autoResize();
+      });
     });
     const walkPanorama = createWalkPanorama(maps, document.querySelector('.walk-panorama'));
     activeWalkPanorama = walkPanorama;
@@ -1607,7 +1612,6 @@ if (currentPage === 'user-language-list' && !supportedUserLanguagesLoaded && !su
       if (requestId !== routeIntentRequestId || currentPage !== 'route' || !routeInput.isConnected) return;
       routeStartQuery = intent.start.trim();
       routeDestinationQuery = intent.destination.trim();
-      routeTransportMode = '';
       routeIntentHistory.push({ start: routeStartQuery, destination: routeDestinationQuery, mode: intent.mode });
       if (routeIntentHistory.length > 4) routeIntentHistory.shift();
       navigate('guide');
@@ -1882,7 +1886,6 @@ function toggleGuideChat(mode) {
     activeGuideConversation?.cancelSelection?.();
     content.dataset.chatExpanded = 'false';
   } else {
-    content.dataset.chatExpanded = 'true';
     tab.click();
   }
   syncGuideChatButtons();
@@ -1911,6 +1914,7 @@ function navigate(page) {
   currentPage = page;
   if (page === 'guide') {
     guideView = 'route';
+    routeTransportMode = '';
     pushGuideHistory('route');
   }
   if (page === 'voice') {
