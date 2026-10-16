@@ -221,6 +221,9 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .walk-panorama-controls button.is-replay:not(:disabled) { border-color: #27eef0; background: #086b82; color: #fff; box-shadow: 0 0 12px rgba(39, 238, 240, .22); }
 .walk-panorama-controls button:disabled { opacity: .45; cursor: default; }
 .walk-panorama-controls button:focus-visible { outline: 2px solid #66e7ff; outline-offset: 2px; }
+.walk-panorama.is-boarding .walk-panorama-controls,
+.walk-panorama.is-boarding .walk-mini-map,
+.walk-panorama.is-boarding .walk-panorama-turn { display: none; }
 .guide-content[data-guide-view="panorama"] { position: relative; display: flex; flex-direction: column; overflow: hidden; padding-bottom: 0; }
 .guide-content[data-guide-view="panorama"] .guide-header { display: none; }
 .guide-content[data-guide-view="panorama"] .route-visual { width: 100%; min-height: 0; flex: 1 1 auto; display: flex; flex-direction: column; margin: 0 auto; }
@@ -277,6 +280,11 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .subway-route-panel li { padding: 4px 0; }
 .subway-route-panel li strong, .subway-route-panel li span { display: block; }
 .subway-route-panel li span, .subway-transfer { color: #b9d4e7; }
+.boarding-location-button { width: 100%; min-height: 43px; margin-top: 12px; border: 1px solid #26e7ed; border-radius: 12px; background: #07546b; color: #f2fcff; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: inset 0 1px 0 rgba(196, 253, 255, .17); }
+.boarding-location-button:disabled { opacity: .55; cursor: default; }
+.boarding-location-button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+.boarding-location-feedback { margin: 7px 0 0; color: #b9d4e7; font-size: 12px; }
+.boarding-location-feedback:empty { display: none; }
 .subway-transfer { margin: 9px 0 0; }
 
 

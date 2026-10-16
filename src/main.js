@@ -1,4 +1,4 @@
-import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261016-route-arrow-sync-1';
+import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261016-boarding-location-1';
 import { createGuideConversation } from './guide-conversation.js?v=20261016-guide-spoken-reply-1';
 
 const root = document.querySelector('#root');
@@ -455,6 +455,16 @@ function initializeNaverRouteMap() {
     let routeController = null;
     let routeRequestId = 0;
     let routeRequestKey = null;
+    let boardingTarget = null;
+    const boardingButton = `<button type="button" class="boarding-location-button" data-action="show-boarding-location">탑승 위치 보기 <span aria-hidden="true">›</span></button><p class="boarding-location-feedback" role="status" aria-live="polite"></p>`;
+    const pointDistanceMeters = (a, b) => {
+      const radians = Math.PI / 180;
+      const dLat = (b.lat - a.lat) * radians;
+      const dLng = (b.lng - a.lng) * radians;
+      const arc = Math.sin(dLat / 2) ** 2
+        + Math.cos(a.lat * radians) * Math.cos(b.lat * radians) * Math.sin(dLng / 2) ** 2;
+      return 12742000 * Math.asin(Math.min(1, Math.sqrt(arc)));
+    };
     let walkRouteReady = null;
     let walkPanoramaPreparing = false;
     let walkPreparationId = 0;
@@ -576,10 +586,13 @@ function initializeNaverRouteMap() {
     };
     const showSubwayMessage = (message, isError = false) => {
       if (!destinationChoicesElement || destinationState !== 'success') return;
+      boardingTarget = null;
       destinationChoicesElement.innerHTML = `<div class="subway-route-panel${isError ? ' is-error' : ''}" role="status">${escapeHtml(message)}</div>`;
     };
     const showSubwayRoute = (route) => {
       if (!destinationChoicesElement) return;
+      const firstLeg = route.subwayLegs?.[0] || route.transportLegs?.[0];
+      boardingTarget = firstLeg ? { mode: 'subway', title: firstLeg.board, point: firstLeg.boardPoint } : null;
       const minutes = Math.ceil(route.totalSeconds / 60);
       const transportLabel = '지하철';
       const accessWalk = route.accessWalk && Number.isFinite(route.accessWalk.seconds)
@@ -597,7 +610,7 @@ function initializeNaverRouteMap() {
       destinationChoicesElement.innerHTML = `<div class="subway-route-panel" role="status" aria-label="TMAP 지하철 경로">
         <strong>${transportLabel} 약 ${minutes}분 · 환승 ${route.transferCount}회</strong>
         ${route.departureBasis ? `<p class="subway-transfer">TMAP ${escapeHtml(route.departureBasis)} 출발 기준 경로입니다. 지금 출발 가능한 경로는 아닙니다.</p>` : ''}
-        <ol>${accessWalk}${legs}</ol>${transfers}${geometryNotice}
+        <ol>${accessWalk}${legs}</ol>${transfers}${geometryNotice}${boardingButton}
       </div>`;
     };
     const requestSubwayRoute = () => {
@@ -690,10 +703,13 @@ function initializeNaverRouteMap() {
     };
     const showBusMessage = (message, isError = false) => {
       if (!destinationChoicesElement || destinationState !== 'success') return;
+      boardingTarget = null;
       destinationChoicesElement.innerHTML = `<div class="subway-route-panel${isError ? ' is-error' : ''}" role="status">${escapeHtml(message)}</div>`;
     };
     const showBusRoute = (route) => {
       if (!destinationChoicesElement) return;
+      const firstLeg = route.transportLegs?.[0];
+      boardingTarget = firstLeg ? { mode: 'bus', title: firstLeg.board, point: firstLeg.boardPoint } : null;
       const minutes = Math.ceil(route.totalSeconds / 60);
       const accessWalk = route.accessWalk
         ? `<li><strong>도보 접근 · ${escapeHtml(route.accessWalk.station)}</strong><span>${escapeHtml(startTitle || '현재 위치')} → ${escapeHtml(route.accessWalk.station)} · ${Math.ceil(route.accessWalk.seconds / 60)}분 · ${Math.round(route.accessWalk.distanceMeters)}m</span></li>`
@@ -711,7 +727,7 @@ function initializeNaverRouteMap() {
       destinationChoicesElement.innerHTML = `<div class="subway-route-panel" role="status" aria-label="TMAP 버스 경로">
         <strong>버스 약 ${minutes}분 · 환승 ${route.transferCount}회</strong>
         ${route.departureBasis ? `<p class="subway-transfer">TMAP ${escapeHtml(route.departureBasis)} 출발 기준 경로입니다. 지금 출발 가능한 경로는 아닙니다.</p>` : ''}
-        <ol>${accessWalk}${legs}${arrivalWalk}</ol>${transfers}${missingWalk}
+        <ol>${accessWalk}${legs}${arrivalWalk}</ol>${transfers}${missingWalk}${boardingButton}
       </div>`;
     };
     const requestBusRoute = () => {
@@ -803,6 +819,7 @@ function initializeNaverRouteMap() {
     };
     const showTaxiMessage = (message, isError = false) => {
       if (!destinationChoicesElement || destinationState !== 'success') return;
+      boardingTarget = null;
       destinationChoicesElement.innerHTML = `<div class="subway-route-panel${isError ? ' is-error' : ''}" role="status">${escapeHtml(message)}</div>`;
     };
     const requestTaxiRoute = () => {
@@ -861,9 +878,16 @@ function initializeNaverRouteMap() {
         updateMapView();
         const fare = Number.isFinite(route.taxiFare)
           ? `<p class="subway-transfer">TMAP 예상 택시요금 ${Math.round(route.taxiFare).toLocaleString('ko-KR')}원 · 실제 요금과 다를 수 있습니다.</p>` : '';
+        const searchedStand = /택시.*(?:승강장|승차대|정류장|타는\s*곳)|(?:승강장|승차대).*택시/
+          .test(`${routeDestinationQuery} ${destinationTitle}`);
+        boardingTarget = {
+          mode: 'taxi', point: searchedStand ? end : start,
+          title: searchedStand ? destinationTitle : startTitle || '현재 위치',
+          exactStand: searchedStand && /택시.*(?:승강장|승차대|정류장|타는\s*곳)|(?:승강장|승차대).*택시/.test(destinationTitle)
+        };
         destinationChoicesElement.innerHTML = `<div class="subway-route-panel" role="status" aria-label="TMAP 택시 경로">
           <strong>택시 주행 약 ${Math.ceil(route.totalSeconds / 60)}분 · ${Math.round(route.distanceMeters).toLocaleString('ko-KR')}m</strong>
-          ${fare}
+          ${fare}${boardingButton}
         </div>`;
       }).catch((error) => {
         if (controller.signal.aborted || session !== routeMapSession || currentPage !== 'guide'
@@ -890,6 +914,73 @@ function initializeNaverRouteMap() {
         updateMapView();
       }
     };
+    destinationChoicesElement?.addEventListener('click', async (event) => {
+      const button = event.target.closest?.('[data-action="show-boarding-location"]');
+      if (!button || button.disabled) return;
+      const target = boardingTarget;
+      const mode = routeTransportMode;
+      const activeRequestId = routeRequestId;
+      const feedback = button.parentElement?.querySelector('.boarding-location-feedback');
+      if (!target || target.mode !== mode || !target.point
+        || ![target.point.lat, target.point.lng].every(Number.isFinite)) {
+        if (feedback) feedback.textContent = '탑승 지점 좌표를 확인할 수 없습니다.';
+        return;
+      }
+      button.disabled = true;
+      if (feedback) feedback.textContent = '탑승 위치를 확인하고 있습니다.';
+      try {
+        let location = target.point;
+        let title = target.title;
+        if (mode === 'subway') {
+          const stationName = target.title.match(/^(.+?역)(?:\s|\(|$)/)?.[1] || target.title;
+          const start = currentLocation
+            ? { lat: currentLocation.lat(), lng: currentLocation.lng() } : location;
+          const exit = await findStationExit(stationName, start, location)
+            || await findStationExit(stationName, location, location);
+          if (exit) {
+            location = { lat: exit.lat, lng: exit.lng };
+            title = `${exit.title} · 지하철 탑승 접근`;
+          } else {
+            title = `${stationName} 주변 · 출입구 미확인`;
+          }
+        } else if (mode === 'bus') {
+          title = `${target.title} · 버스 승차 정류장`;
+        } else if (mode === 'taxi') {
+          if (target.exactStand) {
+            title = `${target.title} · 택시 승강장`;
+          } else {
+            const response = await fetch('/api/transit/taxi-stand', {
+              method: 'POST', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ start: target.point, hint: target.title })
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(payload.error || '택시 승강장 검색에 실패했습니다.');
+            const stand = payload.stand;
+            if (!stand?.location || ![stand.location.lat, stand.location.lng].every(Number.isFinite)
+              || pointDistanceMeters(target.point, stand.location) > 1500) {
+              throw new Error('출발지 가까이에서 확인된 택시 승강장을 찾지 못했습니다.');
+            }
+            location = stand.location;
+            title = `${stand.name} · 출발지에서 약 ${stand.distanceMeters}m`;
+          }
+        }
+        if (session !== routeMapSession || currentPage !== 'guide'
+          || routeTransportMode !== mode || activeRequestId !== routeRequestId) return;
+        const ready = await walkPanorama.startPoint({ point: location, title, mode });
+        if (session !== routeMapSession || currentPage !== 'guide'
+          || routeTransportMode !== mode || activeRequestId !== routeRequestId) return;
+        if (!ready) throw new Error('탑승 지점 근처에서 확인된 로드뷰가 없습니다.');
+        if (feedback) feedback.textContent = '';
+        setGuideView('panorama');
+      } catch (error) {
+        if (session === routeMapSession && currentPage === 'guide'
+          && routeTransportMode === mode && activeRequestId === routeRequestId && feedback) {
+          feedback.textContent = error instanceof Error ? error.message : '탑승 위치를 확인하지 못했습니다.';
+        }
+      } finally {
+        if (button.isConnected) button.disabled = false;
+      }
+    });
     const showWalkMessage = (message, isError = false) => {
       if (!destinationChoicesElement || destinationState !== 'success') return;
       destinationChoicesElement.innerHTML = `<div class="subway-route-panel${isError ? ' is-error' : ''}" role="status">${escapeHtml(message)}</div>`;
@@ -1579,6 +1670,9 @@ function render({ preserveSearch = false } = {}) {
   document.querySelectorAll('.transport-option').forEach((button) => {
     button.addEventListener('click', () => {
       const panorama = document.querySelector('.walk-panorama');
+      if (panorama?.classList.contains('is-boarding') && routeTransportMode !== button.dataset.mode) {
+        activeWalkPanorama?.stop?.();
+      }
       routeTransportMode = button.dataset.mode;
       document.querySelectorAll('.transport-option').forEach((option) => {
         option.setAttribute('aria-pressed', String(option === button));

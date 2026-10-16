@@ -64,6 +64,7 @@ function parseItinerary(itinerary) {
         mode: 'BUS',
         route: text(leg.route || leg.Lane?.[0]?.route || leg.lane?.[0]?.route),
         board: text(leg.start?.name),
+        boardPoint: point({ lat: leg.start?.lat, lng: leg.start?.lon }),
         alight: text(leg.end?.name),
         seconds
       };

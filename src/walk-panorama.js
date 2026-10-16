@@ -651,8 +651,9 @@ export function createWalkPanorama(maps, section) {
     turn.hidden = true;
     canvas.hidden = false;
     section.hidden = true;
-    section.classList.remove('is-loading', 'is-switching', 'is-preloading');
+    section.classList.remove('is-loading', 'is-switching', 'is-preloading', 'is-boarding');
     delete section.dataset.entryReady;
+    delete section.dataset.boardingMode;
     for (const key of ['panoramaId', 'cameraLat', 'cameraLng', 'routeOffsetMeters', 'progressMeters', 'headingDegrees', 'firstFrameMs']) {
       delete section.dataset[key];
     }
@@ -668,6 +669,65 @@ export function createWalkPanorama(maps, section) {
     startStationTitle = '';
     selected = -1;
     busy = false;
+  };
+
+  const startPoint = async ({ point, title, mode }) => {
+    stop();
+    const run = generation;
+    if (!maps.Panorama || !point || ![point.lat, point.lng].every(Number.isFinite)) return false;
+    section.hidden = false;
+    section.classList.add('is-preloading', 'is-boarding');
+    section.dataset.boardingMode = mode;
+    arrival.textContent = `${title} · 확인된 탑승 지점 주변 로드뷰`;
+    setStatus('탑승 위치 보기');
+    try {
+      panorama = new maps.Panorama(canvas, {
+        size: new maps.Size(Math.max(1, canvas.clientWidth), Math.max(200, canvas.clientHeight)),
+        pov: { pan: 0, tilt: 0, fov: 95 }, flightSpot: false, logoControl: false,
+        minZoom: 0, maxZoom: 2, zoomControl: false
+      });
+      attachListeners();
+      const found = await query(() => panorama.setPosition(new maps.LatLng(point.lat, point.lng)));
+      if (run !== generation) return false;
+      if (found.status !== 'OK' || !found.panoId || !found.camera
+        || distanceMeters(found.camera, point) > 80) {
+        stop();
+        return false;
+      }
+      const lookingAt = panorama.getProjection()?.fromCoordToPov(new maps.LatLng(point.lat, point.lng));
+      const pan = Number.isFinite(lookingAt?.pan)
+        ? lookingAt.pan : headingDegrees(found.camera, point);
+      panorama.setPov({ pan, tilt: 0, fov: 95 });
+      const safeTitle = String(title || '탑승 위치').replace(/[<>&"']/g, '').slice(0, 70);
+      destinationMarker = new maps.Marker({
+        position: new maps.LatLng(point.lat, point.lng), title: safeTitle,
+        icon: {
+          content: `<span class="walk-panorama-station" role="img" aria-label="탑승 위치">${safeTitle}</span>`,
+          size: new maps.Size(140, 34), anchor: new maps.Point(70, 34)
+        },
+        zIndex: 500
+      });
+      destinationMarker.setMap(panorama);
+      if (window.ResizeObserver) {
+        sizeObserver = new ResizeObserver(() => {
+          if (!panorama) return;
+          const width = view.clientWidth;
+          const height = view.clientHeight;
+          if (width > 0 && height > 0) panorama.setSize(new maps.Size(width, height));
+        });
+        sizeObserver.observe(view);
+      }
+      section.dataset.panoramaId = found.panoId;
+      section.dataset.cameraLat = found.camera.lat.toFixed(7);
+      section.dataset.cameraLng = found.camera.lng.toFixed(7);
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      if (run !== generation) return false;
+      section.dataset.entryReady = 'true';
+      return true;
+    } catch {
+      if (run === generation) stop();
+      return false;
+    }
   };
 
   const start = async (route, end, options = {}) => {
@@ -924,5 +984,5 @@ export function createWalkPanorama(maps, section) {
     }
   });
   updateControls();
-  return { start, stop, pause };
+  return { start, startPoint, stop, pause };
 }
