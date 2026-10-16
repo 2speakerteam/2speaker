@@ -150,7 +150,7 @@ export function createGuideConversation(section, { getContext }) {
     }).join('');
     if (follow) {
       window.requestAnimationFrame(() => {
-        window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'instant' });
+        tabs.scrollIntoView({ block: 'end', behavior: 'instant' });
       });
     }
   };

@@ -256,7 +256,6 @@ function guideScreen() {
         </div>
       </section>
     </section>
-    <button type="button" class="guide-open-roadview" data-action="open-roadview" hidden>로드뷰 보기 ›</button>
     <section class="transport-options" role="group" aria-label="이동 수단">
       <button class="transport-option" type="button" data-mode="walk" aria-pressed="${routeTransportMode === 'walk'}">${icon('walkMode', 24)}<strong>도보</strong></button>
       <button class="transport-option" type="button" data-mode="subway" aria-pressed="${routeTransportMode === 'subway'}">${icon('subwayMode', 24)}<strong>지하철</strong></button>
@@ -905,8 +904,6 @@ function initializeNaverRouteMap() {
       }).then((ready) => {
         if (session !== routeMapSession || currentPage !== 'guide'
           || !walkRequested || requestId !== routeRequestId) return;
-        const openRoadview = document.querySelector('.guide-open-roadview');
-        if (openRoadview) openRoadview.hidden = !ready;
         if (!ready) {
           if (guideView === 'panorama') setGuideView('route');
           setStatus('로드뷰 장면을 확인할 수 없어 지도 경로를 표시합니다.', 'error');
@@ -946,7 +943,6 @@ function initializeNaverRouteMap() {
         section.hidden = false;
         section.classList.add('is-loading');
       }
-      document.querySelector('.guide-open-roadview')?.setAttribute('hidden', '');
       routeController?.abort();
       const controller = new AbortController();
       routeController = controller;
@@ -1050,8 +1046,6 @@ function initializeNaverRouteMap() {
         walkRouteReady = null;
         walkPanoramaPreparing = false;
         walkPreparationId += 1;
-        const openRoadview = document.querySelector('.guide-open-roadview');
-        if (openRoadview) openRoadview.hidden = true;
         routeController?.abort();
         routeController = null;
         routeRequestKey = null;
@@ -1069,7 +1063,6 @@ function initializeNaverRouteMap() {
         section.hidden = false;
         section.classList.add('is-loading');
       }
-      document.querySelector('.guide-open-roadview')?.setAttribute('hidden', '');
       routeController?.abort();
       routeController = null;
       routeRequestKey = null;
@@ -1536,12 +1529,6 @@ function render() {
   });
   document.querySelector('[data-action="show-guide-map"]')?.addEventListener('click', () => {
     setGuideView('route');
-  });
-  document.querySelector('[data-action="open-roadview"]')?.addEventListener('click', () => {
-    const panorama = document.querySelector('.walk-panorama');
-    if (panorama?.dataset.panoramaId && !panorama.classList.contains('is-loading')) {
-      setGuideView('panorama');
-    }
   });
   document.querySelectorAll('[data-action="menu-close"]').forEach((button) => {
     button.addEventListener('click', goBack);
