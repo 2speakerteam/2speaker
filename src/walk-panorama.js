@@ -1,6 +1,7 @@
 import { createPanoramaProbe } from './panorama-probe.js';
 import { createWalkMiniMap } from './walk-mini-map.js?v=20261016-route-arrow-sync-1';
 import { bindBoardingPanoramaGestures, nearestPanoramaLink } from './boarding-panorama-gestures.js?v=20261016-boarding-tap-2';
+import { createBoardingPanoramaTransition } from './boarding-panorama-transition.js';
 
 const CAMERA_TO_ROUTE_LIMIT_METERS = 15;
 const CAMERA_TO_REQUEST_LIMIT_METERS = 25;
@@ -283,6 +284,7 @@ export function createWalkPanorama(maps, section) {
   let prepareAhead = () => {};
   let boardingBaseFov = 95;
   let dispatchingBoardingMove = false;
+  const boardingTransition = createBoardingPanoramaTransition({ canvas, view, getPanorama: () => panorama });
   const nativeArrowStyle = document.createElement('style');
   section.appendChild(nativeArrowStyle);
   const clearNativeArrow = () => {
@@ -488,6 +490,7 @@ export function createWalkPanorama(maps, section) {
   const pause = () => {
     playing = false;
     clearTimer();
+    boardingTransition.stop();
     updateControls();
   };
   const scheduleNext = () => {
@@ -985,7 +988,8 @@ export function createWalkPanorama(maps, section) {
   const boardingGestures = bindBoardingPanoramaGestures({
     canvas,
     isActive: () => section.classList.contains('is-boarding') && panorama
-      && section.dataset.entryReady === 'true' && !section.classList.contains('is-preloading'),
+      && section.dataset.entryReady === 'true' && !section.classList.contains('is-preloading')
+      && !boardingTransition.isMoving(),
     getPanorama: () => panorama,
     getBaseFov: () => boardingBaseFov,
     allowNativeClick: () => dispatchingBoardingMove,
@@ -995,9 +999,11 @@ export function createWalkPanorama(maps, section) {
       }));
       const link = nearestPanoramaLink(tap, canvas.getBoundingClientRect(), links);
       if (!link) return;
-      dispatchingBoardingMove = true;
-      try { link.image.click(); }
-      finally { dispatchingBoardingMove = false; }
+      void boardingTransition.move(() => {
+        dispatchingBoardingMove = true;
+        try { link.image.click(); }
+        finally { dispatchingBoardingMove = false; }
+      }, tap);
     }
   });
 

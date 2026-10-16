@@ -207,6 +207,8 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .walk-panorama-canvas img.arrow_image.walk-panorama-native-active { filter: var(--walk-arrow-color) !important; }
 .walk-panorama-canvas img.arrow_image:not(.walk-panorama-native-active) { visibility: hidden !important; pointer-events: none !important; }
 .walk-panorama.is-boarding .walk-panorama-canvas img.arrow_image { visibility: hidden !important; pointer-events: none !important; }
+.boarding-panorama-transition { position: absolute; inset: 0; z-index: 2; overflow: hidden; border-radius: inherit; pointer-events: auto; }
+.boarding-panorama-snapshot { position: absolute !important; inset: 0 !important; width: 100% !important; height: 100% !important; opacity: 1 !important; transition: none !important; pointer-events: none !important; }
 .walk-panorama-canvas.is-arrival [class*="arrow_container_#"], .walk-panorama-canvas.is-arrival img.arrow_image { visibility: hidden !important; pointer-events: none !important; }
 .walk-panorama-anchor { display: block; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .walk-panorama-pin { display: block; width: 34px; height: 44px; filter: drop-shadow(0 2px 5px rgba(0,0,0,.65)); pointer-events: none; }
