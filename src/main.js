@@ -460,12 +460,14 @@ function initializeNaverRouteMap() {
     let walkPreparationId = 0;
     let initialMapRevealScheduled = false;
     let initialMapViewportReady = false;
+    let initialWalkMapSettled = false;
     const targetMapViewportReady = () => {
       const bounds = map.getBounds();
       return Boolean(bounds?.hasLatLng(destinationLocation)
         && (!currentLocation || bounds.hasLatLng(currentLocation)));
     };
     const revealMap = () => {
+      if (activeTransportMode === 'preview' && !initialWalkMapSettled) return;
       if (session === routeMapSession && currentPage === 'guide'
         && mapElement.isConnected && targetMapViewportReady()) {
         mapElement.classList.remove('is-awaiting-location');
@@ -932,7 +934,8 @@ function initializeNaverRouteMap() {
       })) map.setZoom(Math.min(map.getZoom() + 1, 17));
     };
     const paintWalkRoute = () => {
-      if (!walkRequested || !walkRouteReady) return;
+      if ((!walkRequested && activeTransportMode !== 'preview') || !walkRouteReady) return;
+      showWalkRoute(walkRouteReady.route);
       if (!routeLines.length) {
         routeLines = walkRouteReady.paths.flatMap((path) => [
           new maps.Polyline({
@@ -944,9 +947,14 @@ function initializeNaverRouteMap() {
             strokeOpacity: 1, strokeLineCap: 'round', strokeLineJoin: 'round', zIndex: 61
           })
         ]);
+        map.autoResize();
         updateWalkMapView();
       }
-      if (walkRequested) showWalkRoute(walkRouteReady.route);
+      if (activeTransportMode === 'preview') {
+        document.querySelector('.transport-option[data-mode="walk"]')?.setAttribute('aria-pressed', 'true');
+        initialWalkMapSettled = true;
+        window.requestAnimationFrame(() => window.requestAnimationFrame(revealMap));
+      }
     };
     const beginWalkPanorama = (prepared) => {
       if ((!walkRequested && routeTransportMode !== '') || walkPanoramaPreparing) return;
@@ -1091,6 +1099,11 @@ function initializeNaverRouteMap() {
           || (!walkRequested && routeTransportMode !== '') || requestId !== routeRequestId) return;
         removeRouteLines();
         showWalkMessage(error instanceof Error ? error.message : 'TMAP 도보 경로 조회에 실패했습니다.', true);
+        if (activeTransportMode === 'preview') {
+          initialWalkMapSettled = true;
+          revealMap();
+          finishMapEntry();
+        }
         if (walkRequested && guideView === 'panorama') setGuideView('route');
       }).finally(() => {
         if (routeController === controller) {
