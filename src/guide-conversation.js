@@ -4,6 +4,22 @@ const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => (
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
 })[character]);
 
+function plainAssistantReply(value) {
+  return String(value || '')
+    .replace(/^[ \t]*```[^\n]*$/gm, '')
+    .replace(/^[ \t]*(?:-{3,}|\*{3,}|_{3,})[ \t]*$/gm, '')
+    .replace(/^[ \t]*#{1,6}[ \t]+/gm, '')
+    .replace(/^[ \t]*(?:[-*+•]|\d+[.)])[ \t]+/gm, '')
+    .replace(/^[ \t]*>[ \t]?/gm, '')
+    .replace(/\*\*([^*]+)\*\*/g, '$1')
+    .replace(/\*([^*\n]+)\*/g, '$1')
+    .replace(/__([^_]+)__/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\s*\n+\s*/g, ' ')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
 const modeNames = { walk: '도보', subway: '지하철', bus: '버스', taxi: '택시' };
 
 function placeQuery(message, context) {
@@ -139,8 +155,10 @@ export function createGuideConversation(section, { getContext }) {
   const renderMessages = (follow = false) => {
     log.innerHTML = messages[mode].map((item) => {
       const name = mode === 'ai' ? item.role === 'user' ? '나' : 'AI' : item.speaker || '화자 확인 필요';
+      const shownText = mode === 'ai' && item.role === 'assistant'
+        ? plainAssistantReply(item.text) : item.text;
       const bubble = `<article class="guide-chat-bubble ${mode === 'ai' ? item.role : item.speaker === '나' ? 'self' : 'other'}">
-        <span>${escapeHtml(name)}</span><div><p>${escapeHtml(item.text)}</p>
+        <span>${escapeHtml(name)}</span><div><p>${escapeHtml(shownText)}</p>
         ${item.translation ? `<small>${escapeHtml(item.translation)}</small>` : ''}</div>
         ${item.translation ? `<button type="button" class="guide-chat-speak" data-speak-id="${item.id}" aria-label="번역 음성 재생">🔊</button>` : ''}
       </article>`;
@@ -185,11 +203,13 @@ export function createGuideConversation(section, { getContext }) {
               task: 'guide-chat',
               message: text,
               context,
-              history: messages.ai.slice(0, -1).slice(-8).map(({ role, text: content }) => ({ role, text: content }))
+              history: messages.ai.slice(0, -1).slice(-8).map(({ role, text: content }) => ({
+                role, text: role === 'assistant' ? plainAssistantReply(content) : content
+              }))
             }, signal)).text;
         if (!stopped) {
           messages.ai = readAiHistory();
-          messages.ai.push({ id: makeId(), role: 'assistant', text: answer });
+          messages.ai.push({ id: makeId(), role: 'assistant', text: plainAssistantReply(answer) });
           saveAiHistory();
         }
       } else {
