@@ -222,12 +222,20 @@ function routeScreen() {
 
 function guideScreen() {
   return `<main class="screen guide-screen">
-    <div class="guide-content" data-guide-view="${guideView}" data-chat-expanded="${guideView !== 'panorama'}">
+    <div class="guide-content" data-guide-view="${guideView}" data-chat-expanded="false">
     <section class="route-visual" aria-label="네이버 지도">
       <div class="route-scene route-map-scene">
         <div id="route-map" class="route-map-canvas" role="application" aria-label="확대·축소 및 이동할 수 있는 지도"></div>
         <p id="route-map-status" class="route-map-status" role="status" aria-live="polite">네이버 지도를 불러오는 중입니다.</p>
         <button type="button" class="guide-map-settings guide-control" data-page="language" aria-label="설정">${icon('settings', 30)}</button>
+        <div class="guide-map-chat-actions" role="group" aria-label="AI 대화 및 통역">
+          <button type="button" class="walk-panorama-chat-button" data-guide-chat="ai" aria-label="AI 대화 열기" aria-expanded="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11.5a8 8 0 0 1-8.5 8l-5 2 .9-4A8 8 0 1 1 20 11.5Z"/><path d="M8 11.5h.01M12 11.5h.01M16 11.5h.01"/></svg><span>AI</span>
+          </button>
+          <button type="button" class="walk-panorama-chat-button" data-guide-chat="translation" aria-label="실시간 통역 열기" aria-expanded="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 13v-2a9 9 0 0 1 18 0v2M3 13h3a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6ZM21 13h-3a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-6Z"/></svg><span>통역</span>
+          </button>
+        </div>
       </div>
       <section class="walk-panorama" aria-label="네이버 도보 로드뷰" hidden>
         <div class="walk-panorama-heading sr-only">
@@ -256,6 +264,7 @@ function guideScreen() {
         </div>
       </section>
     </section>
+    <button type="button" class="guide-open-roadview" data-action="open-roadview" hidden>로드뷰 보기 ›</button>
     <section class="transport-options" role="group" aria-label="이동 수단">
       <button class="transport-option" type="button" data-mode="walk" aria-pressed="${routeTransportMode === 'walk'}">${icon('walkMode', 24)}<strong>도보</strong></button>
       <button class="transport-option" type="button" data-mode="subway" aria-pressed="${routeTransportMode === 'subway'}">${icon('subwayMode', 24)}<strong>지하철</strong></button>
@@ -263,7 +272,7 @@ function guideScreen() {
       <button class="transport-option" type="button" data-mode="taxi" aria-pressed="${routeTransportMode === 'taxi'}">${icon('taxiMode', 24)}<strong>택시</strong></button>
     </section>
     <section class="guide-dialogue" aria-label="길찾기 내용"></section>
-    <section class="guide-conversation" aria-label="길찾기 대화"></section>
+    <section class="guide-conversation" id="guide-chat-area" aria-label="길찾기 대화"></section>
     </div>
     <div class="guide-chat-delete-actions" hidden>
       <span class="guide-chat-selected-count" aria-live="polite">선택 0개</span>
@@ -399,8 +408,7 @@ function initializeNaverRouteMap() {
       draggable: true,
       pinchZoom: true,
       scrollWheel: true,
-      zoomControl: true,
-      zoomControlOptions: { position: maps.Position.RIGHT_CENTER }
+      zoomControl: false
     });
     const walkPanorama = createWalkPanorama(maps, document.querySelector('.walk-panorama'));
     activeWalkPanorama = walkPanorama;
@@ -878,6 +886,7 @@ function initializeNaverRouteMap() {
       const requestKey = `${start.lat},${start.lng}:${end.lat},${end.lng}`;
       if (routeController && routeRequestKey === requestKey) return;
       walkPanorama.stop();
+      document.querySelector('.guide-open-roadview')?.setAttribute('hidden', '');
       routeController?.abort();
       const controller = new AbortController();
       routeController = controller;
@@ -961,6 +970,8 @@ function initializeNaverRouteMap() {
           startStationLocation: walkStartExit }).then((ready) => {
           if (session !== routeMapSession || currentPage !== 'guide'
             || !walkRequested || requestId !== routeRequestId) return;
+          const openRoadview = document.querySelector('.guide-open-roadview');
+          if (openRoadview) openRoadview.hidden = !ready;
           if (ready) setGuideView('panorama');
           else setStatus('로드뷰 장면을 확인할 수 없어 지도 경로를 표시합니다.', 'error');
         }).catch(() => {
@@ -986,6 +997,8 @@ function initializeNaverRouteMap() {
         requestWalkRoute();
       } else {
         walkPanorama.stop();
+        const openRoadview = document.querySelector('.guide-open-roadview');
+        if (openRoadview) openRoadview.hidden = true;
         routeController?.abort();
         routeController = null;
         routeRequestKey = null;
@@ -998,6 +1011,7 @@ function initializeNaverRouteMap() {
     const markDestination = (latitude, longitude, title) => {
       if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return false;
       walkPanorama.stop();
+      document.querySelector('.guide-open-roadview')?.setAttribute('hidden', '');
       routeController?.abort();
       routeController = null;
       routeRequestKey = null;
@@ -1420,13 +1434,12 @@ function render() {
         routeText: document.querySelector('.guide-dialogue')?.innerText?.slice(0, 2600) || ''
       })
     });
-    document.querySelectorAll('[data-panorama-chat]').forEach((button) => {
-      button.addEventListener('click', () => {
-        const mode = button.dataset.panoramaChat;
-        setGuideView('route');
-        document.querySelector(`.guide-chat-tabs [data-chat-mode="${mode}"]`)?.click();
-      });
+    document.querySelectorAll('[data-panorama-chat], [data-guide-chat]').forEach((button) => {
+      button.addEventListener('click', () => toggleGuideChat(
+        button.dataset.panoramaChat || button.dataset.guideChat
+      ));
     });
+    document.querySelector('.guide-chat-tabs')?.addEventListener('click', syncGuideChatButtons);
   }
   else routeMapSession += 1;
 
@@ -1465,6 +1478,12 @@ function render() {
   });
   document.querySelector('[data-action="show-guide-map"]')?.addEventListener('click', () => {
     setGuideView('route');
+  });
+  document.querySelector('[data-action="open-roadview"]')?.addEventListener('click', () => {
+    const panorama = document.querySelector('.walk-panorama');
+    if (panorama?.dataset.panoramaId && !panorama.classList.contains('is-loading')) {
+      setGuideView('panorama');
+    }
   });
   document.querySelectorAll('[data-action="menu-close"]').forEach((button) => {
     button.addEventListener('click', goBack);
@@ -1849,9 +1868,38 @@ function pushGuideHistory(step) {
   }, '', window.location.href);
 }
 
+function syncGuideChatButtons() {
+  const content = document.querySelector('.guide-content');
+  if (!content) return;
+  const expanded = content.dataset.guideView === 'route' && content.dataset.chatExpanded === 'true';
+  const activeMode = content.querySelector('.guide-chat-tabs [aria-pressed="true"]')?.dataset.chatMode;
+  content.querySelectorAll('[data-panorama-chat], [data-guide-chat]').forEach((button) => {
+    const mode = button.dataset.panoramaChat || button.dataset.guideChat;
+    button.setAttribute('aria-expanded', String(expanded && mode === activeMode));
+  });
+  content.querySelectorAll('.guide-chat-tabs [data-chat-mode]').forEach((button) =>
+    button.setAttribute('aria-expanded', String(expanded)));
+}
+
+function toggleGuideChat(mode) {
+  if (guideView === 'panorama') setGuideView('route');
+  const content = document.querySelector('.guide-content');
+  const tab = content?.querySelector(`.guide-chat-tabs [data-chat-mode="${mode}"]`);
+  if (!content || !tab) return;
+  if (content.dataset.chatExpanded === 'true' && tab.getAttribute('aria-pressed') === 'true') {
+    activeGuideConversation?.cancelSelection?.();
+    content.dataset.chatExpanded = 'false';
+  } else {
+    content.dataset.chatExpanded = 'true';
+    tab.click();
+  }
+  syncGuideChatButtons();
+}
+
 function setGuideView(view, { fromHistory = false } = {}) {
   const previousView = guideView;
   if (view === 'route' && previousView === 'panorama') activeWalkPanorama?.pause?.();
+  if (view !== previousView) activeGuideConversation?.cancelSelection?.();
   if (!fromHistory && currentPage === 'guide' && view !== previousView) {
     if (view === 'panorama') pushGuideHistory('panorama');
     else if (previousView === 'panorama' && guideHistoryStep() === 'panorama') window.history.back();
@@ -1860,13 +1908,8 @@ function setGuideView(view, { fromHistory = false } = {}) {
   const content = document.querySelector('.guide-content');
   if (!content) return;
   content.dataset.guideView = view;
-  content.dataset.chatExpanded = String(view !== 'panorama');
-  content.querySelectorAll('[data-panorama-chat]').forEach((button) => {
-    button.setAttribute('aria-expanded', 'false');
-    button.setAttribute('aria-pressed', 'false');
-  });
-  content.querySelectorAll('.guide-chat-tabs [data-chat-mode]').forEach((button) =>
-    button.setAttribute('aria-expanded', String(view !== 'panorama')));
+  if (view !== previousView) content.dataset.chatExpanded = 'false';
+  syncGuideChatButtons();
   content.scrollTop = 0;
 }
 

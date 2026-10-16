@@ -294,12 +294,14 @@ export function createGuideConversation(section, { getContext }) {
   log.addEventListener('contextmenu', (event) => {
     if (mode === 'ai' && event.target.closest('.guide-chat-bubble')) event.preventDefault();
   });
-  cancelDelete.addEventListener('click', () => {
+  const cancelSelection = () => {
+    if (!selecting) return;
     selecting = false;
     selectedIds.clear();
     updateDeleteUi();
-    renderMessages(true);
-  });
+    renderMessages();
+  };
+  cancelDelete.addEventListener('click', cancelSelection);
   confirmDelete.addEventListener('click', () => {
     if (!selecting || !selectedIds.size) return;
     const deletedCount = selectedIds.size;
@@ -320,7 +322,7 @@ export function createGuideConversation(section, { getContext }) {
     updateDeleteUi();
   });
   section.querySelectorAll('[data-chat-mode]').forEach((button) => {
-    button.setAttribute('aria-expanded', String(guideContent?.dataset.guideView !== 'panorama'));
+    button.setAttribute('aria-expanded', String(guideContent?.dataset.chatExpanded === 'true'));
     button.addEventListener('click', () => {
       const requestedMode = button.dataset.chatMode;
       const inPanorama = guideContent?.dataset.guideView === 'panorama';
@@ -372,7 +374,7 @@ export function createGuideConversation(section, { getContext }) {
   window.addEventListener('storage', syncHistory);
   updateDeleteUi();
   renderMessages();
-  return { stop() {
+  return { cancelSelection, stop() {
     stopped = true;
     cancelHold();
     window.removeEventListener('storage', syncHistory);
