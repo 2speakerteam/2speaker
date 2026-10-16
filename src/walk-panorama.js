@@ -282,6 +282,30 @@ export function createWalkPanorama(maps, section) {
   let preparationDone = true;
   let prepareAhead = () => {};
   let boardingBaseFov = 95;
+  const createViewer = (options) => {
+    const width = view.clientWidth;
+    const height = view.clientHeight;
+    if (width <= 0 || height <= 0) throw new Error('Roadview viewport has no size.');
+    // The SDK hides its mount and leaves its own input listeners on that mount.
+    // Retire the mount with the viewer instead of reusing it for another mode.
+    const host = document.createElement('div');
+    host.className = 'walk-panorama-renderer';
+    host.style.cssText = 'position:absolute;inset:0;';
+    canvas.replaceChildren(host);
+    section.dataset.sdkInitialWidth = String(width);
+    section.dataset.sdkInitialHeight = String(height);
+    return new maps.Panorama(host, { ...options, size: new maps.Size(width, height) });
+  };
+  const resize = () => {
+    if (!panorama) return;
+    const width = view.clientWidth;
+    const height = view.clientHeight;
+    if (width <= 0 || height <= 0) return;
+    panorama.setSize(new maps.Size(width, height));
+    section.dataset.sdkWidth = String(width);
+    section.dataset.sdkHeight = String(height);
+    scheduleMarkerRefresh();
+  };
   const nativeArrowStyle = document.createElement('style');
   section.appendChild(nativeArrowStyle);
   const clearNativeArrow = () => {
@@ -657,8 +681,10 @@ export function createWalkPanorama(maps, section) {
     startStationMarker?.setMap(null);
     startStationMarker = null;
     panorama?.setVisible(false);
+    panorama?.destroy?.();
     panorama = null;
     canvas.replaceChildren();
+    canvas.removeAttribute('style');
     turn.hidden = true;
     canvas.hidden = false;
     section.hidden = true;
@@ -667,7 +693,7 @@ export function createWalkPanorama(maps, section) {
     boardingBaseFov = 95;
     delete section.dataset.entryReady;
     delete section.dataset.boardingMode;
-    for (const key of ['panoramaId', 'cameraLat', 'cameraLng', 'routeOffsetMeters', 'progressMeters', 'headingDegrees', 'firstFrameMs']) {
+    for (const key of ['panoramaId', 'cameraLat', 'cameraLng', 'routeOffsetMeters', 'progressMeters', 'headingDegrees', 'firstFrameMs', 'sdkInitialWidth', 'sdkInitialHeight', 'sdkWidth', 'sdkHeight']) {
       delete section.dataset[key];
     }
     arrival.textContent = '';
@@ -694,8 +720,7 @@ export function createWalkPanorama(maps, section) {
     arrival.textContent = `${title} · 확인된 탑승 지점 주변 로드뷰`;
     setStatus('탑승 위치 보기');
     try {
-      panorama = new maps.Panorama(canvas, {
-        size: new maps.Size(Math.max(1, canvas.clientWidth), Math.max(200, canvas.clientHeight)),
+      panorama = createViewer({
         pov: { pan: 0, tilt: 0, fov: 95 }, flightSpot: false, logoControl: false,
         minZoom: 0, maxZoom: 4, zoomControl: false
       });
@@ -723,12 +748,7 @@ export function createWalkPanorama(maps, section) {
       });
       destinationMarker.setMap(panorama);
       if (window.ResizeObserver) {
-        sizeObserver = new ResizeObserver(() => {
-          if (!panorama) return;
-          const width = view.clientWidth;
-          const height = view.clientHeight;
-          if (width > 0 && height > 0) panorama.setSize(new maps.Size(width, height));
-        });
+        sizeObserver = new ResizeObserver(resize);
         sizeObserver.observe(view);
       }
       section.dataset.panoramaId = found.panoId;
@@ -813,15 +833,7 @@ export function createWalkPanorama(maps, section) {
       }
     });
     if (window.ResizeObserver) {
-      sizeObserver = new ResizeObserver(() => {
-        if (!panorama) return;
-        const width = view.clientWidth;
-        const height = view.clientHeight;
-        if (width > 0 && height > 0) {
-          panorama.setSize(new maps.Size(width, height));
-          scheduleMarkerRefresh();
-        }
-      });
+      sizeObserver = new ResizeObserver(resize);
       sizeObserver.observe(view);
     }
     arrival.textContent = '실제 도착 판정과는 별개입니다.';
@@ -845,8 +857,7 @@ export function createWalkPanorama(maps, section) {
       } else {
         found = await query(() => {
           if (!panorama) {
-            panorama = new maps.Panorama(canvas, {
-              size: new maps.Size(Math.max(1, canvas.clientWidth), Math.max(200, canvas.clientHeight)),
+            panorama = createViewer({
               pov: { pan: 0, tilt: 0, fov: 95 }, flightSpot: false, logoControl: false,
               minZoom: 0, maxZoom: 2, zoomControl: false,
               zoomControlOptions: { position: maps.Position.TOP_RIGHT, style: maps.ZoomControlStyle.SMALL }
@@ -1007,5 +1018,5 @@ export function createWalkPanorama(maps, section) {
     }
   });
   updateControls();
-  return { start, startPoint, stop, pause };
+  return { start, startPoint, stop, pause, resize };
 }

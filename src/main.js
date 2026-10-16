@@ -1,4 +1,4 @@
-import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261017-boarding-restore-1';
+import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261017-panorama-isolation-1';
 import { createGuideConversation } from './guide-conversation.js?v=20261016-guide-spoken-reply-1';
 
 const root = document.querySelector('#root');
@@ -15,6 +15,7 @@ let routeMapSession = 0;
 let routeMapAuthError = '';
 let routeMapAuthFailureInstalled = false;
 let activeWalkPanorama = null;
+let activeBoardingPanorama = null;
 let activeGuideConversation = null;
 let activeRouteRecognition = null;
 let mapEntryOrigin = null;
@@ -231,16 +232,8 @@ function routeScreen() {
   </main>`;
 }
 
-function guideScreen() {
-  return `<main class="screen guide-screen">
-    <div class="guide-content" data-guide-view="${guideView}" data-chat-expanded="false">
-    <section class="route-visual" aria-label="네이버 지도">
-      <div class="route-scene route-map-scene">
-        <div id="route-map" class="route-map-canvas is-awaiting-location" role="application" aria-label="확대·축소 및 이동할 수 있는 지도"></div>
-        <p id="route-map-status" class="route-map-status" role="status" aria-live="polite">네이버 지도를 불러오는 중입니다.</p>
-        <button type="button" class="guide-map-settings guide-control" data-page="language" aria-label="설정">${icon('settings', 30)}</button>
-      </div>
-      <section class="walk-panorama" aria-label="네이버 도보 로드뷰" hidden>
+function panoramaSection(kind) {
+  return `<section class="walk-panorama" data-panorama-kind="${kind}" aria-label="${kind === 'walk' ? '네이버 도보 로드뷰' : '네이버 탑승 위치 로드뷰'}" hidden>
         <div class="walk-panorama-heading sr-only">
           <p class="walk-panorama-status" role="status" aria-live="polite"></p>
         </div>
@@ -265,7 +258,20 @@ function guideScreen() {
           <button type="button" data-panorama-action="playback">재생</button>
           <button type="button" data-panorama-action="next">다음</button>
         </div>
-      </section>
+      </section>`;
+}
+
+function guideScreen() {
+  return `<main class="screen guide-screen">
+    <div class="guide-content" data-guide-view="${guideView}" data-chat-expanded="false">
+    <section class="route-visual" aria-label="네이버 지도">
+      <div class="route-scene route-map-scene">
+        <div id="route-map" class="route-map-canvas is-awaiting-location" role="application" aria-label="확대·축소 및 이동할 수 있는 지도"></div>
+        <p id="route-map-status" class="route-map-status" role="status" aria-live="polite">네이버 지도를 불러오는 중입니다.</p>
+        <button type="button" class="guide-map-settings guide-control" data-page="language" aria-label="설정">${icon('settings', 30)}</button>
+      </div>
+      ${panoramaSection('walk')}
+      ${panoramaSection('boarding')}
     </section>
     <section class="transport-options" role="group" aria-label="이동 수단">
       <button class="transport-option" type="button" data-mode="walk" aria-pressed="${routeTransportMode === 'walk'}">${icon('walkMode', 24)}<strong>도보</strong></button>
@@ -437,8 +443,10 @@ function initializeNaverRouteMap() {
         if (session === routeMapSession && mapElement.isConnected) map.autoResize();
       });
     });
-    const walkPanorama = createWalkPanorama(maps, document.querySelector('.walk-panorama'));
+    const walkPanorama = createWalkPanorama(maps, document.querySelector('.walk-panorama[data-panorama-kind="walk"]'));
     activeWalkPanorama = walkPanorama;
+    const boardingPanorama = createWalkPanorama(maps, document.querySelector('.walk-panorama[data-panorama-kind="boarding"]'));
+    activeBoardingPanorama = boardingPanorama;
     let currentLocation = null;
     let startTitle = '';
     let startIsStation = false;
@@ -466,6 +474,9 @@ function initializeNaverRouteMap() {
       return 12742000 * Math.asin(Math.min(1, Math.sqrt(arc)));
     };
     let walkRouteReady = null;
+    let walkRouteController = null;
+    let walkRouteRequestKey = null;
+    let walkRouteRequestId = 0;
     let walkPanoramaPreparing = false;
     let walkPreparationId = 0;
     let initialMapRevealScheduled = false;
@@ -966,12 +977,12 @@ function initializeNaverRouteMap() {
         }
         if (session !== routeMapSession || currentPage !== 'guide'
           || routeTransportMode !== mode || activeRequestId !== routeRequestId) return;
-        const ready = await walkPanorama.startPoint({ point: location, title, mode });
+        const ready = await boardingPanorama.startPoint({ point: location, title, mode });
         if (session !== routeMapSession || currentPage !== 'guide'
           || routeTransportMode !== mode || activeRequestId !== routeRequestId) return;
         if (!ready) throw new Error('탑승 지점 근처에서 확인된 로드뷰가 없습니다.');
         if (feedback) feedback.textContent = '';
-        setGuideView('panorama');
+        setGuideView('panorama', { kind: 'boarding' });
       } catch (error) {
         if (session === routeMapSession && currentPage === 'guide'
           && routeTransportMode === mode && activeRequestId === routeRequestId && feedback) {
@@ -982,7 +993,8 @@ function initializeNaverRouteMap() {
       }
     });
     const showWalkMessage = (message, isError = false) => {
-      if (!destinationChoicesElement || destinationState !== 'success') return;
+      if ((!walkRequested && activeTransportMode !== 'preview')
+        || !destinationChoicesElement || destinationState !== 'success') return;
       destinationChoicesElement.innerHTML = `<div class="subway-route-panel${isError ? ' is-error' : ''}" role="status">${escapeHtml(message)}</div>`;
     };
     const showWalkRoute = (route) => {
@@ -1027,6 +1039,7 @@ function initializeNaverRouteMap() {
     const paintWalkRoute = () => {
       if ((!walkRequested && activeTransportMode !== 'preview') || !walkRouteReady) return;
       showWalkRoute(walkRouteReady.route);
+      routeCoordinates = walkRouteReady.coordinates;
       if (!routeLines.length) {
         routeLines = walkRouteReady.paths.flatMap((path) => [
           new maps.Polyline({
@@ -1048,29 +1061,29 @@ function initializeNaverRouteMap() {
       }
     };
     const beginWalkPanorama = (prepared) => {
-      if ((!walkRequested && routeTransportMode !== '') || walkPanoramaPreparing) return;
-      const section = document.querySelector('.walk-panorama');
+      if (walkPanoramaPreparing) return;
+      const section = document.querySelector('.walk-panorama[data-panorama-kind="walk"]');
       if (section.dataset.entryReady === 'true') {
         if (walkRequested) {
-          setGuideView('panorama');
+          setGuideView('panorama', { kind: 'walk' });
           paintWalkRoute();
         }
         return;
       }
       walkPanoramaPreparing = true;
       const preparationId = ++walkPreparationId;
-      const requestId = routeRequestId;
+      const requestId = walkRouteRequestId;
       void walkPanorama.start(prepared.route, prepared.end, {
         preload: true,
         startIsStation, startTitle, destinationTitle,
         startStationLocation: prepared.startExit
       }).then((ready) => {
         if (session !== routeMapSession || currentPage !== 'guide'
-          || (!walkRequested && routeTransportMode !== '') || requestId !== routeRequestId) return;
+          || requestId !== walkRouteRequestId || preparationId !== walkPreparationId) return;
         if (ready) {
           section.dataset.entryReady = 'true';
           if (walkRequested) {
-            setGuideView('panorama');
+            setGuideView('panorama', { kind: 'walk' });
             paintWalkRoute();
           }
         } else if (walkRequested) {
@@ -1080,7 +1093,7 @@ function initializeNaverRouteMap() {
         }
       }).catch(() => {
         if (session !== routeMapSession || currentPage !== 'guide'
-          || !walkRequested || requestId !== routeRequestId) return;
+          || !walkRequested || requestId !== walkRouteRequestId || preparationId !== walkPreparationId) return;
         if (guideView === 'panorama') setGuideView('route');
         paintWalkRoute();
         setStatus('로드뷰를 불러오지 못해 지도 경로를 표시합니다.', 'error');
@@ -1089,8 +1102,7 @@ function initializeNaverRouteMap() {
       });
     };
     const requestWalkRoute = () => {
-      if ((!walkRequested && routeTransportMode !== '')
-        || destinationState !== 'success' || !destinationLocation) return;
+      if (destinationState !== 'success' || !destinationLocation) return;
       if (locationState === 'error') {
         showWalkMessage(routeStartQuery ? '출발지를 확인할 수 없어 도보 경로를 요청하지 않았습니다.' : '현재 GPS 위치를 확인할 수 없어 도보 경로를 요청하지 않았습니다.', true);
         if (walkRequested && guideView === 'panorama') setGuideView('route');
@@ -1107,19 +1119,19 @@ function initializeNaverRouteMap() {
         beginWalkPanorama(walkRouteReady);
         return;
       }
-      if (routeController && routeRequestKey === requestKey) return;
+      if (walkRouteController && walkRouteRequestKey === requestKey) return;
       walkPanorama.stop();
       if (walkRequested && guideView === 'panorama') {
-        const section = document.querySelector('.walk-panorama');
+        const section = document.querySelector('.walk-panorama[data-panorama-kind="walk"]');
         section.hidden = false;
         section.classList.add('is-loading');
       }
-      routeController?.abort();
+      walkRouteController?.abort();
       const controller = new AbortController();
-      routeController = controller;
-      routeRequestKey = requestKey;
-      const requestId = ++routeRequestId;
-      removeRouteLines();
+      walkRouteController = controller;
+      walkRouteRequestKey = requestKey;
+      const requestId = ++walkRouteRequestId;
+      if (walkRequested || activeTransportMode === 'preview') removeRouteLines();
       if (walkRequested) showWalkMessage('TMAP에서 실제 도보 경로를 조회하고 있습니다.');
       const startStationName = startIsStation
         ? startTitle.match(/^(.+?역)(?:\s|\(|$)/)?.[1] : null;
@@ -1130,7 +1142,7 @@ function initializeNaverRouteMap() {
         startStationName ? findStationExit(startStationName, start, start).catch(() => null) : null,
         destinationStationName ? findStationExit(destinationStationName, end, end).catch(() => null) : null
       ]).then(([startExit, destinationExit]) => {
-        if (controller.signal.aborted || requestId !== routeRequestId) return null;
+        if (controller.signal.aborted || requestId !== walkRouteRequestId) return null;
         walkStartExit = startExit && Math.hypot(
           (startExit.lat - start.lat) * 111195,
           (startExit.lng - start.lng) * 111195 * Math.cos(start.lat * Math.PI / 180)
@@ -1154,7 +1166,7 @@ function initializeNaverRouteMap() {
       }).then((payload) => {
         if (!payload) return;
         if (session !== routeMapSession || currentPage !== 'guide'
-          || (!walkRequested && routeTransportMode !== '') || requestId !== routeRequestId) return;
+          || requestId !== walkRouteRequestId) return;
         const route = payload.route;
         if (!payload.coordinateMatch || !route || !Number.isFinite(route.totalSeconds)
           || !Number.isFinite(route.distanceMeters) || !Array.isArray(route.segments)
@@ -1171,7 +1183,7 @@ function initializeNaverRouteMap() {
           });
           return { ...segment, points };
         });
-        routeCoordinates = segments.flatMap((segment) => segment.points);
+        const coordinates = segments.flatMap((segment) => segment.points);
         const paths = [];
         for (const segment of segments) {
           const path = paths.at(-1);
@@ -1182,13 +1194,13 @@ function initializeNaverRouteMap() {
             paths.push([...segment.points]);
           }
         }
-        walkRouteReady = { key: requestKey, route, end: walkEnd, startExit: walkStartExit, paths };
+        walkRouteReady = { key: requestKey, route, end: walkEnd, startExit: walkStartExit, paths, coordinates };
         paintWalkRoute();
         beginWalkPanorama(walkRouteReady);
       }).catch((error) => {
         if (controller.signal.aborted || session !== routeMapSession || currentPage !== 'guide'
-          || (!walkRequested && routeTransportMode !== '') || requestId !== routeRequestId) return;
-        removeRouteLines();
+          || requestId !== walkRouteRequestId) return;
+        if (walkRequested || activeTransportMode === 'preview') removeRouteLines();
         showWalkMessage(error instanceof Error ? error.message : 'TMAP 도보 경로 조회에 실패했습니다.', true);
         if (activeTransportMode === 'preview') {
           initialWalkMapSettled = true;
@@ -1197,9 +1209,9 @@ function initializeNaverRouteMap() {
         }
         if (walkRequested && guideView === 'panorama') setGuideView('route');
       }).finally(() => {
-        if (routeController === controller) {
-          routeController = null;
-          routeRequestKey = null;
+        if (walkRouteController === controller) {
+          walkRouteController = null;
+          walkRouteRequestKey = null;
         }
       });
     };
@@ -1207,14 +1219,8 @@ function initializeNaverRouteMap() {
       if (active) {
         requestWalkRoute();
       } else {
-        walkPanorama.stop();
-        walkRouteReady = null;
-        walkPanoramaPreparing = false;
-        walkPreparationId += 1;
-        routeController?.abort();
-        routeController = null;
-        routeRequestKey = null;
-        routeRequestId += 1;
+        walkPanorama.pause();
+        document.querySelector('.walk-panorama[data-panorama-kind="walk"]')?.classList.add('is-preloading');
         removeRouteLines();
         if (destinationState === 'success') clearDestinationChoices();
         updateMapView();
@@ -1223,8 +1229,13 @@ function initializeNaverRouteMap() {
     const markDestination = (latitude, longitude, title) => {
       if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return false;
       walkPanorama.stop();
+      boardingPanorama.stop();
+      walkRouteController?.abort();
+      walkRouteController = null;
+      walkRouteRequestKey = null;
+      walkRouteRequestId += 1;
       if (walkRequested && guideView === 'panorama') {
-        const section = document.querySelector('.walk-panorama');
+        const section = document.querySelector('.walk-panorama[data-panorama-kind="walk"]');
         section.hidden = false;
         section.classList.add('is-loading');
       }
@@ -1634,6 +1645,8 @@ function render({ preserveSearch = false } = {}) {
   };
   activeWalkPanorama?.stop();
   activeWalkPanorama = null;
+  activeBoardingPanorama?.stop();
+  activeBoardingPanorama = null;
   activeGuideConversation?.stop();
   activeGuideConversation = null;
   root.innerHTML = `<div class="app-shell">${screens[currentPage]()}</div>`;
@@ -1669,16 +1682,14 @@ function render({ preserveSearch = false } = {}) {
 
   document.querySelectorAll('.transport-option').forEach((button) => {
     button.addEventListener('click', () => {
-      const panorama = document.querySelector('.walk-panorama');
-      if (panorama?.classList.contains('is-boarding') && routeTransportMode !== button.dataset.mode) {
-        activeWalkPanorama?.stop?.();
-      }
+      const panorama = document.querySelector('.walk-panorama[data-panorama-kind="walk"]');
+      if (routeTransportMode !== button.dataset.mode) activeBoardingPanorama?.stop?.();
       routeTransportMode = button.dataset.mode;
       document.querySelectorAll('.transport-option').forEach((option) => {
         option.setAttribute('aria-pressed', String(option === button));
       });
       if (button.dataset.mode === 'walk' && panorama?.dataset.entryReady === 'true') {
-        setGuideView('panorama');
+        setGuideView('panorama', { kind: 'walk' });
       }
       document.querySelector('#route-map')?.dispatchEvent(new CustomEvent('transport-mode-change', {
         detail: { mode: button.dataset.mode }
@@ -2196,9 +2207,12 @@ function toggleGuideChat(mode) {
   if (returningFromPanorama) window.requestAnimationFrame(() => window.scrollTo(0, 0));
 }
 
-function setGuideView(view, { fromHistory = false } = {}) {
+function setGuideView(view, { fromHistory = false, kind = null } = {}) {
   const previousView = guideView;
-  if (view === 'route' && previousView === 'panorama') activeWalkPanorama?.pause?.();
+  if (view === 'route' && previousView === 'panorama') {
+    activeWalkPanorama?.pause?.();
+    activeBoardingPanorama?.pause?.();
+  }
   if (view !== previousView) activeGuideConversation?.cancelSelection?.();
   if (!fromHistory && currentPage === 'guide' && view !== previousView) {
     if (view === 'panorama') pushGuideHistory('panorama');
@@ -2208,7 +2222,17 @@ function setGuideView(view, { fromHistory = false } = {}) {
   const content = document.querySelector('.guide-content');
   if (!content) return;
   content.dataset.guideView = view;
-  if (view === 'panorama') content.querySelector('.walk-panorama')?.classList.remove('is-preloading');
+  if (kind) content.dataset.panoramaKind = kind;
+  const visibleKind = content.dataset.panoramaKind || 'walk';
+  content.querySelectorAll('.walk-panorama').forEach((section) => {
+    if (!section.hidden) section.classList.toggle('is-preloading',
+      view !== 'panorama' || section.dataset.panoramaKind !== visibleKind);
+  });
+  if (view === 'panorama') {
+    const viewer = visibleKind === 'boarding' ? activeBoardingPanorama : activeWalkPanorama;
+    viewer?.resize?.();
+    window.requestAnimationFrame(() => viewer?.resize?.());
+  }
   if (view !== previousView) content.dataset.chatExpanded = 'false';
   syncGuideChatButtons();
   content.scrollTop = 0;
@@ -2268,6 +2292,7 @@ window.addEventListener('popstate', (event) => {
   }
   if (currentPage === 'guide' || step === 'home') {
     activeWalkPanorama?.pause?.();
+    activeBoardingPanorama?.pause?.();
     currentPage = 'home';
     guideView = 'route';
     pageHistory.length = 0;
