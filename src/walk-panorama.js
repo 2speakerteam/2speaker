@@ -1,4 +1,4 @@
-import { createPanoramaProbe } from './panorama-probe.js';
+import { createPanoramaProbe } from './panorama-probe.js?v=20261017-panorama-isolation-2';
 import { createWalkMiniMap } from './walk-mini-map.js?v=20261016-route-arrow-sync-1';
 import { bindBoardingPanoramaGestures } from './boarding-panorama-gestures.js?v=20261017-boarding-zoom-only-1';
 

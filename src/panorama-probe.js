@@ -54,7 +54,9 @@ export function createPanoramaProbe(maps, timeoutMs) {
       host = document.createElement('div');
       host.setAttribute('aria-hidden', 'true');
       host.inert = true;
-      host.style.cssText = 'position:fixed;left:-10000px;top:0;width:256px;height:200px;opacity:0;pointer-events:none;';
+      // The SDK rewrites every mount position except absolute to relative.
+      // Keep this invisible look-ahead viewer outside the document flow.
+      host.style.cssText = 'position:absolute;left:-10000px;top:0;width:256px;height:200px;opacity:0;pointer-events:none;';
       document.body.appendChild(host);
       viewer = new maps.Panorama(host, {
         position, size: new maps.Size(256, 200),
