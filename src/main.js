@@ -1940,7 +1940,8 @@ function syncGuideChatButtons() {
 }
 
 function toggleGuideChat(mode) {
-  if (guideView === 'panorama') setGuideView('route');
+  const returningFromPanorama = guideView === 'panorama';
+  if (returningFromPanorama) setGuideView('route');
   const content = document.querySelector('.guide-content');
   const tab = content?.querySelector(`.guide-chat-tabs [data-chat-mode="${mode}"]`);
   if (!content || !tab) return;
@@ -1951,6 +1952,7 @@ function toggleGuideChat(mode) {
     tab.click();
   }
   syncGuideChatButtons();
+  if (returningFromPanorama) window.requestAnimationFrame(() => window.scrollTo(0, 0));
 }
 
 function setGuideView(view, { fromHistory = false } = {}) {
@@ -2012,6 +2014,7 @@ function goBack() {
   window.scrollTo({ top: 0, behavior: 'instant' });
 }
 
+window.history.scrollRestoration = 'manual';
 window.history.replaceState({
   ...(window.history.state && typeof window.history.state === 'object' ? window.history.state : {}),
   [guideHistoryStateKey]: 'home'
@@ -2027,6 +2030,7 @@ window.addEventListener('popstate', (event) => {
     } else {
       setGuideView(step, { fromHistory: true });
     }
+    window.requestAnimationFrame(() => window.scrollTo(0, 0));
     return;
   }
   if (currentPage === 'guide' || step === 'home') {

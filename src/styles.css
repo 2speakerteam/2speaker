@@ -29,6 +29,7 @@ body {
     linear-gradient(145deg, #00101f, #002e4d 48%, #001522);
 }
 
+html:has(.guide-screen) { height: 100dvh; min-height: 0; overflow: hidden; }
 body:has(.guide-screen) { height: 100dvh; min-height: 0; overflow: hidden; }
 
 .app-shell {
