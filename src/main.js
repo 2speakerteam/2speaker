@@ -451,7 +451,6 @@ function initializeNaverRouteMap() {
     let walkPreparationId = 0;
     let initialMapRevealScheduled = false;
     let initialMapViewportReady = false;
-    let initialWalkPreviewReady = false;
     const targetMapViewportReady = () => {
       const bounds = map.getBounds();
       return Boolean(bounds?.hasLatLng(destinationLocation)
@@ -459,9 +458,7 @@ function initializeNaverRouteMap() {
     };
     const revealMap = () => {
       if (session === routeMapSession && currentPage === 'guide'
-        && mapElement.isConnected
-        && (initialWalkPreviewReady || ['subway', 'bus', 'taxi'].includes(routeTransportMode))
-        && targetMapViewportReady()) {
+        && mapElement.isConnected && targetMapViewportReady()) {
         mapElement.classList.remove('is-awaiting-location');
         finishMapEntry();
       }
@@ -925,21 +922,19 @@ function initializeNaverRouteMap() {
       })) map.setZoom(Math.min(map.getZoom() + 1, 17));
     };
     const paintWalkRoute = () => {
-      if (!walkRouteReady) return;
-      if (!routeLines.length) {
-        routeLines = walkRouteReady.paths.flatMap((path) => [
-          new maps.Polyline({
-            map, path, strokeColor: '#07334d', strokeWeight: 9,
-            strokeOpacity: 0.95, strokeLineCap: 'round', strokeLineJoin: 'round', zIndex: 60
-          }),
-          new maps.Polyline({
-            map, path, strokeColor: '#26e7ed', strokeWeight: 5,
-            strokeOpacity: 1, strokeLineCap: 'round', strokeLineJoin: 'round', zIndex: 61
-          })
-        ]);
-        updateWalkMapView();
-      }
-      if (walkRequested) showWalkRoute(walkRouteReady.route);
+      if (!walkRequested || !walkRouteReady || routeLines.length) return;
+      routeLines = walkRouteReady.paths.flatMap((path) => [
+        new maps.Polyline({
+          map, path, strokeColor: '#07334d', strokeWeight: 9,
+          strokeOpacity: 0.95, strokeLineCap: 'round', strokeLineJoin: 'round', zIndex: 60
+        }),
+        new maps.Polyline({
+          map, path, strokeColor: '#26e7ed', strokeWeight: 5,
+          strokeOpacity: 1, strokeLineCap: 'round', strokeLineJoin: 'round', zIndex: 61
+        })
+      ]);
+      updateWalkMapView();
+      showWalkRoute(walkRouteReady.route);
     };
     const beginWalkPanorama = (prepared) => {
       if ((!walkRequested && routeTransportMode !== '') || walkPanoramaPreparing) return;
@@ -1077,16 +1072,12 @@ function initializeNaverRouteMap() {
           }
         }
         walkRouteReady = { key: requestKey, route, end: walkEnd, startExit: walkStartExit, paths };
-        paintWalkRoute();
-        initialWalkPreviewReady = true;
         beginWalkPanorama(walkRouteReady);
       }).catch((error) => {
         if (controller.signal.aborted || session !== routeMapSession || currentPage !== 'guide'
           || (!walkRequested && routeTransportMode !== '') || requestId !== routeRequestId) return;
         removeRouteLines();
         showWalkMessage(error instanceof Error ? error.message : 'TMAP 도보 경로 조회에 실패했습니다.', true);
-        initialWalkPreviewReady = true;
-        window.requestAnimationFrame(revealMap);
         if (walkRequested && guideView === 'panorama') setGuideView('route');
       }).finally(() => {
         if (routeController === controller) {
