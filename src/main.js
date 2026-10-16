@@ -1,5 +1,5 @@
 import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261016-fill-view';
-import { createGuideConversation } from './guide-conversation.js?v=20261016-guide-collapsed';
+import { createGuideConversation } from './guide-conversation.js?v=20261016-guide-map-fill';
 
 const root = document.querySelector('#root');
 let currentPage = 'home';
@@ -228,14 +228,6 @@ function guideScreen() {
         <div id="route-map" class="route-map-canvas" role="application" aria-label="확대·축소 및 이동할 수 있는 지도"></div>
         <p id="route-map-status" class="route-map-status" role="status" aria-live="polite">네이버 지도를 불러오는 중입니다.</p>
         <button type="button" class="guide-map-settings guide-control" data-page="language" aria-label="설정">${icon('settings', 30)}</button>
-        <div class="guide-map-chat-actions" role="group" aria-label="AI 대화 및 통역">
-          <button type="button" class="walk-panorama-chat-button" data-guide-chat="ai" aria-label="AI 대화 열기" aria-expanded="false">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11.5a8 8 0 0 1-8.5 8l-5 2 .9-4A8 8 0 1 1 20 11.5Z"/><path d="M8 11.5h.01M12 11.5h.01M16 11.5h.01"/></svg><span>AI</span>
-          </button>
-          <button type="button" class="walk-panorama-chat-button" data-guide-chat="translation" aria-label="실시간 통역 열기" aria-expanded="false">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 13v-2a9 9 0 0 1 18 0v2M3 13h3a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6ZM21 13h-3a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-6Z"/></svg><span>통역</span>
-          </button>
-        </div>
       </div>
       <section class="walk-panorama" aria-label="네이버 도보 로드뷰" hidden>
         <div class="walk-panorama-heading sr-only">
@@ -1434,9 +1426,9 @@ function render() {
         routeText: document.querySelector('.guide-dialogue')?.innerText?.slice(0, 2600) || ''
       })
     });
-    document.querySelectorAll('[data-panorama-chat], [data-guide-chat]').forEach((button) => {
+    document.querySelectorAll('[data-panorama-chat]').forEach((button) => {
       button.addEventListener('click', () => toggleGuideChat(
-        button.dataset.panoramaChat || button.dataset.guideChat
+        button.dataset.panoramaChat
       ));
     });
     document.querySelector('.guide-chat-tabs')?.addEventListener('click', syncGuideChatButtons);
@@ -1873,8 +1865,8 @@ function syncGuideChatButtons() {
   if (!content) return;
   const expanded = content.dataset.guideView === 'route' && content.dataset.chatExpanded === 'true';
   const activeMode = content.querySelector('.guide-chat-tabs [aria-pressed="true"]')?.dataset.chatMode;
-  content.querySelectorAll('[data-panorama-chat], [data-guide-chat]').forEach((button) => {
-    const mode = button.dataset.panoramaChat || button.dataset.guideChat;
+  content.querySelectorAll('[data-panorama-chat]').forEach((button) => {
+    const mode = button.dataset.panoramaChat;
     button.setAttribute('aria-expanded', String(expanded && mode === activeMode));
   });
   content.querySelectorAll('.guide-chat-tabs [data-chat-mode]').forEach((button) =>

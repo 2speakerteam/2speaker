@@ -337,7 +337,7 @@ export function createGuideConversation(section, { getContext }) {
       selectedIds.clear();
       section.querySelectorAll('[data-chat-mode]').forEach((tab) =>
         tab.setAttribute('aria-pressed', String(tab === button)));
-      if (inPanorama) {
+      if (guideContent) {
         guideContent.dataset.chatExpanded = 'true';
         section.querySelectorAll('[data-chat-mode]').forEach((tab) => tab.setAttribute('aria-expanded', 'true'));
       }

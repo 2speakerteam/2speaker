@@ -120,10 +120,6 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .guide-open-roadview { display: block; min-height: 38px; margin: 8px auto 0; padding: 0 16px; border: 1px solid #32dce9; border-radius: 12px; background: rgba(1, 39, 61, .92); color: #f0fdff; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
 .guide-open-roadview[hidden] { display: none; }
 .guide-content[data-guide-view="panorama"] .guide-open-roadview { display: none; }
-.guide-map-chat-actions { position: absolute; z-index: 3; top: 62px; right: 9px; display: grid; gap: 8px; }
-.guide-map-chat-actions .walk-panorama-chat-button { width: 54px; height: 54px; }
-.guide-map-chat-actions .walk-panorama-chat-button svg { width: 23px; height: 23px; }
-.guide-map-chat-actions .walk-panorama-chat-button span { font-size: 11px; }
 .route-map-status { position: absolute; z-index: 2; right: 10px; bottom: 10px; left: 10px; width: max-content; max-width: calc(100% - 20px); margin: 0; padding: 8px 11px; overflow: hidden; border: 1px solid rgba(96, 200, 224, .24); border-radius: 12px; background: rgba(2, 18, 31, .86); color: #e0f3fa; font-size: clamp(11px, 3vw, 13px); line-height: 1.4; text-overflow: ellipsis; backdrop-filter: blur(10px); pointer-events: none; }
 .route-map-status.is-quiet { top: 10px; right: auto; bottom: auto; left: 10px; max-width: min(55%, 180px); padding: 5px 8px; border-color: rgba(96, 200, 224, .18); border-radius: 10px; color: #d9f8ff; font-size: 11px; opacity: .88; white-space: nowrap; }
 .route-map-status.is-error { width: auto; max-width: calc(100% - 20px); border-color: rgba(255, 163, 130, .42); color: #ffe3d8; white-space: normal; }
@@ -143,7 +139,9 @@ input::placeholder { color: var(--muted); opacity: 1; }
 }
 .guide-dialogue { max-width: 620px; margin: 16px auto 0; display: grid; gap: 14px; }
 .guide-conversation { width: 100%; max-width: 620px; min-height: 0; flex: 0 0 auto; margin: 6px auto 8px; display: flex; flex-direction: column; gap: 7px; }
-.guide-content[data-guide-view="route"][data-chat-expanded="false"] .guide-conversation { display: none; }
+.guide-content[data-guide-view="route"][data-chat-expanded="false"] .guide-chat-messages,
+.guide-content[data-guide-view="route"][data-chat-expanded="false"] .guide-chat-form,
+.guide-content[data-guide-view="route"][data-chat-expanded="false"] .guide-chat-status { display: none; }
 .guide-chat-messages { min-height: 0; display: grid; align-content: start; gap: 9px; padding: 0 2px; }
 .guide-chat-bubble { max-width: 88%; display: flex; align-items: end; gap: 7px; color: #f3fbff; font-size: 13px; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: pan-y; }
 .guide-chat-bubble.user, .guide-chat-bubble.other { justify-self: start; }
@@ -238,6 +236,18 @@ body:has(.guide-screen .guide-content[data-guide-view="route"]) { height: auto; 
 .guide-screen:has(.guide-content[data-guide-view="route"]) { height: auto; min-height: 100dvh; grid-template-rows: auto auto 0; overflow: visible; }
 .guide-screen:has(.guide-content[data-guide-view="route"]):has(.guide-chat-delete-actions:not([hidden])) { grid-template-rows: auto 62px 0; }
 .guide-content[data-guide-view="route"] { height: auto; overflow: visible; overscroll-behavior: auto; padding-bottom: max(16px, env(safe-area-inset-bottom)); }
+.guide-screen:has(.guide-content[data-guide-view="route"]) { padding: 0; }
+.guide-content[data-guide-view="route"] .route-visual { width: 100%; max-width: 620px; margin-top: 0; }
+.guide-content[data-guide-view="route"] .route-map-scene { height: clamp(360px, 65dvh, 650px); }
+.guide-content[data-guide-view="route"] .transport-options,
+.guide-content[data-guide-view="route"] .guide-dialogue,
+.guide-content[data-guide-view="route"] .guide-conversation { width: calc(100% - 24px); }
+.guide-content[data-guide-view="route"][data-chat-expanded="false"] { height: 100%; min-height: 0; display: flex; flex-direction: column; overflow-y: auto; padding-bottom: max(8px, env(safe-area-inset-bottom)); }
+.guide-screen:has(.guide-content[data-guide-view="route"][data-chat-expanded="false"]) { height: 100dvh; min-height: 0; grid-template-rows: minmax(0, 1fr) auto 0; overflow: hidden; }
+.guide-content[data-guide-view="route"][data-chat-expanded="false"] .route-visual { min-height: 260px; flex: 1 1 auto; display: flex; flex-direction: column; }
+.guide-content[data-guide-view="route"][data-chat-expanded="false"] .route-map-scene { min-height: 260px; height: auto; flex: 1 1 auto; }
+.guide-content[data-guide-view="route"][data-chat-expanded="false"] .guide-dialogue:empty { display: none; }
+.guide-content[data-guide-view="route"][data-chat-expanded="false"] .guide-conversation { margin-bottom: 0; }
 .walk-panorama-chat-actions { position: absolute; z-index: 22; right: 12px; bottom: 12px; display: grid; gap: 10px; }
 .walk-panorama-chat-button { width: 66px; height: 66px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 1px solid #22d9ef; border-radius: 50%; background: rgba(2, 51, 76, .94); color: #e9fbff; box-shadow: 0 3px 14px rgba(0, 12, 25, .48); cursor: pointer; }
 .walk-panorama-chat-button svg { width: 27px; height: 27px; }
