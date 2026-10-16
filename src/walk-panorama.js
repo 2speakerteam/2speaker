@@ -1,5 +1,5 @@
 import { createPanoramaProbe } from './panorama-probe.js';
-import { createWalkMiniMap } from './walk-mini-map.js';
+import { createWalkMiniMap } from './walk-mini-map.js?v=20261016-route-arrow-sync-1';
 
 const CAMERA_TO_ROUTE_LIMIT_METERS = 15;
 const CAMERA_TO_REQUEST_LIMIT_METERS = 25;
@@ -182,17 +182,15 @@ function instructionForFrame(frame, decisions, routeLength) {
     ? '목적지 방향으로 계속 가세요.' : '계속 직진하세요.';
 }
 
-function arrowTargetForFrame(frame, decisions) {
+function arrowTargetForFrame(frame, decisions, edges) {
   if (frame.phase === 'arrival') return null;
   const next = decisions.find((decision) => decision.priority >= 3
     && decision.progress >= frame.progress - 2);
-  if (!next || next.crossing || next.progress - frame.progress > 20) {
-    return { direction: 'straight', angle: 0 };
-  }
-  return {
-    direction: next.action === '좌회전' ? 'left' : 'right',
-    angle: next.turn
-  };
+  const afterTurn = next && !next.crossing && next.progress - frame.progress <= 20;
+  const fromProgress = afterTurn ? next.progress : frame.progress;
+  const toProgress = Math.min(edges.at(-1).to, fromProgress + 8);
+  if (toProgress - fromProgress < 2) return null;
+  return headingDegrees(candidateAt(edges, fromProgress), candidateAt(edges, toProgress));
 }
 
 function nativeArrowAngle(image) {
@@ -246,7 +244,7 @@ export function createWalkPanorama(maps, section) {
   const previous = section?.querySelector('[data-panorama-action="previous"]');
   const playback = section?.querySelector('[data-panorama-action="playback"]');
   const next = section?.querySelector('[data-panorama-action="next"]');
-  if (!section || !canvas || !turn || !status || !arrival || !previous || !playback || !next) {
+  if (!section || !canvas || !view || !turn || !status || !arrival || !previous || !playback || !next) {
     return { start() {}, stop() {} };
   }
   const miniMap = createWalkMiniMap(maps, section);
@@ -293,52 +291,51 @@ export function createWalkPanorama(maps, section) {
       .forEach((image) => image.classList.remove('walk-panorama-native-active'));
   };
   const paintNativeArrow = () => {
-    if (!nativeArrowTarget || !panorama || !arrowFrame
+    if (!Number.isFinite(nativeArrowTarget) || !panorama || !arrowFrame
       || panorama.getPanoId() !== arrowFrame.panoId) return;
+    const cameraBearing = panorama.getPov()?.pan;
+    if (!Number.isFinite(cameraBearing)) return;
+    const targetAngle = signedAngle(cameraBearing, nativeArrowTarget);
     const arrows = [...canvas.querySelectorAll('img.arrow_image')];
-    if (!arrows.length) return;
-    let chosen = nativeArrowContainer
-      ? arrows.find((image) => image.parentElement?.classList.contains(nativeArrowContainer))
-      : null;
-    if (nativeArrowContainer && !chosen
-      && angleDifference(panorama.getPov()?.pan, arrowFrame.pov.pan) < 10) {
-      nativeArrowContainer = null;
-    }
-    if (!nativeArrowContainer) {
-      const candidates = arrows.map((image) => ({ image, angle: nativeArrowAngle(image) }))
-        .filter(({ angle }) => angle !== null && (
-          nativeArrowTarget.direction === 'left' ? angle < -18 && angle > -155
-            : nativeArrowTarget.direction === 'right' ? angle > 18 && angle < 155
-              : Math.abs(angle) < 55
-        ))
-        .sort((a, b) => Math.abs(a.angle - nativeArrowTarget.angle)
-          - Math.abs(b.angle - nativeArrowTarget.angle));
-      chosen = candidates[0]?.image || null;
-      if (chosen) {
-        nativeArrowContainer = [...chosen.parentElement.classList]
-          .find((name) => /^arrow_container_#\d+$/.test(name)) || null;
-        if (nativeArrowContainer) {
-          nativeArrowStyle.textContent = `.walk-panorama-canvas [class~="${nativeArrowContainer}"] img.arrow_image { filter: var(--walk-arrow-color) !important; }`;
-        }
-      }
+    const bounds = canvas.getBoundingClientRect();
+    const candidates = arrows.map((image) => ({ image, angle: nativeArrowAngle(image) }))
+      .filter(({ image, angle }) => {
+        const rect = image.getBoundingClientRect();
+        return angle !== null && angleDifference(angle, targetAngle) <= 15
+          && rect.width > 0 && rect.height > 0 && rect.right > bounds.left
+          && rect.left < bounds.right && rect.bottom > bounds.top && rect.top < bounds.bottom;
+      })
+      .sort((a, b) => angleDifference(a.angle, targetAngle)
+        - angleDifference(b.angle, targetAngle));
+    const chosen = candidates[0] || null;
+    const container = chosen?.image.parentElement && [...chosen.image.parentElement.classList]
+      .find((name) => /^arrow_container_#\d+$/.test(name)) || null;
+    if (container !== nativeArrowContainer) {
+      nativeArrowContainer = container;
+      nativeArrowStyle.textContent = container
+        ? `.walk-panorama-canvas [class~="${container}"] img.arrow_image { filter: var(--walk-arrow-color) !important; }`
+        : '';
     }
     arrows.forEach((image) => {
       const active = image.classList.contains('walk-panorama-native-active');
-      if (image === chosen && !active) image.classList.add('walk-panorama-native-active');
-      else if (image !== chosen && active) image.classList.remove('walk-panorama-native-active');
+      if (image === chosen?.image && !active) image.classList.add('walk-panorama-native-active');
+      else if (image !== chosen?.image && active) image.classList.remove('walk-panorama-native-active');
     });
+    if (routeEdges.length) {
+      const position = candidateAt(routeEdges, arrowFrame.progress);
+      const bearing = chosen ? cameraBearing + chosen.angle : nativeArrowTarget;
+      miniMap.update(position, bearing, !chosen);
+    }
   };
   const showNativeArrow = (frame) => {
     canvas.classList.toggle('is-arrival', frame.phase === 'arrival');
-    if (arrowFrame?.panoId !== frame.panoId) nativeArrowContainer = null;
     arrowFrame = frame;
-    nativeArrowTarget = arrowTargetForFrame(frame, routeDecisions);
-    if (nativeArrowTarget) paintNativeArrow();
-    else clearNativeArrow();
-    if (routeEdges.length) {
+    nativeArrowTarget = arrowTargetForFrame(frame, routeDecisions, routeEdges);
+    if (Number.isFinite(nativeArrowTarget)) paintNativeArrow();
+    else {
+      clearNativeArrow();
       const position = candidateAt(routeEdges, frame.progress);
-      const bearing = frame.pov.pan + (nativeArrowTarget?.angle || 0);
-      miniMap.update(position, bearing, !nativeArrowTarget);
+      miniMap.update(position, frame.pov.pan, true);
     }
   };
   const scheduleMarkerRefresh = () => {
@@ -436,7 +433,6 @@ export function createWalkPanorama(maps, section) {
         if (!pending) return;
         pending.status = value;
         if (value === 'OK') {
-          if (switchingFrame && panorama.getPanoId() === switchingFrame.panoId) showNativeArrow(switchingFrame);
           snapshotIfReady();
           if (pending) {
             const active = pending;
@@ -451,11 +447,9 @@ export function createWalkPanorama(maps, section) {
         else settlePending({ status: value || 'ERROR' });
       }),
       maps.Event.addListener(panorama, 'pano_changed', () => {
-        if (switchingFrame && panorama.getPanoId() === switchingFrame.panoId) {
-          showNativeArrow(switchingFrame);
-        }
         if (!pending) {
           if (!switchingFrame && selected >= 0 && panorama.getPanoId() !== frames[selected]?.panoId) {
+            miniMap.suspend();
             clearNativeArrow();
           }
           return;
@@ -549,6 +543,8 @@ export function createWalkPanorama(maps, section) {
       && found.panoId === expected.panoId;
     busy = true;
     switchingFrame = frame;
+    miniMap.suspend();
+    clearNativeArrow();
     updateControls();
     const currentCoord = panorama.getLocation()?.coord;
     let found = panorama.getPanoId() === frame.panoId && currentCoord
@@ -890,6 +886,25 @@ export function createWalkPanorama(maps, section) {
     }
     return selected === 0;
   };
+
+  // Native Roadview arrows can leave the verified walking route. Keep arrow taps
+  // on the same validated frame sequence used by the mini map and Next button.
+  let lastArrowTap = 0;
+  const handleRouteArrow = (event) => {
+    const arrow = event.target.closest?.('img.arrow_image, [class*="arrow_container_#"]');
+    if (!arrow) return;
+    const image = arrow.matches('img.arrow_image') ? arrow : arrow.querySelector('img.arrow_image');
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (!image?.classList.contains('walk-panorama-native-active') || busy) return;
+    if (event.type === 'click' && event.detail !== 0) return;
+    if (Date.now() - lastArrowTap < 500) return;
+    lastArrowTap = Date.now();
+    pause();
+    void showFrame(selected + 1);
+  };
+  view.addEventListener('pointerdown', handleRouteArrow, true);
+  view.addEventListener('click', handleRouteArrow, true);
 
   previous.addEventListener('click', () => { pause(); void showFrame(selected - 1); });
   next.addEventListener('click', () => { pause(); void showFrame(selected + 1); });

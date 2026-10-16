@@ -7,14 +7,15 @@ export function createWalkMiniMap(maps, section) {
   let observer = null;
   let current = null;
   let lastSize = '';
+  let suspended = false;
 
   const paint = () => {
-    if (!map || !marker || !current) return;
+    if (suspended || !map || !marker || !current) return;
     const position = new maps.LatLng(current.position.lat, current.position.lng);
     marker.setPosition(position);
     map.setCenter(position);
     panel.style.setProperty('--walk-mini-bearing', `${current.bearing}deg`);
-    panel.classList.toggle('is-arrival', current.arrival);
+    panel.classList.toggle('is-point-only', current.pointOnly);
   };
 
   const stop = () => {
@@ -27,10 +28,11 @@ export function createWalkMiniMap(maps, section) {
     map?.destroy?.();
     map = null;
     lastSize = '';
+    suspended = false;
     canvas?.replaceChildren();
     if (panel) {
       panel.hidden = true;
-      panel.classList.remove('is-arrival');
+      panel.classList.remove('is-point-only');
     }
     current = null;
   };
@@ -88,11 +90,18 @@ export function createWalkMiniMap(maps, section) {
     paint();
   };
 
-  const update = (position, bearing, arrival = false) => {
+  const update = (position, bearing, pointOnly = false) => {
     if (!position || ![position.lat, position.lng, bearing].every(Number.isFinite)) return;
-    current = { position, bearing, arrival };
+    current = { position, bearing, pointOnly };
+    suspended = false;
+    if (map) panel.hidden = false;
     paint();
   };
 
-  return { start, update, stop };
+  const suspend = () => {
+    suspended = true;
+    if (panel) panel.hidden = true;
+  };
+
+  return { start, update, suspend, stop };
 }
