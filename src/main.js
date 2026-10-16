@@ -16,12 +16,6 @@ let routeMapAuthError = '';
 let routeMapAuthFailureInstalled = false;
 let activeWalkPanorama = null;
 let activeGuideConversation = null;
-let pendingGuideCover = null;
-
-function revealGuideEntry() {
-  pendingGuideCover?.remove();
-  pendingGuideCover = null;
-}
 let selectedAppLanguage = '한국어';
 let selectedUserLanguage = '한국어';
 let selectedUserLanguageCode = 'ko';
@@ -447,7 +441,6 @@ function initializeNaverRouteMap() {
     const revealMap = () => {
       if (session === routeMapSession && currentPage === 'guide' && mapElement.isConnected) {
         mapElement.classList.remove('is-awaiting-location');
-        revealGuideEntry();
       }
     };
 
@@ -484,7 +477,6 @@ function initializeNaverRouteMap() {
     };
     const renderPlaceChoices = (places, role, onSelect) => {
       if (!destinationChoicesElement) return;
-      revealGuideEntry();
       destinationChoicesElement.innerHTML = `<div class="place-choice-list" role="group" aria-label="네이버 장소 검색 결과">
         <p class="place-choice-heading">검색 결과 ${places.length}곳 · ${role}를 선택해 주세요</p>
         ${places.map((place, index) => {
@@ -534,7 +526,8 @@ function initializeNaverRouteMap() {
       if (destinationLocation && !initialMapRevealScheduled) {
         initialMapRevealScheduled = true;
         maps.Event.once(map, 'tilesloaded', revealMap);
-        window.setTimeout(revealMap, 4000);
+        maps.Event.once(map, 'idle', () => window.requestAnimationFrame(revealMap));
+        window.setTimeout(revealMap, 900);
       }
     };
     const removeRouteLines = () => {
@@ -1158,7 +1151,6 @@ function initializeNaverRouteMap() {
             destinationState = 'error';
           }
           updateStatus();
-          revealGuideEntry();
         }
       }).catch((error) => {
         if (session !== routeMapSession || currentPage !== 'guide') return;
@@ -1172,7 +1164,6 @@ function initializeNaverRouteMap() {
           destinationState = 'error';
         }
         updateStatus();
-        revealGuideEntry();
       });
     };
 
@@ -1232,7 +1223,6 @@ function initializeNaverRouteMap() {
     if (session !== routeMapSession || currentPage !== 'guide') return;
     const message = error instanceof Error ? error.message : '네이버 지도를 불러오지 못했습니다.';
     setStatus(message);
-    revealGuideEntry();
   });
 }
 
@@ -1478,8 +1468,6 @@ function render() {
   activeGuideConversation?.stop();
   activeGuideConversation = null;
   root.innerHTML = `<div class="app-shell">${screens[currentPage]()}</div>`;
-  if (currentPage === 'guide' && pendingGuideCover) root.append(pendingGuideCover);
-  else if (currentPage !== 'guide') pendingGuideCover = null;
   syncGuideChatButtons();
   if (currentPage === 'guide') {
     initializeNaverRouteMap();
@@ -1975,16 +1963,6 @@ function setGuideView(view, { fromHistory = false } = {}) {
 
 function navigate(page) {
   if (currentPage === 'voice' && page !== 'voice') stopVoiceConversation();
-  if (currentPage === 'route' && page === 'guide') {
-    pendingGuideCover = root.querySelector('.app-shell');
-    pendingGuideCover?.classList.add('guide-entry-cover');
-    if (pendingGuideCover) {
-      pendingGuideCover.inert = true;
-      pendingGuideCover.setAttribute('aria-hidden', 'true');
-    }
-  } else {
-    pendingGuideCover = null;
-  }
   if (page !== currentPage) pageHistory.push(currentPage);
   currentPage = page;
   if (page === 'guide') {
