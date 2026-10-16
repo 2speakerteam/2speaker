@@ -16,10 +16,16 @@ let routeMapAuthError = '';
 let routeMapAuthFailureInstalled = false;
 let activeWalkPanorama = null;
 let activeGuideConversation = null;
+let activeRouteRecognition = null;
 let mapEntryOrigin = null;
 function finishMapEntry() {
   mapEntryOrigin?.remove();
   mapEntryOrigin = null;
+}
+function stopRouteRecognition() {
+  const recognition = activeRouteRecognition;
+  activeRouteRecognition = null;
+  recognition?.abort();
 }
 let selectedAppLanguage = '한국어';
 let selectedUserLanguage = '한국어';
@@ -217,8 +223,8 @@ function routeScreen() {
     <section class="page-body route-entry-body">
       <form class="route-form" id="route-form"><div class="large-input"><label class="sr-only" for="route-destination">목적지</label>
         <input id="route-destination" name="destination-query" type="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="어디로 가세요?" inputmode="search">
-        ${routeEntryMode === 'dual' ? `<button class="route-voice-button" type="button" aria-label="음성으로 목적지 말하기" disabled>${icon('mic', 27)}</button>
-        <button class="route-text-button" type="button" data-action="route-text" aria-label="문자로 목적지 입력">${icon('message', 27)}</button>` : `<button class="route-submit" type="submit" aria-label="목적지 검색" hidden>${icon('arrow', 25)}</button>`}
+        <button class="route-voice-button" type="button" aria-label="음성으로 목적지 말하기" aria-pressed="false">${icon('mic', 27)}</button>
+        ${routeEntryMode === 'dual' ? `<button class="route-text-button" type="button" data-action="route-text" aria-label="문자로 목적지 입력">${icon('message', 27)}</button>` : `<button class="route-submit" type="submit" aria-label="목적지 검색" hidden>${icon('arrow', 25)}</button>`}
       </div><p class="route-search-feedback" role="status" aria-live="polite"></p></form>
     </section>
     ${bottomNav()}
@@ -1478,6 +1484,7 @@ function legalScreen(title, sections) {
 }
 
 function render({ preserveSearch = false } = {}) {
+  stopRouteRecognition();
   finishMapEntry();
   const origin = preserveSearch ? root.querySelector('.app-shell')?.cloneNode(true) : null;
   const screens = {
@@ -1650,6 +1657,86 @@ if (currentPage === 'user-language-list' && !supportedUserLanguagesLoaded && !su
     if (routeInput?.value.trim()) routeInput.form.requestSubmit();
     else routeInput?.focus();
   });
+  const routeVoiceButton = document.querySelector('.route-voice-button');
+  routeVoiceButton?.addEventListener('click', () => {
+    if (routeInput?.readOnly) return;
+    const feedback = document.querySelector('.route-search-feedback');
+    if (activeRouteRecognition) {
+      stopRouteRecognition();
+      routeVoiceButton.setAttribute('aria-pressed', 'false');
+      if (feedback) {
+        feedback.textContent = '음성 입력을 취소했습니다.';
+        feedback.classList.remove('is-error');
+      }
+      return;
+    }
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      if (feedback) {
+        feedback.textContent = '이 브라우저에서는 음성 인식을 지원하지 않습니다. 문자로 입력해 주세요.';
+        feedback.classList.add('is-error');
+      }
+      return;
+    }
+    const recognition = new SpeechRecognition();
+    activeRouteRecognition = recognition;
+    recognition.lang = ({ ko: 'ko-KR', en: 'en-US', ja: 'ja-JP', es: 'es-ES', fr: 'fr-FR', de: 'de-DE' })[selectedUserLanguageCode]
+      || selectedUserLanguageCode || 'ko-KR';
+    recognition.interimResults = false;
+    recognition.continuous = false;
+    recognition.maxAlternatives = 1;
+    recognition.onstart = () => {
+      if (activeRouteRecognition !== recognition || !routeInput?.isConnected) return;
+      routeVoiceButton.setAttribute('aria-pressed', 'true');
+      if (feedback) {
+        feedback.textContent = '목적지를 말씀해 주세요.';
+        feedback.classList.remove('is-error');
+      }
+    };
+    recognition.onresult = (event) => {
+      if (activeRouteRecognition !== recognition || currentPage !== 'route' || !routeInput?.isConnected) return;
+      const transcript = event.results[0]?.[0]?.transcript?.trim();
+      if (!transcript) return;
+      activeRouteRecognition = null;
+      recognition.stop();
+      routeVoiceButton.setAttribute('aria-pressed', 'false');
+      routeInput.value = transcript;
+      routeInput.dispatchEvent(new Event('input', { bubbles: true }));
+      routeInput.form.requestSubmit();
+    };
+    recognition.onerror = (event) => {
+      if (activeRouteRecognition !== recognition || event.error === 'aborted') return;
+      activeRouteRecognition = null;
+      routeVoiceButton.setAttribute('aria-pressed', 'false');
+      if (feedback) {
+        feedback.textContent = event.error === 'not-allowed' || event.error === 'service-not-allowed'
+          ? '마이크 권한을 허용한 뒤 다시 말씀해 주세요.'
+          : event.error === 'language-not-supported'
+            ? '이 브라우저에서 선택한 언어의 음성 인식을 지원하지 않습니다.'
+            : '음성을 듣지 못했습니다. 마이크를 다시 눌러주세요.';
+        feedback.classList.add('is-error');
+      }
+    };
+    recognition.onend = () => {
+      if (activeRouteRecognition !== recognition) return;
+      activeRouteRecognition = null;
+      routeVoiceButton.setAttribute('aria-pressed', 'false');
+      if (feedback) {
+        feedback.textContent = '음성이 들리지 않았습니다. 마이크를 다시 눌러주세요.';
+        feedback.classList.add('is-error');
+      }
+    };
+    try {
+      recognition.start();
+    } catch {
+      activeRouteRecognition = null;
+      routeVoiceButton.setAttribute('aria-pressed', 'false');
+      if (feedback) {
+        feedback.textContent = '음성 입력을 시작하지 못했습니다. 마이크 설정을 확인해 주세요.';
+        feedback.classList.add('is-error');
+      }
+    }
+  });
 
   document.querySelector('#home-search')?.addEventListener('click', () => {
     routeEntryMode = 'simple';
@@ -1669,6 +1756,7 @@ if (currentPage === 'user-language-list' && !supportedUserLanguagesLoaded && !su
   });
   document.querySelector('#route-form')?.addEventListener('submit', async (event) => {
     event.preventDefault();
+    stopRouteRecognition();
     const query = routeInput?.value.trim();
     if (!query || routeInput.readOnly) return;
     const feedback = document.querySelector('.route-search-feedback');

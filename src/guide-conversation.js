@@ -178,7 +178,7 @@ export function createGuideConversation(section, { getContext }) {
       .filter(Boolean).join(' ');
   };
 
-  async function submit(message) {
+  async function submit(message, { speakReply = false } = {}) {
     const text = message.trim();
     if (!text || busy || stopped || selecting) return;
     busy = true;
@@ -194,6 +194,7 @@ export function createGuideConversation(section, { getContext }) {
     }
     renderMessages(true);
     setStatus(requestMode === 'ai' ? '답변을 확인하고 있습니다.' : '원문 언어를 확인하고 번역 중입니다.');
+    let speechUnavailable = false;
     try {
       if (requestMode === 'ai') {
         const category = classifyQuestion(text);
@@ -212,6 +213,20 @@ export function createGuideConversation(section, { getContext }) {
           messages.ai.push({ id: makeId(), role: 'assistant', text: plainAssistantReply(answer) });
           saveAiHistory();
         }
+        if (speakReply && !stopped && mode === 'ai') {
+          if (window.speechSynthesis && window.SpeechSynthesisUtterance) {
+            try {
+              const utterance = new SpeechSynthesisUtterance(plainAssistantReply(answer));
+              utterance.lang = /[가-힣]/.test(utterance.text) ? 'ko-KR' : 'en-US';
+              window.speechSynthesis.cancel();
+              window.speechSynthesis.speak(utterance);
+            } catch {
+              speechUnavailable = true;
+            }
+          } else {
+            speechUnavailable = true;
+          }
+        }
       } else {
         const result = await jsonPost('/api/translation/translate', {
           text, userLanguage: 'ko', counterpartLanguage
@@ -226,7 +241,8 @@ export function createGuideConversation(section, { getContext }) {
         });
       }
       if (!stopped) renderMessages(true);
-      if (!stopped) setStatus('');
+      if (!stopped) setStatus(speechUnavailable
+        ? '이 브라우저에서 답변 음성 재생을 사용할 수 없습니다. 답변은 화면에서 확인해 주세요.' : '');
     } catch (error) {
       if (!stopped && error.name !== 'AbortError') setStatus(error.message || '요청에 실패했습니다.');
     } finally {
@@ -265,7 +281,7 @@ export function createGuideConversation(section, { getContext }) {
             binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
           }
           const result = await jsonPost('/api/assistant/reply', { task: 'transcribe', audio: btoa(binary) });
-          if (!stopped && result.text) await submit(result.text);
+          if (!stopped && result.text) await submit(result.text, { speakReply: mode === 'ai' });
           else if (!stopped) setStatus('음성을 확인하지 못했습니다. 다시 말해 주세요.');
         } catch (error) {
           if (!stopped) setStatus(error.message || '음성 인식에 실패했습니다.');
