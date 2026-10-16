@@ -1,6 +1,6 @@
 import { createPanoramaProbe } from './panorama-probe.js';
 import { createWalkMiniMap } from './walk-mini-map.js?v=20261016-route-arrow-sync-1';
-import { bindBoardingPanoramaGestures, nearestPanoramaLink } from './boarding-panorama-gestures.js';
+import { bindBoardingPanoramaGestures, nearestPanoramaLink } from './boarding-panorama-gestures.js?v=20261016-boarding-tap-2';
 
 const CAMERA_TO_ROUTE_LIMIT_METERS = 15;
 const CAMERA_TO_REQUEST_LIMIT_METERS = 25;
@@ -281,7 +281,7 @@ export function createWalkPanorama(maps, section) {
   let preparing = false;
   let preparationDone = true;
   let prepareAhead = () => {};
-  let boardingBaseZoom = 0;
+  let boardingBaseFov = 95;
   let dispatchingBoardingMove = false;
   const nativeArrowStyle = document.createElement('style');
   section.appendChild(nativeArrowStyle);
@@ -665,7 +665,7 @@ export function createWalkPanorama(maps, section) {
     section.hidden = true;
     section.classList.remove('is-loading', 'is-switching', 'is-preloading', 'is-boarding');
     boardingGestures.reset();
-    boardingBaseZoom = 0;
+    boardingBaseFov = 95;
     delete section.dataset.entryReady;
     delete section.dataset.boardingMode;
     for (const key of ['panoramaId', 'cameraLat', 'cameraLng', 'routeOffsetMeters', 'progressMeters', 'headingDegrees', 'firstFrameMs']) {
@@ -712,7 +712,7 @@ export function createWalkPanorama(maps, section) {
       const pan = Number.isFinite(lookingAt?.pan)
         ? lookingAt.pan : headingDegrees(found.camera, point);
       panorama.setPov({ pan, tilt: 0, fov: 95 });
-      boardingBaseZoom = panorama.getZoom();
+      boardingBaseFov = panorama.getPov().fov;
       const safeTitle = String(title || '탑승 위치').replace(/[<>&"']/g, '').slice(0, 70);
       destinationMarker = new maps.Marker({
         position: new maps.LatLng(point.lat, point.lng), title: safeTitle,
@@ -987,7 +987,7 @@ export function createWalkPanorama(maps, section) {
     isActive: () => section.classList.contains('is-boarding') && panorama
       && section.dataset.entryReady === 'true' && !section.classList.contains('is-preloading'),
     getPanorama: () => panorama,
-    getBaseZoom: () => boardingBaseZoom,
+    getBaseFov: () => boardingBaseFov,
     allowNativeClick: () => dispatchingBoardingMove,
     onSingleTap: (tap) => {
       const links = [...canvas.querySelectorAll('img.arrow_image')].map((image) => ({

@@ -19,7 +19,7 @@ export function nearestPanoramaLink(tap, bounds, links) {
 }
 
 export function bindBoardingPanoramaGestures({
-  canvas, isActive, getPanorama, getBaseZoom, onSingleTap, allowNativeClick
+  canvas, isActive, getPanorama, getBaseFov, onSingleTap, allowNativeClick
 }) {
   const pointers = new Map();
   let lastTap = null;
@@ -66,8 +66,9 @@ export function bindBoardingPanoramaGestures({
     if (lastTap && tap.time - lastTap.time < DOUBLE_TAP_MS
       && Math.hypot(tap.x - lastTap.x, tap.y - lastTap.y) < 30) {
       cancelTap();
-      const baseZoom = getBaseZoom();
-      viewer.setZoom(viewer.getZoom() > baseZoom + 0.01 ? baseZoom : baseZoom + 1);
+      const baseFov = getBaseFov();
+      const pov = viewer.getPov();
+      viewer.setPov({ ...pov, fov: pov.fov < baseFov - 0.01 ? baseFov : Math.max(20, baseFov * 0.6) });
       return;
     }
     cancelTap();
