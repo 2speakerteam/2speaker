@@ -932,7 +932,7 @@ function initializeNaverRouteMap() {
       })) map.setZoom(Math.min(map.getZoom() + 1, 17));
     };
     const paintWalkRoute = () => {
-      if (!walkRouteReady) return;
+      if (!walkRequested || !walkRouteReady) return;
       if (!routeLines.length) {
         routeLines = walkRouteReady.paths.flatMap((path) => [
           new maps.Polyline({
