@@ -1,4 +1,5 @@
 import { createPanoramaProbe } from './panorama-probe.js?v=20261017-panorama-isolation-2';
+import { createWalkPanoramaBuffer } from './walk-panorama-buffer.js?v=20261017-walk-preview-1';
 import { createWalkMiniMap } from './walk-mini-map.js?v=20261016-route-arrow-sync-1';
 import { bindBoardingPanoramaGestures } from './boarding-panorama-gestures.js?v=20261017-boarding-direction-tap-1';
 import { createBoardingPanoramaTravel } from './boarding-panorama-travel.js?v=20261017-boarding-direction-tap-1';
@@ -252,6 +253,7 @@ export function createWalkPanorama(maps, section) {
   const miniMap = createWalkMiniMap(maps, section);
 
   let panorama = null;
+  let walkBuffer = null;
   let listeners = [];
   let pending = null;
   let frames = [];
@@ -302,7 +304,8 @@ export function createWalkPanorama(maps, section) {
     const width = view.clientWidth;
     const height = view.clientHeight;
     if (width <= 0 || height <= 0) return;
-    panorama.setSize(new maps.Size(width, height));
+    if (walkBuffer) walkBuffer.resize(width, height);
+    else panorama.setSize(new maps.Size(width, height));
     section.dataset.sdkWidth = String(width);
     section.dataset.sdkHeight = String(height);
     scheduleMarkerRefresh();
@@ -323,7 +326,7 @@ export function createWalkPanorama(maps, section) {
     const cameraBearing = panorama.getPov()?.pan;
     if (!Number.isFinite(cameraBearing)) return;
     const targetAngle = signedAngle(cameraBearing, nativeArrowTarget);
-    const arrows = [...canvas.querySelectorAll('img.arrow_image')];
+    const arrows = [...panorama.getElement().querySelectorAll('img.arrow_image')];
     const bounds = canvas.getBoundingClientRect();
     const candidates = arrows.map((image) => ({ image, angle: nativeArrowAngle(image) }))
       .filter(({ image, angle }) => {
@@ -524,7 +527,7 @@ export function createWalkPanorama(maps, section) {
     const current = frames[selected];
     const upcoming = frames[selected + 1];
     const gap = upcoming.progress - current.progress;
-    const previewDelay = Math.max(500, Math.min(1200, Math.round(gap * 100)));
+    const previewDelay = Math.max(180, Math.min(1600, Math.round(gap * 52.5)));
     const nearJunction = routeJunctions.some((progress) =>
       upcoming.progress >= progress - 18 && current.progress <= progress + 8);
     timer = window.setTimeout(() => { timer = null; void showFrame(selected + 1); },
@@ -583,8 +586,24 @@ export function createWalkPanorama(maps, section) {
     clearNativeArrow();
     updateControls();
     const currentCoord = panorama.getLocation()?.coord;
-    let found = panorama.getPanoId() === frame.panoId && currentCoord
-      ? { status: 'OK', panoId: frame.panoId, camera: { lat: currentCoord.lat(), lng: currentCoord.lng() } }
+    if (walkBuffer && selected >= 0 && panorama.getPanoId() !== frame.panoId) {
+      const preparedViewer = await walkBuffer.show(frame);
+      if (run !== generation) return;
+      if (!preparedViewer) {
+        busy = false;
+        switchingFrame = null;
+        pause();
+        showNativeArrow(frames[selected]);
+        arrival.textContent = '다음 로드뷰 장면을 불러오지 못했습니다. 다음을 눌러 다시 시도해 주세요.';
+        return;
+      }
+      listeners.forEach(listener => maps.Event.removeListener(listener));
+      panorama = preparedViewer;
+      attachListeners();
+    }
+    const displayedCoord = panorama.getLocation()?.coord || currentCoord;
+    let found = panorama.getPanoId() === frame.panoId && displayedCoord
+      ? { status: 'OK', panoId: frame.panoId, camera: { lat: displayedCoord.lat(), lng: displayedCoord.lng() } }
       : await query(() => panorama.setPanoIdWithPov(frame.panoId, frame.pov));
     if (run !== generation) return;
     if (!matchesFrame(found, frame)) {
@@ -652,6 +671,7 @@ export function createWalkPanorama(maps, section) {
     section.classList.remove('is-switching');
     updateControls();
     scheduleNext();
+    walkBuffer?.prefetch(frames[selected + 1]);
     void prepareAhead();
   }
 
@@ -681,8 +701,12 @@ export function createWalkPanorama(maps, section) {
     destinationMarker = null;
     startStationMarker?.setMap(null);
     startStationMarker = null;
-    panorama?.setVisible(false);
-    panorama?.destroy?.();
+    if (walkBuffer) walkBuffer.stop();
+    else {
+      panorama?.setVisible(false);
+      panorama?.destroy?.();
+    }
+    walkBuffer = null;
     panorama = null;
     canvas.replaceChildren();
     canvas.removeAttribute('style');
@@ -912,6 +936,7 @@ export function createWalkPanorama(maps, section) {
           if (run !== generation) return;
           if (frame) {
             frames.push(frame);
+            if (!busy && frames.length === selected + 2) walkBuffer?.prefetch(frame);
             updateControls();
             if (playing && !busy && timer === null) scheduleNext();
           }
@@ -958,6 +983,7 @@ export function createWalkPanorama(maps, section) {
     });
     section.classList.remove('is-loading');
     setStatus('경로보기');
+    walkBuffer = createWalkPanoramaBuffer(maps, canvas, view, panorama);
     await showFrame(0);
     if (run !== generation) return false;
     // Let the SDK paint the first scene before the page reveals this viewer.
