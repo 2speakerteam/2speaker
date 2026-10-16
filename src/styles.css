@@ -116,6 +116,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .guide-content[data-guide-view="route"] .route-map-scene { height: clamp(254px, calc(33vh + 54px), 464px); }
 .route-map-scene::after { display: none; }
 .route-map-canvas { position: absolute; z-index: 0; inset: 0; width: 100%; height: 100%; background: #12384d; }
+.route-map-canvas.is-awaiting-location { visibility: hidden; }
 .guide-map-settings { position: absolute; z-index: 3; top: 9px; right: 9px; border: 1px solid rgba(73, 192, 222, .65); border-radius: 12px; background: rgba(1, 33, 53, .88); }
 .guide-open-roadview { display: block; min-height: 38px; margin: 8px auto 0; padding: 0 16px; border: 1px solid #32dce9; border-radius: 12px; background: rgba(1, 39, 61, .92); color: #f0fdff; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
 .guide-open-roadview[hidden] { display: none; }
@@ -249,6 +250,10 @@ body:has(.guide-screen .guide-content[data-guide-view="route"]) { height: auto; 
 .guide-content[data-guide-view="route"][data-chat-expanded="false"] .route-map-scene { min-height: 260px; height: auto; flex: 1 1 auto; }
 .guide-content[data-guide-view="route"][data-chat-expanded="false"] .guide-dialogue:empty { display: none; }
 .guide-content[data-guide-view="route"][data-chat-expanded="false"] .guide-conversation { margin-bottom: 0; }
+.app-shell:has(.guide-content[data-guide-view="route"][data-chat-expanded="true"]),
+.guide-screen:has(.guide-content[data-guide-view="route"][data-chat-expanded="true"]) { height: max-content; min-height: 0; }
+.guide-screen:has(.guide-content[data-guide-view="route"][data-chat-expanded="true"]) { grid-template-rows: max-content auto 0; }
+.guide-content[data-guide-view="route"][data-chat-expanded="true"] { min-height: 0; padding-bottom: max(8px, env(safe-area-inset-bottom)); }
 .walk-panorama-chat-actions { position: absolute; z-index: 22; right: 12px; bottom: 12px; display: grid; gap: 10px; }
 .walk-panorama-chat-button { width: 66px; height: 66px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 1px solid #22d9ef; border-radius: 50%; background: rgba(2, 51, 76, .94); color: #e9fbff; box-shadow: 0 3px 14px rgba(0, 12, 25, .48); cursor: pointer; }
 .walk-panorama-chat-button svg { width: 27px; height: 27px; }

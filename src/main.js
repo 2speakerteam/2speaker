@@ -225,7 +225,7 @@ function guideScreen() {
     <div class="guide-content" data-guide-view="${guideView}" data-chat-expanded="false">
     <section class="route-visual" aria-label="네이버 지도">
       <div class="route-scene route-map-scene">
-        <div id="route-map" class="route-map-canvas" role="application" aria-label="확대·축소 및 이동할 수 있는 지도"></div>
+        <div id="route-map" class="route-map-canvas is-awaiting-location" role="application" aria-label="확대·축소 및 이동할 수 있는 지도"></div>
         <p id="route-map-status" class="route-map-status" role="status" aria-live="polite">네이버 지도를 불러오는 중입니다.</p>
         <button type="button" class="guide-map-settings guide-control" data-page="language" aria-label="설정">${icon('settings', 30)}</button>
       </div>
@@ -343,6 +343,25 @@ function initializeNaverRouteMap() {
   const statusElement = document.querySelector('#route-map-status');
   const destinationChoicesElement = document.querySelector('.guide-dialogue');
   if (!mapElement || !statusElement) return;
+  const placeRequests = new Map();
+  const fetchNaverPlaces = (query) => {
+    if (!placeRequests.has(query)) {
+      const request = fetch('/api/map/place', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query })
+      }).then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || '네이버 장소 검색에 연결하지 못했습니다.');
+        return Array.isArray(payload.places) ? payload.places : [];
+      });
+      request.catch(() => {});
+      placeRequests.set(query, request);
+    }
+    return placeRequests.get(query);
+  };
+  if (routeStartQuery) void fetchNaverPlaces(routeStartQuery);
+  if (routeDestinationQuery) void fetchNaverPlaces(routeDestinationQuery);
   let subwayRequested = document.querySelector('.transport-option[data-mode="subway"]')?.getAttribute('aria-pressed') === 'true';
   let busRequested = document.querySelector('.transport-option[data-mode="bus"]')?.getAttribute('aria-pressed') === 'true';
   let walkRequested = document.querySelector('.transport-option[data-mode="walk"]')?.getAttribute('aria-pressed') === 'true';
@@ -419,6 +438,12 @@ function initializeNaverRouteMap() {
     let walkRouteReady = null;
     let walkPanoramaPreparing = false;
     let walkPreparationId = 0;
+    let initialMapRevealScheduled = false;
+    const revealMap = () => {
+      if (session === routeMapSession && currentPage === 'guide' && mapElement.isConnected) {
+        mapElement.classList.remove('is-awaiting-location');
+      }
+    };
 
     const shortPlaceName = (name) => String(name || '').replace(/\s*\([^)]*\)\s*$/, '').slice(0, 12);
     const updateStatus = () => {
@@ -498,6 +523,12 @@ function initializeNaverRouteMap() {
       } else if (currentLocation) {
         map.setCenter(currentLocation);
         map.setZoom(15);
+      }
+      if (destinationLocation && !initialMapRevealScheduled) {
+        initialMapRevealScheduled = true;
+        maps.Event.once(map, 'tilesloaded', revealMap);
+        maps.Event.once(map, 'idle', () => window.requestAnimationFrame(revealMap));
+        window.setTimeout(revealMap, 900);
       }
     };
     const removeRouteLines = () => {
@@ -1093,16 +1124,6 @@ function initializeNaverRouteMap() {
     };
     const markSelectedDestination = (place) => {
       markDestination(place.lat, place.lng, place.title || routeDestinationQuery);
-    };
-    const fetchNaverPlaces = async (query) => {
-      const response = await fetch('/api/map/place', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query })
-      });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error || '네이버 장소 검색에 연결하지 못했습니다.');
-      return Array.isArray(payload.places) ? payload.places : [];
     };
     const searchNaverPlace = (query, role, onSelect) => {
       if (role === '목적지') {
