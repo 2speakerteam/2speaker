@@ -1,5 +1,5 @@
 import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261016-fill-view';
-import { createGuideConversation } from './guide-conversation.js?v=20261016-chat-collapse';
+import { createGuideConversation } from './guide-conversation.js?v=20261016-chat-growth';
 
 const root = document.querySelector('#root');
 let currentPage = 'home';

@@ -224,6 +224,11 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .guide-screen:has(.guide-chat-delete-actions:not([hidden])) { grid-template-rows: minmax(0, 1fr) 62px 0; }
 .guide-screen:has(.guide-content[data-guide-view="panorama"]) { padding: 0; }
 .guide-screen .bottom-nav { display: none; }
+body:has(.guide-screen .guide-content[data-guide-view="route"]) { height: auto; min-height: 100dvh; overflow-x: hidden; overflow-y: auto; }
+.app-shell:has(.guide-screen .guide-content[data-guide-view="route"]) { height: auto; min-height: 100dvh; }
+.guide-screen:has(.guide-content[data-guide-view="route"]) { height: auto; min-height: 100dvh; grid-template-rows: auto auto 0; overflow: visible; }
+.guide-screen:has(.guide-content[data-guide-view="route"]):has(.guide-chat-delete-actions:not([hidden])) { grid-template-rows: auto 62px 0; }
+.guide-content[data-guide-view="route"] { height: auto; overflow: visible; overscroll-behavior: auto; padding-bottom: max(16px, env(safe-area-inset-bottom)); }
 .walk-panorama-chat-actions { position: absolute; z-index: 22; right: 12px; bottom: 12px; display: grid; gap: 10px; }
 .walk-panorama-chat-button { width: 66px; height: 66px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 1px solid #22d9ef; border-radius: 50%; background: rgba(2, 51, 76, .94); color: #e9fbff; box-shadow: 0 3px 14px rgba(0, 12, 25, .48); cursor: pointer; }
 .walk-panorama-chat-button svg { width: 27px; height: 27px; }

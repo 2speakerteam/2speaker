@@ -149,8 +149,9 @@ export function createGuideConversation(section, { getContext }) {
         : bubble;
     }).join('');
     if (follow) {
-      const scroller = section.closest('.guide-content');
-      if (scroller) scroller.scrollTop = scroller.scrollHeight;
+      window.requestAnimationFrame(() => {
+        window.scrollTo({ top: document.documentElement.scrollHeight, behavior: 'instant' });
+      });
     }
   };
   const setStatus = (message) => {
