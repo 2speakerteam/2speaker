@@ -243,6 +243,7 @@ function guideScreen() {
             <div class="walk-mini-map-canvas" aria-hidden="true"></div>
           </div>
           <div class="walk-panorama-turn" role="status" aria-live="polite" hidden></div>
+          <p class="walk-panorama-arrival" role="status" aria-live="polite"></p>
           <div class="walk-panorama-chat-actions" role="group" aria-label="AI 대화 및 통역">
             <button type="button" class="walk-panorama-chat-button" data-panorama-chat="ai" aria-label="AI 대화 열기" aria-expanded="false">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11.5a8 8 0 0 1-8.5 8l-5 2 .9-4A8 8 0 1 1 20 11.5Z"/><path d="M8 11.5h.01M12 11.5h.01M16 11.5h.01"/></svg><span>AI</span>
@@ -257,7 +258,6 @@ function guideScreen() {
           <button type="button" data-panorama-action="playback">재생</button>
           <button type="button" data-panorama-action="next">다음</button>
         </div>
-        <p class="walk-panorama-arrival" role="status" aria-live="polite"></p>
       </section>
     </section>
     <section class="transport-options" role="group" aria-label="이동 수단">
@@ -1428,15 +1428,8 @@ function render() {
     document.querySelectorAll('[data-panorama-chat]').forEach((button) => {
       button.addEventListener('click', () => {
         const mode = button.dataset.panoramaChat;
+        setGuideView('route');
         document.querySelector(`.guide-chat-tabs [data-chat-mode="${mode}"]`)?.click();
-        const content = document.querySelector('.guide-content');
-        const isOpen = content?.dataset.chatExpanded !== 'false';
-        const selectedMode = document.querySelector('.guide-chat-tabs [aria-pressed="true"]')?.dataset.chatMode;
-        document.querySelectorAll('[data-panorama-chat]').forEach((action) => {
-          const active = isOpen && action.dataset.panoramaChat === selectedMode;
-          action.setAttribute('aria-expanded', String(active));
-          action.setAttribute('aria-pressed', String(active));
-        });
       });
     });
   }
