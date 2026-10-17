@@ -84,7 +84,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
       <label><span class="sr-only">상대방 언어</span><select data-guide-language="other" aria-label="상대방 언어"><option value="en">🇺🇸 영어</option><option value="ko">🇰🇷 한국어</option></select></label>
     </div>
     <div class="roadview-guide-body">
-      <div class="roadview-guide-voice"><button type="button" data-guide-action="mic" aria-label="음성 질문 시작" aria-pressed="false">${microphone}</button><span class="roadview-guide-state" role="status"></span></div>
+      <div class="roadview-guide-voice"><button type="button" data-guide-action="mic" aria-label="음성 질문 시작" aria-pressed="false">${microphone}</button><span class="roadview-guide-state" role="status">말하기</span></div>
       <div class="roadview-guide-messages" role="log" aria-live="polite" aria-label="사용자와 AI 대화 기록"></div>
     </div>
     <form class="roadview-guide-form" aria-label="거리뷰 대화 입력"><input type="text" maxlength="2000" autocomplete="off" placeholder="필요하면 문자로 입력하세요" aria-label="거리뷰 질문"><button type="submit" aria-label="거리뷰 질문 보내기">➤</button><button type="button" data-guide-action="trash" aria-label="대화 기록 전체 삭제">${trashIcon}</button></form>
@@ -194,8 +194,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
   };
   const updateVoice = () => {
     const recording = recorder?.state === 'recording';
-    state.textContent = mode === 'ai' ? (recording ? '듣는 중' : '')
-      : recording ? '듣는 중' : busy ? '확인 중' : speaking ? '답변 중' : '말하기';
+    state.textContent = recording ? '듣는 중' : busy ? '확인 중' : speaking ? '답변 중' : '말하기';
     mic.setAttribute('aria-pressed', String(recording));
     mic.setAttribute('aria-label', recording ? '음성 질문 전송' : '음성 질문 시작');
     auto.setAttribute('aria-pressed', String(autoListen));
