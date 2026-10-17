@@ -123,7 +123,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
   const render = (follow = true) => {
     const entries = historyMemory[mode];
     log.innerHTML = entries.map(t => `<article class="roadview-guide-message ${t.role}">
-      <span>${t.role === 'user' ? '내가 말한 내용' : mode === 'ai' ? 'AI 답변' : '통역'}</span>
+      <span>${t.role === 'user' ? '내가 말한 내용' : mode === 'ai' ? 'AI 답변' : '상대방 응답'}</span>
       <p>${esc(t.text)}</p>${t.translation ? `<p class="roadview-guide-translation">${esc(t.translation)}</p>` : ''}
       ${t.sources?.length ? `<div class="roadview-guide-sources">${t.sources.map(s => `<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title)}</a>`).join('')}</div>` : ''}
     </article>`).join('') || '<p class="roadview-guide-empty">말씀하신 내용과 답변이 여기에 남습니다.</p>';
@@ -167,7 +167,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     updateVoice();
   };
   const speak = (text, listenAfter = false) => {
-    if (!opened || stopped) return;
+    if (!opened || stopped || !autoListen) return;
     if (!window.speechSynthesis || !window.SpeechSynthesisUtterance) {
       setStatus('음성 재생을 지원하지 않는 브라우저입니다. 아래 글로 답변을 확인해 주세요.');
       if (listenAfter && autoListen) void startRecording();
@@ -240,6 +240,9 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
         const userEntry = historyMemory.translation.at(-1);
         if (userEntry?.role === 'user' && userEntry.text === text) {
           userEntry.translation = result.text;
+          if (result.sourceLanguage && result.sourceLanguage.split('-')[0] !== userLanguage.value.split('-')[0]) {
+            userEntry.role = 'assistant';
+          }
           saved = saveHistory();
         }
         answer = { text: result.text };
