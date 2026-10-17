@@ -50,29 +50,3 @@
 .roadview-guide-select-row { flex: 0 0 auto; min-width: 0; width: 100%; display: grid; grid-template-columns: 28px minmax(0, 1fr); align-items: start; gap: 8px; }
 .roadview-guide-select-row .roadview-guide-message { max-width: 100%; }
 .roadview-guide-select-row.is-selected .roadview-guide-message { border-color: #21d9f1; }
-
-.walk-panorama .walk-panorama-controls.roadview-guide-controls { position: absolute; z-index: 9; top: 8px; right: 8px; display: grid; grid-template-columns: repeat(3, 40px); align-items: center; gap: 0; margin: 0; }
-.walk-panorama .roadview-guide-controls button { position: relative; width: 32px; height: 32px; min-height: 32px; justify-self: center; display: grid; place-items: center; padding: 0; border-radius: 10px; border-color: #527e94; background: #073249; color: #d9edf5; font-size: 0; }
-.walk-panorama .roadview-guide-controls button::after { content: ''; position: absolute; inset: -4px; border-radius: 10px; }
-.walk-panorama .roadview-guide-controls button::before { content: ''; display: block; box-sizing: border-box; }
-.walk-panorama .roadview-guide-controls [data-panorama-action="previous"]::before, .walk-panorama .roadview-guide-controls [data-panorama-action="next"]::before { width: 8px; height: 8px; border-left: 1.8px solid currentColor; border-bottom: 1.8px solid currentColor; transform: rotate(45deg); }
-.walk-panorama .roadview-guide-controls [data-panorama-action="next"]::before { transform: rotate(225deg); }
-.walk-panorama .roadview-guide-controls [data-panorama-action="playback"]::before { width: 0; height: 0; margin-left: 2px; border-top: 6px solid transparent; border-bottom: 6px solid transparent; border-left: 9px solid currentColor; }
-.walk-panorama .roadview-guide-controls [data-panorama-action="playback"][aria-label="로드뷰 일시정지"]::before { width: 10px; height: 12px; margin: 0; border: 0; background: linear-gradient(to right, currentColor 0 35%, transparent 35% 65%, currentColor 65%); }
-.walk-panorama .roadview-guide-heading > .roadview-guide-controls { position: static; flex: 0 0 auto; margin-left: auto; }
-.walk-panorama .roadview-guide-panel[data-mode="ai"] { flex-basis: clamp(240px, 48dvh, 480px); gap: 8px; padding: 10px 12px; }
-.roadview-guide-panel[data-mode="ai"] .roadview-guide-heading { min-height: 42px; gap: 6px; }
-.roadview-guide-panel[data-mode="ai"] .roadview-guide-heading strong { flex: 0 1 auto; min-width: 0; font-size: 14px; }
-.roadview-guide-panel[data-mode="ai"] .roadview-guide-heading .roadview-guide-voice { flex: 0 0 40px; position: relative; align-self: center; gap: 0; }
-.roadview-guide-panel[data-mode="ai"] .roadview-guide-voice button { width: 32px; height: 32px; border-width: 1px; border-radius: 10px; }
-.roadview-guide-panel[data-mode="ai"] .roadview-guide-voice svg { width: 20px; height: 20px; }
-.roadview-guide-panel[data-mode="ai"] .roadview-guide-state { position: absolute; top: 100%; font-size: 9px; white-space: nowrap; }
-.roadview-guide-panel[data-mode="ai"] .roadview-guide-body { display: flex; min-width: 0; }
-.roadview-guide-panel[data-mode="ai"] .roadview-guide-messages { flex: 1; gap: 10px; padding: 2px 0; }
-.roadview-guide-panel[data-mode="ai"] .roadview-guide-message { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; width: auto; max-width: 88%; padding: 0; border: 0; border-radius: 0; background: transparent; }
-.roadview-guide-panel[data-mode="ai"] .roadview-guide-message.assistant { align-items: flex-end; }
-.roadview-guide-panel[data-mode="ai"] .roadview-guide-message > span { flex: 0 0 auto; width: auto; height: auto; margin: 0 2px; color: #a6dae9; font-size: 11px; }
-.roadview-guide-panel[data-mode="ai"] .roadview-guide-message-content { box-sizing: border-box; min-width: 0; max-width: 100%; margin-top: 0; padding: 9px 11px; border: 1px solid rgba(74, 190, 231, .4); border-radius: 15px; background: #07528c; overflow-wrap: anywhere; }
-.roadview-guide-panel[data-mode="ai"] .roadview-guide-message.assistant .roadview-guide-message-content { background: #173c56; }
-.roadview-guide-panel[data-mode="ai"] .roadview-guide-select-row .roadview-guide-message.assistant { justify-self: end; }
-.roadview-guide-panel[data-mode="ai"] .roadview-guide-select-row.is-selected .roadview-guide-message-content { border-color: #21d9f1; }
