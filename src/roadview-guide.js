@@ -240,7 +240,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     try {
       if (text === GREETING || text === CHECKING) {
         const phrase = text === GREETING ? 'greeting' : 'checking';
-        voiceAudio.src = `/api/assistant/reply?task=roadview-phrase&phrase=${phrase}&v=announcer-female-1`;
+        voiceAudio.src = `/api/assistant/reply?task=roadview-phrase&phrase=${phrase}&v=natural-female-1`;
         // Run play inside the original button tap, before any await. The fixed
         // greeting is cached audio, not a model-generated reply.
         await voiceAudio.play();
