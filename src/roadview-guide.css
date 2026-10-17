@@ -86,12 +86,3 @@
 .roadview-guide-panel[data-mode="ai"] .roadview-guide-form button { width: 34px; height: 34px; flex: 0 0 34px; padding: 0; border: 0; border-radius: 10px; background: #0a6184; color: #e9f8ff; }
 .roadview-guide-panel[data-mode="ai"] .roadview-guide-form .roadview-guide-voice button[aria-pressed="true"] { background: #13a4bb; box-shadow: 0 0 0 2px rgba(35, 214, 255, .45); }
 .roadview-guide-panel[data-mode="ai"] .roadview-guide-form .roadview-guide-state { top: auto; bottom: calc(100% + 3px); left: 50%; transform: translateX(-50%); font-size: 10px; }
-
-.guide-content[data-guide-view="panorama"][data-roadview-below="true"] { display: block; overflow-y: auto; }
-.guide-content[data-guide-view="panorama"][data-roadview-below="true"] .route-visual { display: block; }
-.guide-content[data-guide-view="panorama"][data-roadview-below="true"] .walk-panorama:not([hidden]) { flex: 0 0 auto; }
-.guide-content[data-guide-view="panorama"][data-roadview-below="true"] .walk-panorama-view { flex: 0 0 var(--roadview-full-height, 100dvh); height: var(--roadview-full-height, 100dvh); }
-.guide-content[data-guide-view="panorama"][data-roadview-below="true"] .roadview-guide-panel[data-mode="ai"] { flex: 0 0 auto; min-height: calc(var(--roadview-full-height, 100dvh) * .35); overflow: visible; }
-.guide-content[data-guide-view="panorama"][data-roadview-below="true"] .roadview-guide-body { flex: 1 0 auto; }
-.guide-content[data-guide-view="panorama"][data-roadview-below="true"] .roadview-guide-messages { flex: 1 0 auto; height: auto; overflow-y: visible; }
-.guide-content[data-guide-view="panorama"][data-roadview-below="true"] .roadview-guide-form { position: sticky; bottom: 0; z-index: 10; }
