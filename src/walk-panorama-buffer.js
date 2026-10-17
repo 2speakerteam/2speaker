@@ -1,10 +1,11 @@
 // Walking playback only: keep the current photo visible until the next actual
 // SDK panorama and its image tiles are ready. No transformed/synthetic frames.
-export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer) {
+export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { transitionMs = 0 } = {}) {
   let stopped = false;
   let front = { viewer: initialViewer, host: initialViewer.getElement() };
   let back = null;
   let loading = null;
+  let transition = null;
 
   function layer(channel, visible) {
     channel.host.style.setProperty('position', 'absolute', 'important');
@@ -51,6 +52,8 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer) {
 
   async function prepare(frame) {
     if (!frame || stopped) return null;
+    // The outgoing SDK viewer must remain unchanged until its short reveal ends.
+    while (transition) await transition.done;
     // A request for Previous may arrive while Next is being prefetched.
     // Serialize SDK requests; never let an older request replace a newer one.
     while (loading) await loading;
@@ -80,9 +83,27 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer) {
     try {
       const target = await prepare(frame);
       if (stopped || !target || target !== back || !ready(target, frame)) return null;
+      const previous = front;
       layer(target, true);
-      layer(front, false);
-      back = front;
+      const animate = transitionMs > 0 && typeof target.host.animate === 'function'
+        && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      if (animate) {
+        previous.host.style.zIndex = '1';
+        previous.host.style.pointerEvents = 'none';
+        previous.host.inert = true;
+        previous.host.setAttribute('aria-hidden', 'true');
+        const animation = target.host.animate([{ opacity: 0 }, { opacity: 1 }], {
+          duration: transitionMs, easing: 'cubic-bezier(0.25, 0, 0.25, 1)'
+        });
+        const run = { animation, done: null };
+        run.done = animation.finished.catch(() => {}).then(() => {
+          if (transition !== run) return;
+          if (!stopped) layer(previous, false);
+          transition = null;
+        });
+        transition = run;
+      } else layer(previous, false);
+      back = previous;
       front = target;
       return front.viewer;
     } catch { return null; }
@@ -99,6 +120,9 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer) {
     },
     stop() {
       stopped = true;
+      const active = transition;
+      transition = null;
+      active?.animation.cancel();
       for (const channel of [front, back]) {
         if (!channel) continue;
         channel.viewer.setVisible(false);

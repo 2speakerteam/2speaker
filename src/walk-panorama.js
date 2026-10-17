@@ -1,5 +1,5 @@
 import { createPanoramaProbe } from './panorama-probe.js?v=20261017-panorama-isolation-2';
-import { createWalkPanoramaBuffer } from './walk-panorama-buffer.js?v=20261017-walk-preview-1';
+import { createWalkPanoramaBuffer } from './walk-panorama-buffer.js?v=20261017-walk-gentle-1';
 import { createWalkMiniMap } from './walk-mini-map.js?v=20261016-route-arrow-sync-1';
 import { bindBoardingPanoramaGestures } from './boarding-panorama-gestures.js?v=20261017-boarding-direction-tap-1';
 import { createBoardingPanoramaTravel } from './boarding-panorama-travel.js?v=20261017-boarding-direction-tap-1';
@@ -983,7 +983,8 @@ export function createWalkPanorama(maps, section) {
     });
     section.classList.remove('is-loading');
     setStatus('경로보기');
-    walkBuffer = createWalkPanoramaBuffer(maps, canvas, view, panorama);
+    const transitionMs = startStationName === '면목역' && destinationStationName === '사가정역' ? 180 : 0;
+    walkBuffer = createWalkPanoramaBuffer(maps, canvas, view, panorama, { transitionMs });
     await showFrame(0);
     if (run !== generation) return false;
     // Let the SDK paint the first scene before the page reveals this viewer.
