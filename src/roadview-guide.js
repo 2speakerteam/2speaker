@@ -131,6 +131,21 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
   let suppressClickUntil = 0;
   readHistory();
 
+  const playbackControls = section.querySelector('.walk-panorama-controls');
+  playbackControls.classList.add('roadview-guide-controls');
+  playbackControls.setAttribute('role', 'group');
+  playbackControls.setAttribute('aria-label', '로드뷰 재생 조작');
+  playbackControls.querySelector('[data-panorama-action="previous"]').setAttribute('aria-label', '로드뷰 이전');
+  playbackControls.querySelector('[data-panorama-action="next"]').setAttribute('aria-label', '로드뷰 다음');
+  const layoutControls = () => {
+    const heading = panel.querySelector('.roadview-guide-heading');
+    const voice = panel.querySelector('.roadview-guide-voice');
+    const aiOpen = opened && mode === 'ai';
+    (aiOpen ? heading : section.querySelector('.walk-panorama-view')).append(playbackControls);
+    if (mode === 'ai') heading.append(voice);
+    else panel.querySelector('.roadview-guide-body').insertBefore(voice, log);
+  };
+  layoutControls();
   const buttons = () => section.querySelectorAll('[data-panorama-chat]');
   const setStatus = text => { status.textContent = [text, saved ? ''
     : '기록을 이 기기에 저장하지 못했습니다. 화면을 닫기 전에 복사해 주세요.'].filter(Boolean).join(' '); };
@@ -146,27 +161,17 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     followFrame = null;
     if (!opened || selecting) return;
     if (mode !== 'ai') { log.scrollTop = log.scrollHeight; return; }
-    // Start at the latest question (or greeting), instead of cutting off the
-    // top of that exchange by always pinning the scrollbar to its bottom.
     log.style.paddingBottom = '2px';
-    const entries = historyMemory.ai;
-    const latest = entries.at(-1);
-    const anchorId = latest?.text === GREETING ? latest.id : entries.findLast(t => t.role === 'user')?.id || latest?.id;
-    const anchor = [...log.querySelectorAll('[data-message-id]')].find(el => el.dataset.messageId === anchorId);
-    if (!anchor) { log.scrollTop = 0; return; }
-    const top = Math.max(0, anchor.getBoundingClientRect().top - log.getBoundingClientRect().top + log.scrollTop - 2);
-    const remaining = log.scrollHeight - top;
-    log.style.paddingBottom = `${Math.max(2, log.clientHeight - remaining + 2)}px`;
-    log.scrollTop = top;
+    log.scrollTop = log.scrollHeight;
   };
   const render = (follow = true) => {
     const entries = historyMemory[mode];
     const scrollTop = log.scrollTop;
     log.innerHTML = entries.map(t => {
       const bubble = `<article class="roadview-guide-message ${t.role}" data-message-id="${esc(t.id)}">
-      <span>${t.role === 'user' ? '내가 말한 내용' : mode === 'ai' ? 'AI 답변' : '상대방 응답'}</span>
+      <span>${mode === 'ai' ? t.role === 'user' ? '나' : 'AI' : t.role === 'user' ? '내가 말한 내용' : '상대방 응답'}</span>${mode === 'ai' ? '<div class="roadview-guide-message-content">' : ''}
       <p>${esc(t.text)}</p>${t.role === 'assistant' && mode === 'ai' && t.text !== GREETING ? `<button type="button" class="roadview-guide-replay" data-replay-id="${esc(t.id)}" aria-label="AI 답변 다시 듣기">🔊 다시 듣기</button>` : ''}${t.translation ? `<p class="roadview-guide-translation">${esc(t.translation)}</p>` : ''}
-      ${t.sources?.length ? `<div class="roadview-guide-sources">${t.sources.map(s => `<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title)}</a>`).join('')}</div>` : ''}
+      ${t.sources?.length ? `<div class="roadview-guide-sources">${t.sources.map(s => `<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title)}</a>`).join('')}</div>` : ''}${mode === 'ai' ? '</div>' : ''}
     </article>`;
       return selecting && mode === 'ai'
         ? `<div class="roadview-guide-select-row${selectedIds.has(t.id) ? ' is-selected' : ''}"><input type="checkbox" class="guide-chat-select" data-select-id="${esc(t.id)}" aria-label="${t.role === 'user' ? '내가 말한 내용' : 'AI 답변'} 대화 선택" ${selectedIds.has(t.id) ? 'checked' : ''}>${bubble}</div>` : bubble;
@@ -480,6 +485,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     cancelAnimationFrame(followFrame);
     cancelVoice();
     panel.hidden = true;
+    layoutControls();
     delete section.dataset.voiceGuideOpen;
     buttons().forEach(b => { b.setAttribute('aria-expanded', 'false'); b.setAttribute('aria-pressed', 'false'); });
     onLayoutChange();
@@ -494,6 +500,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     opened = true;
     panel.hidden = false;
     panel.dataset.mode = mode;
+    layoutControls();
     auto.hidden = closeButton.hidden = mode === 'ai';
     log.style.paddingBottom = '';
     section.dataset.voiceGuideOpen = 'true';
@@ -625,5 +632,5 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
   window.addEventListener('resize', resizeMessages);
   document.addEventListener('visibilitychange', visibility);
   window.addEventListener('pagehide', close);
-  return { open, close, stop() { close(); stopped = true; window.removeEventListener('storage', sync); window.removeEventListener('resize', resizeMessages); document.removeEventListener('visibilitychange', visibility); window.removeEventListener('pagehide', close); panel.remove(); } };
+  return { open, close, stop() { close(); stopped = true; window.removeEventListener('storage', sync); window.removeEventListener('resize', resizeMessages); document.removeEventListener('visibilitychange', visibility); window.removeEventListener('pagehide', close); section.append(playbackControls); playbackControls.classList.remove('roadview-guide-controls'); panel.remove(); } };
 }
