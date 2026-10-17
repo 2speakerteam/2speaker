@@ -165,7 +165,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     log.innerHTML = entries.map(t => {
       const bubble = `<article class="roadview-guide-message ${t.role}" data-message-id="${esc(t.id)}">
       <span>${t.role === 'user' ? '내가 말한 내용' : mode === 'ai' ? 'AI 답변' : '상대방 응답'}</span>
-      <p>${esc(t.text)}</p>${t.role === 'assistant' && mode === 'ai' && t.text !== GREETING ? `<button type="button" class="roadview-guide-replay" data-replay-id="${esc(t.id)}" aria-label="AI 답변 다시 듣기">🔊 다시 듣기</button>` : ''}${t.translation ? `<p class="roadview-guide-translation">${esc(t.translation)}</p>` : ''}
+      <p>${esc(t.text)}</p>${t.role === 'assistant' && mode === 'ai' ? `<button type="button" class="roadview-guide-replay" data-replay-id="${esc(t.id)}" aria-label="AI 답변 다시 듣기">🔊 다시 듣기</button>` : ''}${t.translation ? `<p class="roadview-guide-translation">${esc(t.translation)}</p>` : ''}
       ${t.sources?.length ? `<div class="roadview-guide-sources">${t.sources.map(s => `<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title)}</a>`).join('')}</div>` : ''}
     </article>`;
       return selecting && mode === 'ai'
