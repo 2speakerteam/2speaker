@@ -1,5 +1,3 @@
-import { translationPartner, rememberTranslationPartner, translationRecordingType, translationSpeechLocale } from './translation-auto.js?v=20261018-auto-1';
-
 const HISTORY_KEY = '2speaker:roadview-voice-history:v1';
 const RECOVERY_KEY = `${HISTORY_KEY}:recovery`;
 const GREETING = '안녕하세요. 무엇을 도와드릴까요?';
@@ -31,8 +29,6 @@ function readHistory() {
           .filter(t => mode !== 'ai' || t.role !== 'assistant' || t.text !== GREETING)
           .map(t => ({ id: t.id || id(), role: t.role, text: t.text,
             translation: typeof t.translation === 'string' ? t.translation : '',
-            sourceLanguage: typeof t.sourceLanguage === 'string' ? t.sourceLanguage : '',
-            targetLanguage: typeof t.targetLanguage === 'string' ? t.targetLanguage : '',
             sources: (Array.isArray(t.sources) ? t.sources : []).map(safeSource).filter(Boolean) }))]));
     };
     let value;
@@ -145,9 +141,10 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
   const layoutControls = () => {
     const heading = panel.querySelector('.roadview-guide-heading');
     const voice = panel.querySelector('.roadview-guide-voice');
-    (opened ? heading : section.querySelector('.walk-panorama-view')).append(playbackControls);
-    playbackControls.querySelector('[data-panorama-action="playback"]').hidden = opened && mode === 'translation';
-    panel.querySelector('.roadview-guide-form').insertBefore(voice, panel.querySelector('[type="submit"]'));
+    const aiOpen = opened && mode === 'ai';
+    (aiOpen ? heading : section.querySelector('.walk-panorama-view')).append(playbackControls);
+    if (mode === 'ai') panel.querySelector('.roadview-guide-form').insertBefore(voice, panel.querySelector('[type="submit"]'));
+    else panel.querySelector('.roadview-guide-body').insertBefore(voice, log);
   };
   layoutControls();
   const buttons = () => section.querySelectorAll('[data-panorama-chat]');
@@ -156,14 +153,15 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
   const updateDeleteUi = () => {
     panel.querySelector('.roadview-guide-title').textContent = selecting
       ? `선택 ${selectedIds.size}개` : mode === 'ai' ? 'AI 음성 가이드' : '실시간 통역';
-    trash.hidden = false;
-    trash.disabled = !historyMemory[mode].length || (selecting && !selectedIds.size);
+    trash.hidden = mode !== 'ai';
+    trash.disabled = !historyMemory.ai.length || (selecting && !selectedIds.size);
     trash.setAttribute('aria-label', selecting ? `선택한 대화 ${selectedIds.size}개 삭제` : '대화 기록 전체 삭제');
     log.setAttribute('aria-live', selecting ? 'off' : 'polite');
   };
   const followMessages = () => {
     followFrame = null;
     if (!opened || selecting) return;
+    if (mode !== 'ai') { log.scrollTop = log.scrollHeight; return; }
     log.style.paddingBottom = '2px';
     if (guideContent?.dataset.roadviewBelow === 'true') {
       guideContent.scrollTo({ top: guideContent.scrollHeight, behavior: 'smooth' });
@@ -174,13 +172,13 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     const scrollTop = log.scrollTop;
     log.innerHTML = entries.map(t => {
       const bubble = `<article class="roadview-guide-message ${t.role}" data-message-id="${esc(t.id)}">
-      <span>${t.role === 'user' ? '나' : mode === 'ai' ? 'AI' : '상대방'}</span><div class="roadview-guide-message-content">
+      <span>${mode === 'ai' ? t.role === 'user' ? '나' : 'AI' : t.role === 'user' ? '내가 말한 내용' : '상대방 응답'}</span>${mode === 'ai' ? '<div class="roadview-guide-message-content">' : ''}
       <p>${esc(t.text)}</p>${t.translation ? `<p class="roadview-guide-translation">${esc(t.translation)}</p>` : ''}
-      ${t.sources?.length ? `<div class="roadview-guide-sources">${t.sources.map(s => `<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title)}</a>`).join('')}</div>` : ''}</div>
+      ${t.sources?.length ? `<div class="roadview-guide-sources">${t.sources.map(s => `<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title)}</a>`).join('')}</div>` : ''}${mode === 'ai' ? '</div>' : ''}
     </article>`;
-      return selecting
-        ? `<div class="roadview-guide-select-row${selectedIds.has(t.id) ? ' is-selected' : ''}"><input type="checkbox" class="guide-chat-select" data-select-id="${esc(t.id)}" aria-label="${t.role === 'user' ? '나' : mode === 'ai' ? 'AI 답변' : '상대방'} 대화 선택" ${selectedIds.has(t.id) ? 'checked' : ''}>${bubble}</div>` : bubble;
-    }).join('');
+      return selecting && mode === 'ai'
+        ? `<div class="roadview-guide-select-row${selectedIds.has(t.id) ? ' is-selected' : ''}"><input type="checkbox" class="guide-chat-select" data-select-id="${esc(t.id)}" aria-label="${t.role === 'user' ? '내가 말한 내용' : 'AI 답변'} 대화 선택" ${selectedIds.has(t.id) ? 'checked' : ''}>${bubble}</div>` : bubble;
+    }).join('') || (mode === 'ai' ? '' : '<p class="roadview-guide-empty">말씀하신 내용과 답변이 여기에 남습니다.</p>');
     updateDeleteUi();
     cancelAnimationFrame(followFrame);
     if (follow) followFrame = requestAnimationFrame(followMessages);
@@ -204,7 +202,8 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
   };
   const updateVoice = () => {
     const recording = recorder?.state === 'recording';
-    state.textContent = recording ? '듣는 중' : '';
+    state.textContent = mode === 'ai' ? (recording ? '듣는 중' : '')
+      : recording ? '듣는 중' : busy ? '확인 중' : speaking ? '답변 중' : '말하기';
     mic.setAttribute('aria-pressed', String(recording));
     mic.setAttribute('aria-label', recording ? '음성 질문 전송' : '음성 질문 시작');
     auto.setAttribute('aria-pressed', String(autoListen));
@@ -247,7 +246,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     retainedUtterance = null;
   }
 
-  async function speak(text, listenAfter = false, language = '') {
+  async function speak(text, listenAfter = false) {
     if (!opened || stopped || !autoListen) return;
     const speechRun = ++speechRequest;
     const run = generation;
@@ -279,15 +278,12 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
       const synth = window.speechSynthesis;
       const korean = /[가-힣]/.test(text);
       const voices = synth?.getVoices() || [];
-      const matchesLanguage = v => language ? v.lang.toLowerCase().split('-')[0] === language.toLowerCase().split('-')[0]
-        : (korean ? /^ko/i : /^en/i).test(v.lang);
-      const voice = voices.find(v => matchesLanguage(v)
-        && /female|여성|Heami|Yuna|Seoyeon|SunHi|SoonBok|Zira|Samantha|Susan|Karen|Aria|Ava|Jenny/i.test(v.name))
-        || (language ? voices.find(matchesLanguage) : null);
-      if ((!voice && !language) || !synth || !window.SpeechSynthesisUtterance) { failed(); return; }
+      const voice = voices.find(v => (korean ? /^ko/i : /^en/i).test(v.lang)
+        && /female|여성|Heami|Yuna|Seoyeon|SunHi|SoonBok|Zira|Samantha|Susan|Karen|Aria|Ava|Jenny/i.test(v.name));
+      if (!voice || !window.SpeechSynthesisUtterance) { failed(); return; }
       retainedUtterance = new SpeechSynthesisUtterance(text);
-      if (voice) retainedUtterance.voice = voice;
-      retainedUtterance.lang = language ? translationSpeechLocale(language) : korean ? 'ko-KR' : 'en-US';
+      retainedUtterance.voice = voice;
+      retainedUtterance.lang = korean ? 'ko-KR' : 'en-US';
       retainedUtterance.rate = 0.9;
       retainedUtterance.pitch = 1;
       retainedUtterance.volume = 1;
@@ -312,8 +308,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
         await voiceAudio.play();
       } else {
         speechController = new AbortController();
-        const result = await post('/api/assistant/reply', { task: 'roadview-speech', message: text,
-          ...(language ? { language } : {}) }, speechController.signal);
+        const result = await post('/api/assistant/reply', { task: 'roadview-speech', message: text }, speechController.signal);
         if (!current()) return;
         voiceAudio.src = `data:audio/mpeg;base64,${result.audioContent}`;
         await voiceAudio.play();
@@ -326,7 +321,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     }
   }
 
-  async function submit(value, sourceLanguage = '') {
+  async function submit(value) {
     const text = value.trim();
     if (!text || busy || !opened || stopped) return;
     cancelSelection();
@@ -362,33 +357,24 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
           sources: (answer.sources || []).map(safeSource).filter(Boolean) });
       } else {
         const result = await post('/api/translation/translate', {
-          text, userLanguage: 'ko', counterpartLanguage: translationPartner(), automatic: true, sourceLanguage
+          text, userLanguage: userLanguage.value, counterpartLanguage: otherLanguage.value
         }, signal);
         if (run !== generation || !opened) return;
-        if (result.needsCounterpart) {
-          busy = false; autoListen = false;
-          setStatus('상대방이 먼저 한 문장 말해 주세요. 언어를 확인한 뒤 통역하겠습니다.');
-          updateVoice();
-          return;
-        }
-        rememberTranslationPartner(result);
         const userEntry = historyMemory.translation.at(-1);
         if (userEntry?.role === 'user' && userEntry.text === text) {
           userEntry.translation = result.text;
-          userEntry.sourceLanguage = result.sourceLanguage;
-          userEntry.targetLanguage = result.targetLanguage;
-          if (result.sourceLanguage && result.sourceLanguage.split('-')[0] !== 'ko') {
+          if (result.sourceLanguage && result.sourceLanguage.split('-')[0] !== userLanguage.value.split('-')[0]) {
             userEntry.role = 'assistant';
           }
           saved = saveHistory();
         }
-        answer = { text: result.text, language: result.targetLanguage };
+        answer = { text: result.text };
         render();
       }
       busy = false;
       setStatus('');
       updateVoice();
-      speak(answer.text, mode === 'translation' && Boolean(sourceLanguage), answer.language || '');
+      speak(answer.text, mode !== 'ai');
     } catch (error) {
       if (run !== generation || !opened || error.name === 'AbortError') return;
       busy = false;
@@ -404,9 +390,8 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
 
   async function startRecording() {
     if (busy || speaking || acquiring || recorder?.state === 'recording' || !opened || stopped) return;
-    const mimeType = mode === 'translation' ? translationRecordingType() : 'audio/webm;codecs=opus';
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder
-      || !mimeType || !MediaRecorder.isTypeSupported(mimeType)) {
+      || !MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
       autoListen = false;
       setStatus('이 브라우저에서는 음성 입력을 사용할 수 없습니다. 아래 입력창을 이용해 주세요.');
       updateVoice();
@@ -421,7 +406,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
       acquiring = false;
       stream = acquired;
       const chunks = [];
-      const active = new MediaRecorder(stream, { mimeType });
+      const active = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
       recorder = active;
       active.ondataavailable = event => { if (event.data.size) chunks.push(event.data); };
       active.onstop = async () => {
@@ -439,8 +424,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
           const bytes = new Uint8Array(await audio.arrayBuffer());
           let binary = '';
           for (let i = 0; i < bytes.length; i += 8192) binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
-          const result = await post('/api/assistant/reply', { task: 'transcribe', audio: btoa(binary),
-            autoLanguage: mode === 'translation' }, controller.signal);
+          const result = await post('/api/assistant/reply', { task: 'transcribe', audio: btoa(binary) }, controller.signal);
           if (run !== generation || !opened) return;
           busy = false;
           if (!result.text?.trim()) {
@@ -449,7 +433,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
             updateVoice();
             return;
           }
-          await submit(result.text, mode === 'translation' ? result.language : '');
+          await submit(result.text);
         } catch (error) {
           if (run !== generation || !opened || error.name === 'AbortError') return;
           busy = false;
@@ -524,17 +508,17 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     opened = true;
     panel.hidden = false;
     panel.dataset.mode = mode;
-    if (guideContent) {
+    if (mode === 'ai' && guideContent) {
       guideContent.style.setProperty('--roadview-full-height', `${guideContent.clientHeight}px`);
       guideContent.dataset.roadviewBelow = 'true';
     }
     layoutControls();
-    auto.hidden = closeButton.hidden = true;
+    auto.hidden = closeButton.hidden = mode === 'ai';
     log.style.paddingBottom = '';
     section.dataset.voiceGuideOpen = 'true';
     panel.querySelector('.roadview-guide-title').textContent = mode === 'ai' ? 'AI 음성 가이드' : '실시간 통역';
-    panel.querySelector('.roadview-guide-languages').hidden = true;
-    input.placeholder = '필요하면 문자로 입력하세요';
+    panel.querySelector('.roadview-guide-languages').hidden = mode !== 'translation';
+    input.placeholder = mode === 'ai' ? '필요하면 문자로 입력하세요' : '음성 또는 문자로 통역하세요';
     buttons().forEach(b => {
       const selected = b.dataset.panoramaChat === mode;
       b.setAttribute('aria-expanded', String(selected));
@@ -545,7 +529,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     onLayoutChange();
     autoListen = true;
     updateVoice();
-    // Both panels wait for the existing microphone button before listening.
+    if (mode !== 'ai') void startRecording();
   }
   log.addEventListener('click', event => {
     if (Date.now() < suppressClickUntil) { event.preventDefault(); return; }
@@ -570,13 +554,13 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
   });
   // Reuse page 2's hold threshold, movement tolerance and circular selectors.
   log.addEventListener('pointerdown', event => {
-    if (selecting || busy || stopped || event.button !== 0
+    if (mode !== 'ai' || selecting || busy || stopped || event.button !== 0
       || !event.target.closest('[data-message-id]') || event.target.closest('button, a, input')) return;
     cancelHold();
     holdPointer = { id: event.pointerId, x: event.clientX, y: event.clientY };
     holdTimer = setTimeout(() => {
       cancelHold();
-      if (selecting || busy || stopped || !opened) return;
+      if (mode !== 'ai' || selecting || busy || stopped || !opened) return;
       selecting = true;
       selectedIds.clear();
       suppressClickUntil = Date.now() + 500;
@@ -590,7 +574,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
   });
   for (const type of ['pointerup', 'pointercancel', 'pointerleave']) log.addEventListener(type, cancelHold);
   log.addEventListener('contextmenu', event => {
-    if (event.target.closest('[data-message-id]')) event.preventDefault();
+    if (mode === 'ai' && event.target.closest('[data-message-id]')) event.preventDefault();
   });
   log.addEventListener('change', event => {
     const checkbox = event.target.closest('[data-select-id]');
@@ -605,14 +589,14 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     if (event.key === 'Escape' && selecting) { cancelSelection(); render(false); }
   });
   trash.addEventListener('click', () => {
-    if (selecting && !selectedIds.size) return;
+    if (mode !== 'ai' || (selecting && !selectedIds.size)) return;
     readHistory();
-    const entries = historyMemory[mode];
+    const entries = historyMemory.ai;
     const deleting = selecting ? new Set(selectedIds) : new Set(entries.map(t => t.id));
     const count = entries.filter(t => deleting.has(t.id)).length;
     if (!count) return;
-    if (count === entries.length && !window.confirm(mode === 'ai' ? '거리뷰 대화 기록을 모두 삭제할까요?' : '거리뷰 통역 기록을 모두 삭제할까요?')) return;
-    historyMemory[mode] = entries.filter(t => !deleting.has(t.id));
+    if (count === entries.length && !window.confirm('거리뷰 대화 기록을 모두 삭제할까요?')) return;
+    historyMemory.ai = entries.filter(t => !deleting.has(t.id));
     saved = saveHistory();
     cancelSelection();
     render();
@@ -641,12 +625,12 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
   const sync = event => {
     if (event.key !== HISTORY_KEY) return;
     readHistory();
-    for (const key of selectedIds) if (!historyMemory[mode].some(t => t.id === key)) selectedIds.delete(key);
+    for (const key of selectedIds) if (!historyMemory.ai.some(t => t.id === key)) selectedIds.delete(key);
     if (selecting && !selectedIds.size) cancelSelection();
     if (opened) render(false);
   };
   const resizeMessages = () => {
-    if (!opened || selecting) return;
+    if (!opened || selecting || mode !== 'ai') return;
     if (guideContent?.dataset.roadviewBelow === 'true') {
       guideContent.style.setProperty('--roadview-full-height', `${guideContent.clientHeight}px`);
     }

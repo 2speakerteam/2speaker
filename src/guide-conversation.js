@@ -1,5 +1,4 @@
 import { readAiHistory, saveAiHistory as persistAiHistory } from './guide-history.js';
-import { translationPartner, rememberTranslationPartner, translationRecordingType, createTranslationSpeech } from './translation-auto.js?v=20261018-auto-1';
 
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -104,7 +103,7 @@ export function createGuideConversation(section, { getContext }) {
   let recorder = null;
   let stream = null;
   let recordTimer = null;
-  const translationVoice = createTranslationSpeech(() => { if (!stopped) setStatus('통역 음성을 재생하지 못했습니다. 번역문은 화면에서 확인해 주세요.'); });
+  let counterpartLanguage = 'en';
   let selecting = false;
   const selectedIds = new Set();
   const messages = { ai: readAiHistory(), translation: [] };
@@ -179,12 +178,11 @@ export function createGuideConversation(section, { getContext }) {
       .filter(Boolean).join(' ');
   };
 
-  async function submit(message, { speakReply = false, sourceLanguage = '' } = {}) {
+  async function submit(message, { speakReply = false } = {}) {
     const text = message.trim();
     if (!text || busy || stopped || selecting) return;
     busy = true;
     const requestMode = mode;
-    if (requestMode === 'translation') translationVoice.stop();
     controller = new AbortController();
     const signal = controller.signal;
     const context = getContext();
@@ -231,23 +229,16 @@ export function createGuideConversation(section, { getContext }) {
         }
       } else {
         const result = await jsonPost('/api/translation/translate', {
-          text, userLanguage: 'ko', counterpartLanguage: translationPartner(), automatic: true, sourceLanguage
+          text, userLanguage: 'ko', counterpartLanguage
         }, signal);
-        if (result.needsCounterpart) {
-          messages.translation.push({ id: makeId(), speaker: '나', text });
-          renderMessages(true);
-          setStatus('상대방이 먼저 한 문장 말해 주세요. 언어를 확인한 뒤 통역하겠습니다.');
-          return;
-        }
         const source = String(result.sourceLanguage || '').toLowerCase();
         if (!source) throw new Error('원문 언어를 확인하지 못해 발화자를 지정하지 않았습니다.');
         const speaker = source.startsWith('ko') ? '나' : '상대방';
-        rememberTranslationPartner(result);
+        if (speaker === '상대방') counterpartLanguage = source;
         if (!stopped) messages.translation.push({
           id: makeId(), speaker, text, translation: result.text,
           targetLanguage: result.targetLanguage
         });
-        if (speakReply && !stopped && mode === 'translation') void translationVoice.play(result.text, result.targetLanguage);
       }
       if (!stopped) renderMessages(true);
       if (!stopped) setStatus(speechUnavailable
@@ -263,19 +254,16 @@ export function createGuideConversation(section, { getContext }) {
   async function toggleRecording() {
     if (recorder?.state === 'recording') { recorder.stop(); return; }
     if (busy || stopped) return;
-    const recordingMode = mode;
-    const mimeType = recordingMode === 'translation' ? translationRecordingType() : 'audio/webm;codecs=opus';
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder
-      || !mimeType || !MediaRecorder.isTypeSupported(mimeType)) {
+      || !MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
       setStatus('이 브라우저에서 양방향 음성 인식을 사용할 수 없습니다. 문자로 입력해 주세요.');
       return;
     }
     try {
-      translationVoice.stop();
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       if (stopped) { stream.getTracks().forEach((track) => track.stop()); return; }
       const chunks = [];
-      recorder = new MediaRecorder(stream, { mimeType });
+      recorder = new MediaRecorder(stream, { mimeType: 'audio/webm;codecs=opus' });
       recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
       recorder.onstop = async () => {
         clearTimeout(recordTimer);
@@ -285,17 +273,15 @@ export function createGuideConversation(section, { getContext }) {
         if (stopped || !chunks.length) return;
         setStatus('음성을 인식하고 있습니다.');
         try {
-          const audio = new Blob(chunks, { type: mimeType });
+          const audio = new Blob(chunks, { type: 'audio/webm;codecs=opus' });
           if (audio.size > 2_000_000) throw new Error('음성 길이가 너무 깁니다. 짧게 다시 말해 주세요.');
           const bytes = new Uint8Array(await audio.arrayBuffer());
           let binary = '';
           for (let i = 0; i < bytes.length; i += 8192) {
             binary += String.fromCharCode(...bytes.subarray(i, i + 8192));
           }
-          const result = await jsonPost('/api/assistant/reply', { task: 'transcribe', audio: btoa(binary),
-            autoLanguage: recordingMode === 'translation' });
-          if (!stopped && mode === recordingMode && result.text) await submit(result.text, { speakReply: true,
-            sourceLanguage: recordingMode === 'translation' ? result.language : '' });
+          const result = await jsonPost('/api/assistant/reply', { task: 'transcribe', audio: btoa(binary) });
+          if (!stopped && result.text) await submit(result.text, { speakReply: mode === 'ai' });
           else if (!stopped) setStatus('음성을 확인하지 못했습니다. 다시 말해 주세요.');
         } catch (error) {
           if (!stopped) setStatus(error.message || '음성 인식에 실패했습니다.');
@@ -375,7 +361,6 @@ export function createGuideConversation(section, { getContext }) {
   section.querySelectorAll('[data-chat-mode]').forEach((button) => {
     button.setAttribute('aria-expanded', String(guideContent?.dataset.chatExpanded === 'true'));
     button.addEventListener('click', () => {
-      translationVoice.stop();
       const requestedMode = button.dataset.chatMode;
       const chatExpanded = guideContent?.dataset.chatExpanded !== 'false';
       if (chatExpanded && requestedMode === mode) {
@@ -399,7 +384,7 @@ export function createGuideConversation(section, { getContext }) {
         section.querySelectorAll('[data-chat-mode]').forEach((tab) => tab.setAttribute('aria-expanded', 'true'));
         resizeMap();
       }
-      input.placeholder = mode === 'ai' ? '질문을 입력하세요' : '통역할 내용을 입력하세요';
+      input.placeholder = mode === 'ai' ? '질문을 입력하세요' : '한국어 또는 영어로 입력하세요';
       setStatus('');
       updateDeleteUi();
       renderMessages(true);
@@ -409,11 +394,16 @@ export function createGuideConversation(section, { getContext }) {
     const button = event.target.closest('[data-speak-id]');
     if (!button) return;
     const item = messages.translation.find((entry) => entry.id === button.dataset.speakId);
-    if (!item) {
+    if (!item || !window.speechSynthesis || !window.SpeechSynthesisUtterance) {
       setStatus('이 브라우저에서 번역 음성 재생을 사용할 수 없습니다.');
       return;
     }
-    void translationVoice.play(item.translation, item.targetLanguage);
+    const utterance = new SpeechSynthesisUtterance(item.translation);
+    utterance.lang = item.targetLanguage?.startsWith('en') ? 'en-US'
+      : item.targetLanguage?.startsWith('ko') ? 'ko-KR'
+        : item.targetLanguage || 'ko-KR';
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
   });
   const syncHistory = (event) => {
     if (event.key !== '2speaker:guide-ai-history:v3') return;
@@ -429,7 +419,6 @@ export function createGuideConversation(section, { getContext }) {
   renderMessages();
   return { cancelSelection, stop() {
     stopped = true;
-    translationVoice.stop();
     cancelHold();
     window.removeEventListener('storage', syncHistory);
     controller?.abort();
