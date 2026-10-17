@@ -96,7 +96,7 @@ function signedAngle(a, b) {
   return (((b - a) % 360) + 540) % 360 - 180;
 }
 
-function routeCandidates(route, edges) {
+function routeCandidates(route, edges, probeSpacingMeters = PROBE_SPACING_METERS) {
   const total = edges.at(-1).to;
   const decisions = [];
   const junctions = [];
@@ -151,7 +151,7 @@ function routeCandidates(route, edges) {
       phase: !decision ? 'route' : point.progress < decision.progress ? 'approach' : 'after'
     });
   };
-  for (let progress = 0; progress < total; progress += PROBE_SPACING_METERS) addProbe(progress);
+  for (let progress = 0; progress < total; progress += probeSpacingMeters) addProbe(progress);
   addProbe(total);
   for (const decision of ordered) {
     for (const offset of [-18, -10, -4, 6, 12, 20]) {
@@ -810,6 +810,12 @@ export function createWalkPanorama(maps, section) {
       fallback('로드뷰 위치와 대조할 실제 도보 경로 좌표가 부족합니다.');
       return;
     }
+    const startStationName = options.startIsStation
+      ? options.startTitle?.match(/^(.+?역)(?:\s|\(|$)/)?.[1] : null;
+    const destinationStationName = options.destinationTitle?.match(/^(.+?역)(?:\s|\(|$)/)?.[1];
+    // Look for additional real SDK scenes on the existing route, without
+    // changing photo rendering, camera POV, native arrows or playback speed.
+    const denseSceneTrial = startStationName === '면목역' && destinationStationName === '사가정역';
     const { candidates, decisions, junctions } = routeCandidates(route, edges);
     if (!candidates.length) {
       fallback('이 도보 경로에는 확인된 회전·갈림길 판단 지점이 없습니다.');
@@ -825,9 +831,6 @@ export function createWalkPanorama(maps, section) {
     section.hidden = false;
     canvas.hidden = false;
     section.classList.add('is-loading');
-    const startStationName = options.startIsStation
-      ? options.startTitle?.match(/^(.+?역)(?:\s|\(|$)/)?.[1] : null;
-    const destinationStationName = options.destinationTitle?.match(/^(.+?역)(?:\s|\(|$)/)?.[1];
     if (startStationName && options.startStationLocation
       && [options.startStationLocation.lat, options.startStationLocation.lng].every(Number.isFinite)) {
       startStationLocation = options.startStationLocation;
@@ -925,6 +928,13 @@ export function createWalkPanorama(maps, section) {
       preparationDone = true;
       fallback('실제 도보 경로와 방향이 확인된 로드뷰 장면이 부족합니다.');
       return false;
+    }
+    if (denseSceneTrial) {
+      // Preserve the exact initial lookup sequence and first-frame latency.
+      // Additional SDK lookups run only in the existing bounded look-ahead.
+      const ahead = routeCandidates(route, edges, 4).candidates
+        .filter((point) => point.progress > frames[0].progress + 1);
+      candidates.splice(cursor, candidates.length - cursor, ...ahead);
     }
     prepareAhead = async () => {
       if (run !== generation || preparing || preparationDone) return;
