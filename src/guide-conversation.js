@@ -118,7 +118,7 @@ export function createGuideConversation(section, { getContext }) {
       <input type="text" maxlength="2000" autocomplete="off" aria-label="대화 메시지" placeholder="질문을 입력하세요">
       <button type="button" class="guide-chat-mic" aria-label="음성 입력"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6"/></svg></button>
       <button type="submit" class="guide-chat-send" aria-label="메시지 보내기"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m4 4 16 8-16 8 3-8Z"/><path d="M7 12h13"/></svg></button>
-      <button type="button" class="guide-chat-trash" aria-label="선택한 AI 대화 삭제" hidden disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6.5 7l.8 13h9.4l.8-13M10 11v6M14 11v6"/></svg></button>
+      <button type="button" class="guide-chat-trash" aria-label="AI 대화 전체 삭제" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6.5 7l.8 13h9.4l.8-13M10 11v6M14 11v6"/></svg></button>
     </form>
     <p class="guide-chat-status" role="status" aria-live="polite"></p>
     <div class="guide-chat-tabs" role="group" aria-label="대화 방식">
@@ -141,8 +141,9 @@ export function createGuideConversation(section, { getContext }) {
 
   const updateDeleteUi = () => {
     if (trash) {
-      trash.hidden = mode !== 'ai' || !selecting;
-      trash.disabled = selectedIds.size === 0;
+      trash.hidden = mode !== 'ai';
+      trash.disabled = !messages.ai.length || (selecting && !selectedIds.size);
+      trash.setAttribute('aria-label', selecting ? `선택한 AI 대화 ${selectedIds.size}개 삭제` : 'AI 대화 전체 삭제');
     }
     tabs.hidden = selecting;
     deleteActions.hidden = !selecting;
@@ -167,6 +168,7 @@ export function createGuideConversation(section, { getContext }) {
         ? `<div class="guide-chat-select-row${selectedIds.has(item.id) ? ' is-selected' : ''}"><input type="checkbox" class="guide-chat-select" data-select-id="${item.id}" aria-label="${name} 대화 선택" ${selectedIds.has(item.id) ? 'checked' : ''}>${bubble}</div>`
         : bubble;
     }).join('');
+    updateDeleteUi();
     if (follow && guideContent?.dataset.chatExpanded === 'true') {
       window.requestAnimationFrame(() => {
         guideContent.scrollTop = guideContent.scrollHeight;
@@ -354,15 +356,19 @@ export function createGuideConversation(section, { getContext }) {
   };
   cancelDelete.addEventListener('click', cancelSelection);
   confirmDelete.addEventListener('click', () => {
-    if (!selecting || !selectedIds.size) return;
-    const deletedCount = selectedIds.size;
-    messages.ai = messages.ai.filter((item) => !selectedIds.has(item.id));
+    if (mode !== 'ai' || (selecting && !selectedIds.size)) return;
+    messages.ai = readAiHistory();
+    const deleting = selecting ? selectedIds : new Set(messages.ai.map((item) => item.id));
+    const deletedCount = messages.ai.filter((item) => deleting.has(item.id)).length;
+    if (!deletedCount) return;
+    if (deletedCount === messages.ai.length && !window.confirm('AI 대화 기록을 모두 삭제할까요?')) return;
+    messages.ai = messages.ai.filter((item) => !deleting.has(item.id));
     saveAiHistory();
     selecting = false;
     selectedIds.clear();
     updateDeleteUi();
     renderMessages(true);
-    setStatus(`선택한 대화 ${deletedCount}개를 삭제했습니다.`);
+    setStatus(`대화 ${deletedCount}개를 삭제했습니다.`);
   });
   log.addEventListener('change', (event) => {
     const checkbox = event.target.closest('[data-select-id]');
