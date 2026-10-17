@@ -297,7 +297,7 @@ function loadNaverMaps() {
   if (routeMapLoaderPromise) return routeMapLoaderPromise;
 
   routeMapLoaderPromise = new Promise((resolve, reject) => {
-    const callbackName = `__2speakerNaverReady_${Date.now()}`;
+    const callbackName = '__2speakerNaverReady';
     const script = document.createElement('script');
     let settled = false;
     let timeoutId;
@@ -424,7 +424,7 @@ function initializeNaverRouteMap() {
     if (session !== routeMapSession || currentPage !== 'guide' || !mapElement.isConnected) return;
 
     const mapTypes = new maps.MapTypeRegistry({
-      normal: maps.NaverStyleMapTypeOptions.getNormalMap({ overlayType: 'bg.lko' }),
+      normal: maps.NaverStyleMapTypeOptions.getNormalMap({ overlayType: 'bg.ol.lko' }),
       subway: maps.NaverStyleMapTypeOptions.getNormalMap({ overlayType: 'bg.ol.ts.lko' })
     });
     const map = new maps.Map(mapElement, {
