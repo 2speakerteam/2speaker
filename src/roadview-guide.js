@@ -146,7 +146,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     const heading = panel.querySelector('.roadview-guide-heading');
     const voice = panel.querySelector('.roadview-guide-voice');
     (opened ? heading : section.querySelector('.walk-panorama-view')).append(playbackControls);
-    playbackControls.querySelector('[data-panorama-action="playback"]').hidden = opened && mode === 'translation';
+    playbackControls.querySelector('[data-panorama-action="playback"]').hidden = false;
     panel.querySelector('.roadview-guide-form').insertBefore(voice, panel.querySelector('[type="submit"]'));
   };
   layoutControls();

@@ -96,5 +96,5 @@
 .guide-content[data-guide-view="panorama"][data-roadview-below="true"] .roadview-guide-messages { flex: 1 1 0; height: auto; overflow: visible; }
 .guide-content[data-guide-view="panorama"][data-roadview-below="true"] .roadview-guide-form { position: sticky; bottom: 0; z-index: 10; }
 
-.roadview-guide-panel[data-mode="translation"] .roadview-guide-controls { grid-template-columns: repeat(2, 40px); }
+
 .roadview-guide-controls button[hidden] { display: none !important; }
