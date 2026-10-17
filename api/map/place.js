@@ -81,7 +81,11 @@ module.exports = async function handler(req, res) {
 
     const normalized = (value) => String(value || '').toLowerCase().replace(/\s+/g, '');
     let places = await search(query);
-    if (!places.some((place) => normalized(place.title).startsWith(normalized(query)))) {
+    const stationExitName = query.match(/^(.+?역)\s*출구$/)?.[1];
+    const hasStationExit = stationExitName && places.some((place) =>
+      place.category === '교통시설>지하철출구번호'
+      && normalized(place.title).startsWith(normalized(stationExitName)));
+    if (!hasStationExit && !places.some((place) => normalized(place.title).startsWith(normalized(query)))) {
       // The first five accuracy results can all be businesses inside a landmark.
       const landmarkPlaces = await search(`${query} 명소`);
       const namedLandmarks = landmarkPlaces.filter((place) =>
