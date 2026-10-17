@@ -424,7 +424,7 @@ function initializeNaverRouteMap() {
     if (session !== routeMapSession || currentPage !== 'guide' || !mapElement.isConnected) return;
 
     const mapTypes = new maps.MapTypeRegistry({
-      normal: maps.NaverStyleMapTypeOptions.getNormalMap({ overlayType: 'bg.ol.lko' }),
+      normal: maps.NaverStyleMapTypeOptions.getNormalMap({ overlayType: 'bg.lko' }),
       subway: maps.NaverStyleMapTypeOptions.getNormalMap({ overlayType: 'bg.ol.ts.lko' })
     });
     const map = new maps.Map(mapElement, {
@@ -481,7 +481,6 @@ function initializeNaverRouteMap() {
     let walkPanoramaPreparing = false;
     let walkPreparationId = 0;
     let initialMapRevealScheduled = false;
-    let initialWalkMapSettled = false;
     const targetMapViewportReady = () => {
       const targets = destinationLocation ? [destinationLocation] : mapChoiceLocations;
       if (!targets.length) return false;
@@ -501,8 +500,6 @@ function initializeNaverRouteMap() {
     };
     const revealMap = () => {
       if (session !== routeMapSession || currentPage !== 'guide' || !mapElement.isConnected) return;
-      if (activeTransportMode === 'preview' && !initialWalkMapSettled
-        && !mapChoiceLocations.length && locationState !== 'error') return;
       if (targetMapViewportReady() && targetMapImagesReady()) {
         mapElement.classList.remove('is-awaiting-location');
         finishMapEntry();
@@ -1080,7 +1077,6 @@ function initializeNaverRouteMap() {
       }
       if (activeTransportMode === 'preview') {
         document.querySelector('.transport-option[data-mode="walk"]')?.setAttribute('aria-pressed', 'true');
-        initialWalkMapSettled = true;
         window.requestAnimationFrame(() => window.requestAnimationFrame(revealMap));
       }
     };
@@ -1227,7 +1223,6 @@ function initializeNaverRouteMap() {
         if (walkRequested || activeTransportMode === 'preview') removeRouteLines();
         showWalkMessage(error instanceof Error ? error.message : 'TMAP 도보 경로 조회에 실패했습니다.', true);
         if (activeTransportMode === 'preview') {
-          initialWalkMapSettled = true;
           revealMap();
         }
         if (walkRequested && guideView === 'panorama') setGuideView('route');
@@ -2270,6 +2265,7 @@ function navigate(page) {
   if (currentPage === 'voice' && page !== 'voice') stopVoiceConversation();
   if (page !== currentPage) pageHistory.push(currentPage);
   currentPage = page;
+  if (page === 'route') void loadNaverMaps().catch(() => {});
   if (page === 'guide') {
     guideView = 'route';
     routeTransportMode = '';
