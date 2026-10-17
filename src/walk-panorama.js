@@ -332,7 +332,7 @@ export function createWalkPanorama(maps, section) {
   const showFixedRouteArrow = (frame) => {
     if (!fixedRouteArrow) return;
     fixedRouteArrow.hidden = frame.phase === 'arrival';
-    const decision = routeDecisions.find((item) => !item.crossing
+    const decision = routeDecisions.find((item) => item.priority >= 3 && !item.crossing
       && item.progress >= frame.progress - 2 && item.progress <= frame.progress + 20);
     const direction = decision?.action || '직진';
     const rotation = direction === '좌회전' ? -65 : direction === '우회전' ? 65 : 0;
