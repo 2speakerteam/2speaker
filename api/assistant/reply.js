@@ -112,6 +112,17 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: '메시지를 확인해 주세요. 한 번에 2,000자까지 입력할 수 있어요.' });
   }
 
+  if (req.body?.task === 'roadview-guide') {
+    try {
+      const { answerRoadviewQuestion } = require('../../lib/roadview-guide');
+      return res.status(200).json(await answerRoadviewQuestion(req, message));
+    } catch (error) {
+      return res.status(error.statusCode || 502).json({
+        error: error.message || '안내 정보를 확인하지 못했습니다. 다시 말씀해 주세요.'
+      });
+    }
+  }
+
   let normalized;
   try {
     // Translation to English is used only for language-independent intent detection.
