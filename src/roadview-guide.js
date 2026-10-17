@@ -66,6 +66,7 @@ function currentPosition() {
 }
 
 const microphone = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6"/></svg>';
+const trashIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6.5 7l.8 13h9.4l.8-13M10 11v6M14 11v6"/></svg>';
 
 export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChange }) {
   const panel = document.createElement('section');
@@ -74,8 +75,8 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
   panel.setAttribute('aria-label', '거리뷰 음성 대화');
   panel.innerHTML = `<div class="roadview-guide-heading">
       <strong class="roadview-guide-title">AI 음성 가이드</strong>
-      <button type="button" data-guide-action="auto" aria-pressed="false">음성 켜기</button>
-      <button type="button" data-guide-action="close" aria-label="거리뷰 대화 닫기">×</button>
+      <button type="button" data-guide-action="auto" aria-pressed="false" hidden>음성 켜기</button>
+      <button type="button" data-guide-action="close" aria-label="거리뷰 대화 닫기" hidden>×</button>
     </div>
     <div class="roadview-guide-languages" hidden>
       <label><span class="sr-only">내 언어</span><select data-guide-language="user" aria-label="내 언어"><option value="ko">🇰🇷 한국어</option><option value="en">🇺🇸 영어</option></select></label>
@@ -86,7 +87,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
       <div class="roadview-guide-voice"><button type="button" data-guide-action="mic" aria-label="음성 질문 시작" aria-pressed="false">${microphone}</button><span class="roadview-guide-state" role="status">말하기</span></div>
       <div class="roadview-guide-messages" role="log" aria-live="polite" aria-label="사용자와 AI 대화 기록"></div>
     </div>
-    <form class="roadview-guide-form" aria-label="거리뷰 대화 입력"><input type="text" maxlength="2000" autocomplete="off" placeholder="필요하면 문자로 입력하세요" aria-label="거리뷰 질문"><button type="submit" aria-label="거리뷰 질문 보내기">➤</button></form>
+    <form class="roadview-guide-form" aria-label="거리뷰 대화 입력"><input type="text" maxlength="2000" autocomplete="off" placeholder="필요하면 문자로 입력하세요" aria-label="거리뷰 질문"><button type="submit" aria-label="거리뷰 질문 보내기">➤</button><button type="button" data-guide-action="trash" aria-label="대화 기록 전체 삭제">${trashIcon}</button></form>
     <p class="roadview-guide-status" role="status"></p>`;
   section.insertBefore(panel, section.querySelector('.walk-panorama-controls'));
   const log = panel.querySelector('.roadview-guide-messages');
@@ -95,6 +96,8 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
   const input = panel.querySelector('input');
   const mic = panel.querySelector('[data-guide-action="mic"]');
   const auto = panel.querySelector('[data-guide-action="auto"]');
+  const closeButton = panel.querySelector('[data-guide-action="close"]');
+  const trash = panel.querySelector('[data-guide-action="trash"]');
   const userLanguage = panel.querySelector('[data-guide-language="user"]');
   const otherLanguage = panel.querySelector('[data-guide-language="other"]');
   let mode = 'ai';
@@ -120,19 +123,69 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
   let generation = 0;
   let saved = true;
   let greeted = false;
+  let selecting = false;
+  const selectedIds = new Set();
+  let followFrame = null;
+  let holdTimer = null;
+  let holdPointer = null;
+  let suppressClickUntil = 0;
   readHistory();
 
   const buttons = () => section.querySelectorAll('[data-panorama-chat]');
   const setStatus = text => { status.textContent = [text, saved ? ''
     : '기록을 이 기기에 저장하지 못했습니다. 화면을 닫기 전에 복사해 주세요.'].filter(Boolean).join(' '); };
+  const updateDeleteUi = () => {
+    panel.querySelector('.roadview-guide-title').textContent = selecting
+      ? `선택 ${selectedIds.size}개` : mode === 'ai' ? 'AI 음성 가이드' : '실시간 통역';
+    trash.hidden = mode !== 'ai';
+    trash.disabled = !historyMemory.ai.length || (selecting && !selectedIds.size);
+    trash.setAttribute('aria-label', selecting ? `선택한 대화 ${selectedIds.size}개 삭제` : '대화 기록 전체 삭제');
+    log.setAttribute('aria-live', selecting ? 'off' : 'polite');
+  };
+  const followMessages = () => {
+    followFrame = null;
+    if (!opened || selecting) return;
+    if (mode !== 'ai') { log.scrollTop = log.scrollHeight; return; }
+    // Start at the latest question (or greeting), instead of cutting off the
+    // top of that exchange by always pinning the scrollbar to its bottom.
+    log.style.paddingBottom = '2px';
+    const entries = historyMemory.ai;
+    const latest = entries.at(-1);
+    const anchorId = latest?.text === GREETING ? latest.id : entries.findLast(t => t.role === 'user')?.id || latest?.id;
+    const anchor = [...log.querySelectorAll('[data-message-id]')].find(el => el.dataset.messageId === anchorId);
+    if (!anchor) { log.scrollTop = 0; return; }
+    const top = Math.max(0, anchor.getBoundingClientRect().top - log.getBoundingClientRect().top + log.scrollTop - 2);
+    const remaining = log.scrollHeight - top;
+    log.style.paddingBottom = `${Math.max(2, log.clientHeight - remaining + 2)}px`;
+    log.scrollTop = top;
+  };
   const render = (follow = true) => {
     const entries = historyMemory[mode];
-    log.innerHTML = entries.map(t => `<article class="roadview-guide-message ${t.role}">
+    const scrollTop = log.scrollTop;
+    log.innerHTML = entries.map(t => {
+      const bubble = `<article class="roadview-guide-message ${t.role}" data-message-id="${esc(t.id)}">
       <span>${t.role === 'user' ? '내가 말한 내용' : mode === 'ai' ? 'AI 답변' : '상대방 응답'}</span>
       <p>${esc(t.text)}</p>${t.role === 'assistant' && mode === 'ai' ? `<button type="button" class="roadview-guide-replay" data-replay-id="${esc(t.id)}" aria-label="AI 답변 다시 듣기">🔊 다시 듣기</button>` : ''}${t.translation ? `<p class="roadview-guide-translation">${esc(t.translation)}</p>` : ''}
       ${t.sources?.length ? `<div class="roadview-guide-sources">${t.sources.map(s => `<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title)}</a>`).join('')}</div>` : ''}
-    </article>`).join('') || '<p class="roadview-guide-empty">말씀하신 내용과 답변이 여기에 남습니다.</p>';
-    if (follow) requestAnimationFrame(() => { if (opened) log.scrollTop = log.scrollHeight; });
+    </article>`;
+      return selecting && mode === 'ai'
+        ? `<div class="roadview-guide-select-row${selectedIds.has(t.id) ? ' is-selected' : ''}"><input type="checkbox" class="guide-chat-select" data-select-id="${esc(t.id)}" aria-label="${t.role === 'user' ? '내가 말한 내용' : 'AI 답변'} 대화 선택" ${selectedIds.has(t.id) ? 'checked' : ''}>${bubble}</div>` : bubble;
+    }).join('') || '<p class="roadview-guide-empty">말씀하신 내용과 답변이 여기에 남습니다.</p>';
+    updateDeleteUi();
+    cancelAnimationFrame(followFrame);
+    if (follow) followFrame = requestAnimationFrame(followMessages);
+    else log.scrollTop = scrollTop;
+  };
+  const cancelHold = () => {
+    clearTimeout(holdTimer);
+    holdTimer = null;
+    holdPointer = null;
+  };
+  const cancelSelection = () => {
+    cancelHold();
+    selecting = false;
+    selectedIds.clear();
+    updateDeleteUi();
   };
   const append = entry => {
     historyMemory[mode].push({ id: id(), sources: [], ...entry });
@@ -262,6 +315,8 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
   async function submit(value) {
     const text = value.trim();
     if (!text || busy || !opened || stopped) return;
+    cancelSelection();
+    if (mode === 'ai') autoListen = true;
     // A typed question also ends the current recording; never record the app's reply.
     const active = recorder;
     recorder = null;
@@ -420,6 +475,8 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     controller?.abort();
     controller = null;
     busy = false;
+    cancelSelection();
+    cancelAnimationFrame(followFrame);
     cancelVoice();
     panel.hidden = true;
     delete section.dataset.voiceGuideOpen;
@@ -436,6 +493,8 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     opened = true;
     panel.hidden = false;
     panel.dataset.mode = mode;
+    auto.hidden = closeButton.hidden = mode === 'ai';
+    log.style.paddingBottom = '';
     section.dataset.voiceGuideOpen = 'true';
     panel.querySelector('.roadview-guide-title').textContent = mode === 'ai' ? 'AI 음성 가이드' : '실시간 통역';
     panel.querySelector('.roadview-guide-languages').hidden = mode !== 'translation';
@@ -457,6 +516,17 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     } else void startRecording();
   }
   log.addEventListener('click', event => {
+    if (Date.now() < suppressClickUntil) { event.preventDefault(); return; }
+    if (selecting) {
+      if (event.target.closest('input, button, a')) return;
+      const bubble = event.target.closest('[data-message-id]');
+      if (!bubble) { cancelSelection(); render(false); return; }
+      const key = bubble.dataset.messageId;
+      if (selectedIds.has(key)) selectedIds.delete(key); else selectedIds.add(key);
+      if (!selectedIds.size) cancelSelection();
+      render(false);
+      return;
+    }
     const replay = event.target.closest('[data-replay-id]');
     if (!replay || busy) return;
     const entry = historyMemory.ai.find(t => t.id === replay.dataset.replayId);
@@ -466,7 +536,57 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     setStatus('');
     void speak(entry.text, false);
   });
-  panel.querySelector('[data-guide-action="close"]').addEventListener('click', close);
+  // Reuse page 2's hold threshold, movement tolerance and circular selectors.
+  log.addEventListener('pointerdown', event => {
+    if (mode !== 'ai' || selecting || busy || stopped || event.button !== 0
+      || !event.target.closest('[data-message-id]') || event.target.closest('button, a, input')) return;
+    cancelHold();
+    holdPointer = { id: event.pointerId, x: event.clientX, y: event.clientY };
+    holdTimer = setTimeout(() => {
+      cancelHold();
+      if (mode !== 'ai' || selecting || busy || stopped || !opened) return;
+      selecting = true;
+      selectedIds.clear();
+      suppressClickUntil = Date.now() + 500;
+      setStatus('');
+      render(false);
+    }, 1000);
+  });
+  log.addEventListener('pointermove', event => {
+    if (holdPointer?.id === event.pointerId
+      && Math.hypot(event.clientX - holdPointer.x, event.clientY - holdPointer.y) > 12) cancelHold();
+  });
+  for (const type of ['pointerup', 'pointercancel', 'pointerleave']) log.addEventListener(type, cancelHold);
+  log.addEventListener('contextmenu', event => {
+    if (mode === 'ai' && event.target.closest('[data-message-id]')) event.preventDefault();
+  });
+  log.addEventListener('change', event => {
+    const checkbox = event.target.closest('[data-select-id]');
+    if (!selecting || !checkbox) return;
+    if (checkbox.checked) selectedIds.add(checkbox.dataset.selectId);
+    else selectedIds.delete(checkbox.dataset.selectId);
+    if (!selectedIds.size) { cancelSelection(); render(false); return; }
+    checkbox.closest('.roadview-guide-select-row')?.classList.toggle('is-selected', checkbox.checked);
+    updateDeleteUi();
+  });
+  panel.addEventListener('keydown', event => {
+    if (event.key === 'Escape' && selecting) { cancelSelection(); render(false); }
+  });
+  trash.addEventListener('click', () => {
+    if (mode !== 'ai' || (selecting && !selectedIds.size)) return;
+    readHistory();
+    const entries = historyMemory.ai;
+    const deleting = selecting ? new Set(selectedIds) : new Set(entries.map(t => t.id));
+    const count = entries.filter(t => deleting.has(t.id)).length;
+    if (!count) return;
+    if (count === entries.length && !window.confirm('거리뷰 대화 기록을 모두 삭제할까요?')) return;
+    historyMemory.ai = entries.filter(t => !deleting.has(t.id));
+    saved = saveHistory();
+    cancelSelection();
+    render();
+    setStatus(`대화 ${count}개를 삭제했습니다.`);
+  });
+  closeButton.addEventListener('click', close);
   auto.addEventListener('click', () => {
     if (autoListen) { cancelVoice(); setStatus('음성을 껐습니다. 기록은 유지됩니다.'); }
     else { autoListen = true; updateVoice(); if (!busy && !speaking) void startRecording(); }
@@ -489,7 +609,14 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
   const sync = event => {
     if (event.key !== HISTORY_KEY) return;
     readHistory();
+    for (const key of selectedIds) if (!historyMemory.ai.some(t => t.id === key)) selectedIds.delete(key);
+    if (selecting && !selectedIds.size) cancelSelection();
     if (opened) render(false);
+  };
+  const resizeMessages = () => {
+    if (!opened || selecting || mode !== 'ai') return;
+    cancelAnimationFrame(followFrame);
+    followFrame = requestAnimationFrame(followMessages);
   };
   const visibility = () => {
     if (document.hidden && opened) {
@@ -498,7 +625,8 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     }
   };
   window.addEventListener('storage', sync);
+  window.addEventListener('resize', resizeMessages);
   document.addEventListener('visibilitychange', visibility);
   window.addEventListener('pagehide', close);
-  return { open, close, stop() { close(); stopped = true; window.removeEventListener('storage', sync); document.removeEventListener('visibilitychange', visibility); window.removeEventListener('pagehide', close); panel.remove(); } };
+  return { open, close, stop() { close(); stopped = true; window.removeEventListener('storage', sync); window.removeEventListener('resize', resizeMessages); document.removeEventListener('visibilitychange', visibility); window.removeEventListener('pagehide', close); panel.remove(); } };
 }
