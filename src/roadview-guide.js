@@ -142,7 +142,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     const voice = panel.querySelector('.roadview-guide-voice');
     const aiOpen = opened && mode === 'ai';
     (aiOpen ? heading : section.querySelector('.walk-panorama-view')).append(playbackControls);
-    if (mode === 'ai') heading.append(voice);
+    if (mode === 'ai') panel.querySelector('.roadview-guide-form').insertBefore(voice, panel.querySelector('[type="submit"]'));
     else panel.querySelector('.roadview-guide-body').insertBefore(voice, log);
   };
   layoutControls();
