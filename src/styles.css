@@ -206,6 +206,13 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .walk-mini-map.is-point-only .walk-mini-map-pointer::after { content: ''; width: 9px; height: 9px; border-radius: 50%; background: #beefc0; }
 .walk-panorama-canvas img.arrow_image.walk-panorama-native-active { filter: var(--walk-arrow-color) !important; }
 .walk-panorama-canvas img.arrow_image:not(.walk-panorama-native-active) { visibility: hidden !important; pointer-events: none !important; }
+.walk-panorama.has-fixed-route-arrow .walk-panorama-canvas img.arrow_image { visibility: hidden !important; pointer-events: none !important; }
+.walk-fixed-route-arrow { position: absolute; z-index: 6; left: 50%; top: 72%; width: clamp(76px, 22vw, 112px); height: clamp(76px, 22vw, 112px); padding: 0; border: 0; background: transparent; transform: translate(-50%, -50%); cursor: pointer; touch-action: manipulation; }
+.walk-fixed-route-arrow[hidden] { display: none; }
+.walk-fixed-route-arrow:disabled { opacity: 1; cursor: default; }
+.walk-fixed-route-arrow svg { display: block; width: 100%; height: 100%; overflow: visible; fill: #beefc0; stroke: #6f9876; stroke-width: 1; filter: drop-shadow(0 2px 2px #001c3466); transition: transform .28s ease-in-out; }
+.walk-fixed-route-arrow:focus-visible { outline: 2px solid #24e4eb; outline-offset: 4px; border-radius: 12px; }
+@media (prefers-reduced-motion: reduce) { .walk-fixed-route-arrow svg { transition: none; } }
 .walk-panorama.is-boarding .walk-panorama-canvas img.arrow_image { visibility: hidden !important; pointer-events: none !important; }
 .walk-panorama-canvas.is-arrival [class*="arrow_container_#"], .walk-panorama-canvas.is-arrival img.arrow_image { visibility: hidden !important; pointer-events: none !important; }
 .walk-panorama-anchor { display: block; width: 1px; height: 1px; opacity: 0; pointer-events: none; }

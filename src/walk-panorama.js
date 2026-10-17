@@ -279,6 +279,7 @@ export function createWalkPanorama(maps, section) {
   let nativeArrowTarget = null;
   let nativeArrowContainer = null;
   let arrowFrame = null;
+  let fixedRouteArrow = null;
   let switchingFrame = null;
   let probe = null;
   let preparing = false;
@@ -312,7 +313,39 @@ export function createWalkPanorama(maps, section) {
   };
   const nativeArrowStyle = document.createElement('style');
   section.appendChild(nativeArrowStyle);
-  const clearNativeArrow = () => {
+  // Trial guidance belongs to the screen, not a changing SDK scene. The SDK
+  // arrow selection below still supplies the existing mini-map bearing.
+  const enableFixedRouteArrow = () => {
+    fixedRouteArrow = document.createElement('button');
+    fixedRouteArrow.type = 'button';
+    fixedRouteArrow.className = 'walk-fixed-route-arrow';
+    fixedRouteArrow.hidden = true;
+    fixedRouteArrow.innerHTML = '<svg viewBox="0 0 100 100" aria-hidden="true"><path d="M50 5 95 52H69V94H31V52H5Z"/></svg>';
+    fixedRouteArrow.addEventListener('click', () => {
+      if (busy || selected < 0 || selected >= frames.length - 1) return;
+      pause();
+      void showFrame(selected + 1);
+    });
+    view.appendChild(fixedRouteArrow);
+    section.classList.add('has-fixed-route-arrow');
+  };
+  const showFixedRouteArrow = (frame) => {
+    if (!fixedRouteArrow) return;
+    fixedRouteArrow.hidden = frame.phase === 'arrival';
+    const decision = routeDecisions.find((item) => !item.crossing
+      && item.progress >= frame.progress - 2 && item.progress <= frame.progress + 20);
+    const direction = decision?.action || '직진';
+    const rotation = direction === '좌회전' ? -65 : direction === '우회전' ? 65 : 0;
+    // Do not restart the transition on every panorama or camera heading change.
+    if (fixedRouteArrow.dataset.direction !== direction) {
+      fixedRouteArrow.dataset.direction = direction;
+      fixedRouteArrow.querySelector('svg').style.transform = `rotate(${rotation}deg)`;
+      fixedRouteArrow.setAttribute('aria-label', `${direction} · 다음 도보 로드뷰`);
+    }
+    fixedRouteArrow.disabled = busy || selected < 0 || selected >= frames.length - 1;
+  };
+  const clearNativeArrow = (preserveFixedArrow = false) => {
+    if (fixedRouteArrow && !preserveFixedArrow) fixedRouteArrow.hidden = true;
     nativeArrowTarget = null;
     arrowFrame = null;
     nativeArrowContainer = null;
@@ -367,6 +400,7 @@ export function createWalkPanorama(maps, section) {
       const position = candidateAt(routeEdges, frame.progress);
       miniMap.update(position, frame.pov.pan, true);
     }
+    showFixedRouteArrow(frame);
   };
   const scheduleMarkerRefresh = () => {
     window.clearTimeout(markerRefreshTimer);
@@ -427,6 +461,7 @@ export function createWalkPanorama(maps, section) {
     const atEnd = preparationDone && selected >= 0 && selected >= frames.length - 1;
     previous.disabled = busy || selected <= 0;
     next.disabled = busy || selected < 0 || selected >= frames.length - 1;
+    if (fixedRouteArrow) fixedRouteArrow.disabled = next.disabled;
     playback.disabled = busy || selected < 0 || (atEnd && frames.length < 2);
     playback.classList.toggle('is-replay', atEnd && frames.length >= 2);
     playback.textContent = playing ? '일시정지' : atEnd ? '다시 재생' : '재생';
@@ -583,7 +618,8 @@ export function createWalkPanorama(maps, section) {
     busy = true;
     switchingFrame = frame;
     miniMap.suspend();
-    clearNativeArrow();
+    clearNativeArrow(true);
+    if (fixedRouteArrow) fixedRouteArrow.disabled = true;
     updateControls();
     const currentCoord = panorama.getLocation()?.coord;
     if (walkBuffer && selected >= 0 && panorama.getPanoId() !== frame.panoId) {
@@ -691,6 +727,9 @@ export function createWalkPanorama(maps, section) {
     nativeArrowObserver?.disconnect();
     nativeArrowObserver = null;
     clearNativeArrow();
+    fixedRouteArrow?.remove();
+    fixedRouteArrow = null;
+    section.classList.remove('has-fixed-route-arrow');
     canvas.classList.remove('is-arrival');
     settlePending({ status: 'CANCELLED' });
     listeners.forEach((listener) => maps.Event.removeListener(listener));
@@ -984,6 +1023,7 @@ export function createWalkPanorama(maps, section) {
     section.classList.remove('is-loading');
     setStatus('경로보기');
     const transitionMs = startStationName === '면목역' && destinationStationName === '사가정역' ? 180 : 0;
+    if (transitionMs) enableFixedRouteArrow();
     walkBuffer = createWalkPanoramaBuffer(maps, canvas, view, panorama, { transitionMs });
     await showFrame(0);
     if (run !== generation) return false;
