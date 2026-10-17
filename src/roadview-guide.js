@@ -26,6 +26,7 @@ function readHistory() {
       if (!value || !Array.isArray(value.ai) || !Array.isArray(value.translation)) return null;
       return Object.fromEntries(['ai', 'translation'].map(mode => [mode,
         value[mode].filter(t => t && ['user', 'assistant'].includes(t.role) && typeof t.text === 'string')
+          .filter(t => mode !== 'ai' || t.role !== 'assistant' || t.text !== GREETING)
           .map(t => ({ id: t.id || id(), role: t.role, text: t.text,
             translation: typeof t.translation === 'string' ? t.translation : '',
             sources: (Array.isArray(t.sources) ? t.sources : []).map(safeSource).filter(Boolean) }))]));
@@ -122,7 +123,6 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
   let controller = null;
   let generation = 0;
   let saved = true;
-  let greeted = false;
   let selecting = false;
   const selectedIds = new Set();
   let followFrame = null;
@@ -510,11 +510,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     onLayoutChange();
     autoListen = true;
     updateVoice();
-    if (mode === 'ai') {
-      if (!greeted) { append({ role: 'assistant', text: GREETING }); greeted = true; }
-      // Fixed cached audio: no generative model call for the greeting.
-      speak(GREETING, true);
-    } else void startRecording();
+    void startRecording();
   }
   log.addEventListener('click', event => {
     if (Date.now() < suppressClickUntil) { event.preventDefault(); return; }
