@@ -91,6 +91,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     <form class="roadview-guide-form" aria-label="거리뷰 대화 입력"><input type="text" maxlength="2000" autocomplete="off" placeholder="필요하면 문자로 입력하세요" aria-label="거리뷰 질문"><button type="submit" aria-label="거리뷰 질문 보내기">➤</button><button type="button" data-guide-action="trash" aria-label="대화 기록 전체 삭제">${trashIcon}</button></form>
     <p class="roadview-guide-status" role="status"></p>`;
   section.insertBefore(panel, section.querySelector('.walk-panorama-controls'));
+  const guideContent = section.closest('.guide-content');
   const log = panel.querySelector('.roadview-guide-messages');
   const state = panel.querySelector('.roadview-guide-state');
   const status = panel.querySelector('.roadview-guide-status');
@@ -162,7 +163,9 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     if (!opened || selecting) return;
     if (mode !== 'ai') { log.scrollTop = log.scrollHeight; return; }
     log.style.paddingBottom = '2px';
-    log.scrollTop = log.scrollHeight;
+    if (guideContent?.dataset.roadviewBelow === 'true') {
+      guideContent.scrollTo({ top: guideContent.scrollHeight, behavior: 'smooth' });
+    } else log.scrollTop = log.scrollHeight;
   };
   const render = (follow = true) => {
     const entries = historyMemory[mode];
@@ -485,6 +488,11 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     cancelAnimationFrame(followFrame);
     cancelVoice();
     panel.hidden = true;
+    if (guideContent?.dataset.roadviewBelow === 'true') {
+      delete guideContent.dataset.roadviewBelow;
+      guideContent.style.removeProperty('--roadview-full-height');
+      guideContent.scrollTop = 0;
+    }
     layoutControls();
     delete section.dataset.voiceGuideOpen;
     buttons().forEach(b => { b.setAttribute('aria-expanded', 'false'); b.setAttribute('aria-pressed', 'false'); });
@@ -500,6 +508,10 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     opened = true;
     panel.hidden = false;
     panel.dataset.mode = mode;
+    if (mode === 'ai' && guideContent) {
+      guideContent.style.setProperty('--roadview-full-height', `${guideContent.clientHeight}px`);
+      guideContent.dataset.roadviewBelow = 'true';
+    }
     layoutControls();
     auto.hidden = closeButton.hidden = mode === 'ai';
     log.style.paddingBottom = '';
@@ -619,6 +631,9 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
   };
   const resizeMessages = () => {
     if (!opened || selecting || mode !== 'ai') return;
+    if (guideContent?.dataset.roadviewBelow === 'true') {
+      guideContent.style.setProperty('--roadview-full-height', `${guideContent.clientHeight}px`);
+    }
     cancelAnimationFrame(followFrame);
     followFrame = requestAnimationFrame(followMessages);
   };
