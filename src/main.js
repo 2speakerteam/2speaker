@@ -2258,9 +2258,6 @@ function setGuideView(view, { fromHistory = false, kind = null } = {}) {
   content.scrollTop = 0;
   document.body.scrollTop = 0;
   window.scrollTo({ top: 0, behavior: 'instant' });
-  if (view === 'route' && previousView === 'panorama') {
-    content.querySelector('#route-map')?.dispatchEvent(new Event('guide-layout-change'));
-  }
 }
 
 function navigate(page) {
