@@ -156,11 +156,6 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .guide-chat-speak { flex: 0 0 auto; border: 0; background: transparent; cursor: pointer; }
 .guide-chat-select-row { width: 100%; display: grid; grid-template-columns: 28px minmax(0, 1fr); align-items: end; gap: 8px; }
 .guide-chat-select-row .guide-chat-bubble { min-width: 0; }
-.guide-content[data-guide-view="route"] .guide-chat-select-row { position: relative; width: fit-content; max-width: calc(88% - 36px); display: block; justify-self: start; }
-.guide-content[data-guide-view="route"] .guide-chat-select-row:has(> .guide-chat-bubble.assistant) { justify-self: end; }
-.guide-content[data-guide-view="route"] .guide-chat-select-row .guide-chat-bubble { max-width: 100%; }
-.guide-content[data-guide-view="route"] .guide-chat-select-row > .guide-chat-select { position: absolute; right: -30px; bottom: 0; }
-.guide-content[data-guide-view="route"] .guide-chat-select-row:has(> .guide-chat-bubble.assistant) > .guide-chat-select { right: auto; left: -30px; }
 .guide-chat-select { position: relative; width: 24px; height: 24px; margin: 0 0 3px; appearance: none; border: 1.5px solid #92c8e3; border-radius: 50%; background: #062946; cursor: pointer; }
 .guide-chat-select:checked { border-color: #00e4f5; background: #00cfe8; box-shadow: 0 0 0 3px rgba(0, 214, 238, .2); }
 .guide-chat-select:checked::after { content: ''; position: absolute; left: 50%; top: 46%; width: 10px; height: 6px; border-left: 3px solid #002d42; border-bottom: 3px solid #002d42; transform: translate(-50%, -50%) rotate(-45deg); }
