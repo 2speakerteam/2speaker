@@ -3,7 +3,7 @@ import { createWalkPanoramaBuffer } from './walk-panorama-buffer.js?v=20261017-w
 import { createWalkMiniMap } from './walk-mini-map.js?v=20261016-route-arrow-sync-1';
 import { bindBoardingPanoramaGestures } from './boarding-panorama-gestures.js?v=20261017-boarding-direction-tap-1';
 import { createBoardingPanoramaTravel } from './boarding-panorama-travel.js?v=20261017-boarding-direction-tap-1';
-import { createWalkRouteArrowLayer } from './walk-route-arrow-layer.js?v=20261017-walk-arrow-hidden-1';
+import { createWalkRouteArrowLayer } from './walk-route-arrow-layer.js?v=20261017-retained-native-arrow-1';
 
 const CAMERA_TO_ROUTE_LIMIT_METERS = 15;
 const CAMERA_TO_REQUEST_LIMIT_METERS = 25;

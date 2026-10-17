@@ -1,23 +1,6 @@
 // Keep only the existing SDK guidance graphic independent of photo opacity.
 // No panorama image/canvas is copied, and no SDK node is moved or rewritten.
-// Keep the working arrow implementation available for re-enabling later.
-const WALK_ROUTE_ARROW_VISIBLE = false;
-
 export function createWalkRouteArrowLayer(canvas, view) {
-  if (!WALK_ROUTE_ARROW_VISIBLE) {
-    const hiddenStyle = document.createElement('style');
-    hiddenStyle.textContent = '.walk-panorama-canvas.has-hidden-route-arrow img.arrow_image { visibility:hidden !important; pointer-events:none !important; }';
-    view.appendChild(hiddenStyle);
-    canvas.classList.add('has-hidden-route-arrow');
-    return {
-      show() {},
-      clear() {},
-      stop() {
-        canvas.classList.remove('has-hidden-route-arrow');
-        hiddenStyle.remove();
-      },
-    };
-  }
   const root = document.createElement('div');
   root.className = 'walk-route-arrow-layer';
   root.setAttribute('aria-hidden', 'true');
