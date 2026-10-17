@@ -33,5 +33,3 @@
 @media (max-height: 580px) { .walk-panorama .roadview-guide-panel { flex-basis: 175px; gap: 4px; padding: 6px 9px; } .roadview-guide-voice button { width: 46px; height: 46px; } }
 
 .walk-panorama .roadview-guide-panel[data-mode="translation"] { flex-basis: clamp(215px, 38dvh, 310px); }
-
-.roadview-guide-replay { margin-top: 5px; padding: 2px 6px; border: 1px solid #3a91ab; border-radius: 8px; background: #06405b; color: #d7f7ff; font: inherit; font-size: 10px; cursor: pointer; }
