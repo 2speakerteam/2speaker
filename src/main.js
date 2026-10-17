@@ -409,10 +409,10 @@ function initializeNaverRouteMap() {
     else if (taxiRequested) changeTaxiMode?.(true);
   });
 
-  const setStatus = (message, state = 'info') => {
+  const setStatus = (message, state = 'info', keepMapEntry = false) => {
     if (session !== routeMapSession || currentPage !== 'guide') return;
     if (state === 'error' || routeMapAuthError) {
-      finishMapEntry();
+      if (!keepMapEntry) finishMapEntry();
       if (walkRequested && guideView === 'panorama') setGuideView('route');
     }
     statusElement.textContent = routeMapAuthError || message;
@@ -451,6 +451,7 @@ function initializeNaverRouteMap() {
     let startTitle = '';
     let startIsStation = false;
     let destinationLocation = null;
+    let mapChoiceLocations = [];
     let destinationMarker = null;
     let locationStatus = routeStartQuery ? '출발지를 검색하고 있습니다.' : '현재 위치를 확인하고 있습니다.';
     let locationState = 'pending';
@@ -481,22 +482,40 @@ function initializeNaverRouteMap() {
     let walkPreparationId = 0;
     let initialMapRevealScheduled = false;
     let initialMapViewportReady = false;
+    let initialMapTilesReady = false;
     let initialWalkMapSettled = false;
     const targetMapViewportReady = () => {
+      const targets = destinationLocation ? [destinationLocation] : mapChoiceLocations;
+      if (!targets.length) return false;
       const bounds = map.getBounds();
-      return Boolean(bounds?.hasLatLng(destinationLocation)
+      return Boolean(targets.every((point) => bounds?.hasLatLng(point))
         && (!currentLocation || bounds.hasLatLng(currentLocation)));
     };
     const revealMap = () => {
-      if (activeTransportMode === 'preview' && !initialWalkMapSettled) return;
+      if (!initialMapViewportReady || !initialMapTilesReady) return;
+      if (activeTransportMode === 'preview' && !initialWalkMapSettled
+        && !mapChoiceLocations.length && locationState !== 'error') return;
       if (session === routeMapSession && currentPage === 'guide'
         && mapElement.isConnected && targetMapViewportReady()) {
         mapElement.classList.remove('is-awaiting-location');
         finishMapEntry();
       }
     };
+    maps.Event.addListener(map, 'bounds_changed', () => {
+      if (mapElement.classList.contains('is-awaiting-location')) {
+        initialMapViewportReady = false;
+        initialMapTilesReady = false;
+      }
+    });
+    maps.Event.addListener(map, 'idle', () => {
+      if (initialMapRevealScheduled && targetMapViewportReady()) {
+        initialMapViewportReady = true;
+        window.requestAnimationFrame(() => window.requestAnimationFrame(revealMap));
+      }
+    });
     maps.Event.addListener(map, 'tilesloaded', () => {
-      if (initialMapRevealScheduled && initialMapViewportReady) {
+      if (initialMapRevealScheduled && targetMapViewportReady()) {
+        initialMapTilesReady = true;
         window.requestAnimationFrame(() => window.requestAnimationFrame(revealMap));
       }
     });
@@ -512,7 +531,9 @@ function initializeNaverRouteMap() {
       const message = [locationSummary, destinationSummary].filter(Boolean).join(' · ');
       const hasError = locationState === 'error' || destinationState === 'error';
       const bothReady = locationState === 'success' && destinationState === 'success';
-      setStatus(message, hasError ? 'error' : bothReady ? 'success' : 'info');
+      const keepMapEntry = hasError && !routeMapAuthError
+        && (destinationState === 'pending' || Boolean(destinationLocation) || mapChoiceLocations.length > 0);
+      setStatus(message, hasError ? 'error' : bothReady ? 'success' : 'info', keepMapEntry);
     };
     const currentLocationIcon = {
       content: '<div role="img" aria-label="현재 위치" style="width:24px;height:24px;display:grid;place-items:center;border:2px solid #fff;border-radius:50%;background:rgba(36,166,255,.24);box-shadow:0 1px 8px rgba(0,26,52,.72);"><span style="width:12px;height:12px;border:1px solid #fff;border-radius:50%;background:#168cff;"></span></div>',
@@ -534,7 +555,8 @@ function initializeNaverRouteMap() {
     };
     const renderPlaceChoices = (places, role, onSelect) => {
       if (!destinationChoicesElement) return;
-      finishMapEntry();
+      mapChoiceLocations = places.map((place) => new maps.LatLng(place.lat, place.lng));
+      updateMapView();
       destinationChoicesElement.innerHTML = `<div class="place-choice-list" role="group" aria-label="네이버 장소 검색 결과">
         <p class="place-choice-heading">검색 결과 ${places.length}곳 · ${role}를 선택해 주세요</p>
         ${places.map((place, index) => {
@@ -554,15 +576,14 @@ function initializeNaverRouteMap() {
       });
     };
     const updateMapView = () => {
-      if (!initialMapRevealScheduled && destinationLocation && locationState !== 'pending') {
+      if (!initialMapRevealScheduled && (destinationLocation || mapChoiceLocations.length)
+        && (locationState !== 'pending' || mapChoiceLocations.length)) {
         initialMapRevealScheduled = true;
-        const waitForTargetViewport = () => {
-          if (targetMapViewportReady()) initialMapViewportReady = true;
-          else maps.Event.once(map, 'idle', waitForTargetViewport);
-        };
-        maps.Event.once(map, 'idle', waitForTargetViewport);
       }
-      if (currentLocation && destinationLocation) {
+      if (mapChoiceLocations.length) {
+        map.fitBounds([currentLocation, ...mapChoiceLocations].filter(Boolean),
+          { top: 28, right: 42, bottom: 48, left: 42, maxZoom: 16 });
+      } else if (currentLocation && destinationLocation) {
         let bounds = maps.LatLngBounds.bounds(currentLocation, destinationLocation);
         if (routeCoordinates.length) {
           const allPoints = [currentLocation, destinationLocation, ...routeCoordinates];
@@ -1205,7 +1226,6 @@ function initializeNaverRouteMap() {
         if (activeTransportMode === 'preview') {
           initialWalkMapSettled = true;
           revealMap();
-          finishMapEntry();
         }
         if (walkRequested && guideView === 'panorama') setGuideView('route');
       }).finally(() => {
@@ -1248,6 +1268,7 @@ function initializeNaverRouteMap() {
       walkPreparationId += 1;
       removeRouteLines();
       clearDestinationChoices();
+      mapChoiceLocations = [];
       destinationLocation = new maps.LatLng(latitude, longitude);
       destinationMarker?.setMap(null);
       destinationMarker = new maps.Marker({
@@ -1272,6 +1293,7 @@ function initializeNaverRouteMap() {
       return true;
     };
     const markStart = (place) => {
+      mapChoiceLocations = [];
       currentLocation = new maps.LatLng(place.lat, place.lng);
       startTitle = place.title || routeStartQuery;
       startIsStation = /(지하철|전철)/.test(place.category || '') && /역(?:\s|$)/.test(startTitle);
