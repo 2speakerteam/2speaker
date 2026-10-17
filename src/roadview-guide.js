@@ -170,7 +170,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     </article>`;
       return selecting && mode === 'ai'
         ? `<div class="roadview-guide-select-row${selectedIds.has(t.id) ? ' is-selected' : ''}"><input type="checkbox" class="guide-chat-select" data-select-id="${esc(t.id)}" aria-label="${t.role === 'user' ? '내가 말한 내용' : 'AI 답변'} 대화 선택" ${selectedIds.has(t.id) ? 'checked' : ''}>${bubble}</div>` : bubble;
-    }).join('') || (mode === 'ai' ? '' : '<p class="roadview-guide-empty">말씀하신 내용과 답변이 여기에 남습니다.</p>');
+    }).join('') || '<p class="roadview-guide-empty">말씀하신 내용과 답변이 여기에 남습니다.</p>';
     updateDeleteUi();
     cancelAnimationFrame(followFrame);
     if (follow) followFrame = requestAnimationFrame(followMessages);
@@ -366,7 +366,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
       busy = false;
       setStatus('');
       updateVoice();
-      speak(answer.text, mode !== 'ai');
+      speak(answer.text, true);
     } catch (error) {
       if (run !== generation || !opened || error.name === 'AbortError') return;
       busy = false;
@@ -510,7 +510,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     onLayoutChange();
     autoListen = true;
     updateVoice();
-    if (mode !== 'ai') void startRecording();
+    void startRecording();
   }
   log.addEventListener('click', event => {
     if (Date.now() < suppressClickUntil) { event.preventDefault(); return; }

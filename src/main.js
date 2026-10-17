@@ -1,6 +1,6 @@
 import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261017-all-walk-arrow-hidden-2';
 import { createGuideConversation } from './guide-conversation.js?v=20261016-guide-spoken-reply-1';
-import { createRoadviewGuide } from './roadview-guide.js?v=20261017-guide-ui-5';
+import { createRoadviewGuide } from './roadview-guide.js?v=20261017-guide-ui-4';
 
 const root = document.querySelector('#root');
 let currentPage = 'home';
@@ -247,14 +247,14 @@ function panoramaSection(kind) {
           </div>
           <div class="walk-panorama-turn" role="status" aria-live="polite" hidden></div>
           <p class="walk-panorama-arrival" role="status" aria-live="polite"></p>
-          ${kind === 'walk' ? `<div class="walk-panorama-chat-actions" role="group" aria-label="AI 대화 및 통역">
+          <div class="walk-panorama-chat-actions" role="group" aria-label="AI 대화 및 통역">
             <button type="button" class="walk-panorama-chat-button" data-panorama-chat="ai" aria-label="AI대화 열기" aria-expanded="false">
               <span>AI대화</span>
             </button>
             <button type="button" class="walk-panorama-chat-button" data-panorama-chat="translation" aria-label="실시간 통역 열기" aria-expanded="false">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 13v-2a9 9 0 0 1 18 0v2M3 13h3a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6ZM21 13h-3a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-6Z"/></svg><span>통역</span>
             </button>
-          </div>` : ''}
+          </div>
         </div>
         <div class="walk-panorama-controls">
           <button type="button" data-panorama-action="previous">이전</button>
@@ -1762,7 +1762,7 @@ function render({ preserveSearch = false } = {}) {
         routeText: document.querySelector('.guide-dialogue')?.innerText?.slice(0, 2600) || ''
       })
     });
-    document.querySelectorAll('.walk-panorama[data-panorama-kind="walk"]').forEach((section) => {
+    document.querySelectorAll('.walk-panorama').forEach((section) => {
       const viewer = () => section.dataset.panoramaKind === 'boarding'
         ? activeBoardingPanorama : activeWalkPanorama;
       const resize = () => {
