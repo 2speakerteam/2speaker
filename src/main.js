@@ -1,6 +1,6 @@
 import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261017-all-walk-arrow-hidden-2';
 import { createGuideConversation } from './guide-conversation.js?v=20261016-guide-spoken-reply-1';
-import { createRoadviewGuide } from './roadview-guide.js?v=20261017-guide-ui-1';
+import { createRoadviewGuide } from './roadview-guide.js?v=20261017-voice-first-polish-1';
 
 const root = document.querySelector('#root');
 let currentPage = 'home';
@@ -248,8 +248,8 @@ function panoramaSection(kind) {
           <div class="walk-panorama-turn" role="status" aria-live="polite" hidden></div>
           <p class="walk-panorama-arrival" role="status" aria-live="polite"></p>
           <div class="walk-panorama-chat-actions" role="group" aria-label="AI 대화 및 통역">
-            <button type="button" class="walk-panorama-chat-button" data-panorama-chat="ai" aria-label="대화 열기" aria-expanded="false">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11.5a8 8 0 0 1-8.5 8l-5 2 .9-4A8 8 0 1 1 20 11.5Z"/><path d="M8 11.5h.01M12 11.5h.01M16 11.5h.01"/></svg><span>대화</span>
+            <button type="button" class="walk-panorama-chat-button" data-panorama-chat="ai" aria-label="AI 대화 열기" aria-expanded="false">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11.5a8 8 0 0 1-8.5 8l-5 2 .9-4A8 8 0 1 1 20 11.5Z"/><path d="M8 11.5h.01M12 11.5h.01M16 11.5h.01"/></svg><span>AI</span>
             </button>
             <button type="button" class="walk-panorama-chat-button" data-panorama-chat="translation" aria-label="실시간 통역 열기" aria-expanded="false">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 13v-2a9 9 0 0 1 18 0v2M3 13h3a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6ZM21 13h-3a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-6Z"/></svg><span>통역</span>
