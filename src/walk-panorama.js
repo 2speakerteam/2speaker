@@ -3,7 +3,6 @@ import { createWalkPanoramaBuffer } from './walk-panorama-buffer.js?v=20261017-w
 import { createWalkMiniMap } from './walk-mini-map.js?v=20261016-route-arrow-sync-1';
 import { bindBoardingPanoramaGestures } from './boarding-panorama-gestures.js?v=20261017-boarding-direction-tap-1';
 import { createBoardingPanoramaTravel } from './boarding-panorama-travel.js?v=20261017-boarding-direction-tap-1';
-import { createWalkRouteArrowLayer } from './walk-route-arrow-layer.js?v=20261017-retained-native-arrow-1';
 
 const CAMERA_TO_ROUTE_LIMIT_METERS = 15;
 const CAMERA_TO_REQUEST_LIMIT_METERS = 25;
@@ -255,9 +254,6 @@ export function createWalkPanorama(maps, section) {
 
   let panorama = null;
   let walkBuffer = null;
-  let routeArrowLayer = null;
-  let arrowPoseRefresh = null;
-  let arrowPoseRefreshUntil = 0;
   let listeners = [];
   let pending = null;
   let frames = [];
@@ -316,8 +312,7 @@ export function createWalkPanorama(maps, section) {
   };
   const nativeArrowStyle = document.createElement('style');
   section.appendChild(nativeArrowStyle);
-  const clearNativeArrow = (preserveArrowLayer = false) => {
-    if (!preserveArrowLayer) routeArrowLayer?.clear();
+  const clearNativeArrow = () => {
     nativeArrowTarget = null;
     arrowFrame = null;
     nativeArrowContainer = null;
@@ -325,7 +320,7 @@ export function createWalkPanorama(maps, section) {
     canvas.querySelectorAll('img.arrow_image.walk-panorama-native-active')
       .forEach((image) => image.classList.remove('walk-panorama-native-active'));
   };
-  const paintNativeArrow = (refreshPose = false) => {
+  const paintNativeArrow = () => {
     if (!Number.isFinite(nativeArrowTarget) || !panorama || !arrowFrame
       || panorama.getPanoId() !== arrowFrame.panoId) return;
     const cameraBearing = panorama.getPov()?.pan;
@@ -356,12 +351,6 @@ export function createWalkPanorama(maps, section) {
       if (image === chosen?.image && !active) image.classList.add('walk-panorama-native-active');
       else if (image !== chosen?.image && active) image.classList.remove('walk-panorama-native-active');
     });
-    if (routeArrowLayer) {
-      const decision = routeDecisions.find((item) => item.priority >= 3 && !item.crossing
-        && item.progress >= arrowFrame.progress - 2 && item.progress <= arrowFrame.progress + 20);
-      const followCamera = refreshPose || performance.now() < arrowPoseRefreshUntil;
-      routeArrowLayer.show(chosen?.image, decision?.progress ?? 'straight', followCamera && !busy && !switchingFrame, arrowFrame.panoId);
-    }
     if (routeEdges.length) {
       const position = candidateAt(routeEdges, arrowFrame.progress);
       const bearing = chosen ? cameraBearing + chosen.angle : nativeArrowTarget;
@@ -469,19 +458,7 @@ export function createWalkPanorama(maps, section) {
   };
   const attachListeners = () => {
     listeners = [
-      maps.Event.addListener(panorama, 'pov_changed', () => {
-        scheduleMarkerRefresh();
-        if (routeArrowLayer && !busy && !switchingFrame) arrowPoseRefreshUntil = performance.now() + 80;
-        paintNativeArrow();
-        if (routeArrowLayer && !busy && !switchingFrame) {
-          const run = generation;
-          if (arrowPoseRefresh !== null) cancelAnimationFrame(arrowPoseRefresh);
-          arrowPoseRefresh = requestAnimationFrame(() => {
-            arrowPoseRefresh = null;
-            if (run === generation && routeArrowLayer && !busy && !switchingFrame) paintNativeArrow(true);
-          });
-        }
-      }),
+      maps.Event.addListener(panorama, 'pov_changed', () => { scheduleMarkerRefresh(); paintNativeArrow(); }),
       maps.Event.addListener(panorama, 'pano_status', (value) => {
         if (!pending) return;
         pending.status = value;
@@ -604,10 +581,9 @@ export function createWalkPanorama(maps, section) {
     const matchesFrame = (found, expected) => found.status === 'OK'
       && found.panoId === expected.panoId;
     busy = true;
-    arrowPoseRefreshUntil = 0;
     switchingFrame = frame;
     miniMap.suspend();
-    clearNativeArrow(true);
+    clearNativeArrow();
     updateControls();
     const currentCoord = panorama.getLocation()?.coord;
     if (walkBuffer && selected >= 0 && panorama.getPanoId() !== frame.panoId) {
@@ -715,11 +691,6 @@ export function createWalkPanorama(maps, section) {
     nativeArrowObserver?.disconnect();
     nativeArrowObserver = null;
     clearNativeArrow();
-    if (arrowPoseRefresh !== null) cancelAnimationFrame(arrowPoseRefresh);
-    arrowPoseRefresh = null;
-    arrowPoseRefreshUntil = 0;
-    routeArrowLayer?.stop();
-    routeArrowLayer = null;
     canvas.classList.remove('is-arrival');
     settlePending({ status: 'CANCELLED' });
     listeners.forEach((listener) => maps.Event.removeListener(listener));
@@ -1013,7 +984,6 @@ export function createWalkPanorama(maps, section) {
     section.classList.remove('is-loading');
     setStatus('경로보기');
     const transitionMs = startStationName === '면목역' && destinationStationName === '사가정역' ? 180 : 0;
-    if (transitionMs) routeArrowLayer = createWalkRouteArrowLayer(canvas, view);
     walkBuffer = createWalkPanoramaBuffer(maps, canvas, view, panorama, { transitionMs });
     await showFrame(0);
     if (run !== generation) return false;
