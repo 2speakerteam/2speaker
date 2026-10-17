@@ -42,13 +42,17 @@ async function handleTranscribe(req, res) {
   try {
     const token = await getAccessToken(req);
     const project = encodeURIComponent(cloudProjectId());
-    const response = await fetch(`https://speech.googleapis.com/v2/projects/${project}/locations/global/recognizers/_:recognize`, {
+    const automatic = req.body?.autoLanguage === true;
+    const location = automatic ? 'us' : 'global';
+    const endpoint = automatic ? 'us-speech.googleapis.com' : 'speech.googleapis.com';
+    const response = await fetch(`https://${endpoint}/v2/projects/${project}/locations/${location}/recognizers/_:recognize`, {
       method: 'POST',
       headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
       body: JSON.stringify({
-        config: { autoDecodingConfig: {}, languageCodes: ['ko-KR', 'en-US'], model: 'short' },
+        config: { autoDecodingConfig: {}, languageCodes: automatic ? ['auto'] : ['ko-KR', 'en-US'],
+          model: automatic ? 'chirp_3' : 'short' },
         content: audio
-      })
+      }), signal: AbortSignal.timeout(25000)
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
