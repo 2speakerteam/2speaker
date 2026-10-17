@@ -11,6 +11,7 @@ let guideView = 'route';
 const routeIntentHistory = [];
 let routeIntentRequestId = 0;
 let routeMapLoaderPromise = null;
+let routePlacePreparationTimer = null;
 let routeMapSession = 0;
 let routeMapAuthError = '';
 let routeMapAuthFailureInstalled = false;
@@ -306,7 +307,11 @@ function loadNaverMaps() {
       settled = true;
       window.clearTimeout(timeoutId);
       delete window[callbackName];
-      if (error) reject(error);
+      if (error) {
+        routeMapLoaderPromise = null;
+        script.remove();
+        reject(error);
+      }
       else resolve(maps);
     };
 
@@ -353,31 +358,85 @@ function currentPositionOnce() {
   });
 }
 
+const routePlaceRequests = new Map();
+function fetchNaverPlaces(query) {
+  const cached = routePlaceRequests.get(query);
+  if (cached && Date.now() - cached.createdAt < 30000) return cached.request;
+  const request = fetch('/api/map/place', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query })
+  }).then(async (response) => {
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(payload.error || '네이버 장소 검색에 연결하지 못했습니다.');
+    return Array.isArray(payload.places) ? payload.places : [];
+  });
+  const entry = { request, createdAt: Date.now() };
+  if (routePlaceRequests.size >= 32) routePlaceRequests.delete(routePlaceRequests.keys().next().value);
+  routePlaceRequests.set(query, entry);
+  request.catch(() => {
+    if (routePlaceRequests.get(query) === entry) routePlaceRequests.delete(query);
+  });
+  return request;
+}
+function prepareRoutePlaces(query, entryMode) {
+  const intent = directRouteIntent(query, entryMode);
+  const terms = new Set([intent?.start, intent?.destination, query.match(/^(.+?)에서/)?.[1]?.trim()]);
+  for (const term of terms) {
+    if (!term || term.length < 2 || term.length > 100) continue;
+    void fetchNaverPlaces(term).then((places) => {
+      const place = resolveNaverPlace(term, places).selected;
+      const station = place?.title?.match(/^(.+?역)(?:\s|\(|$)/)?.[1];
+      if (station && Number.isFinite(place.lat) && Number.isFinite(place.lng)) {
+        const point = { lat: place.lat, lng: place.lng };
+        void findStationExit(station, point, point).catch(() => {});
+      }
+    }).catch(() => {});
+  }
+}
+
 function initializeNaverRouteMap() {
   const session = ++routeMapSession;
   const mapElement = document.querySelector('#route-map');
   const statusElement = document.querySelector('#route-map-status');
   const destinationChoicesElement = document.querySelector('.guide-dialogue');
   if (!mapElement || !statusElement) return;
-  const placeRequests = new Map();
-  const fetchNaverPlaces = (query) => {
-    if (!placeRequests.has(query)) {
-      const request = fetch('/api/map/place', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query })
-      }).then(async (response) => {
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(payload.error || '네이버 장소 검색에 연결하지 못했습니다.');
-        return Array.isArray(payload.places) ? payload.places : [];
-      });
-      request.catch(() => {});
-      placeRequests.set(query, request);
-    }
-    return placeRequests.get(query);
-  };
   if (routeStartQuery) void fetchNaverPlaces(routeStartQuery);
   if (routeDestinationQuery) void fetchNaverPlaces(routeDestinationQuery);
+  const preparedTransportRequests = new Map();
+  let transportPreparationKey = '';
+  const loadTransportRoute = (mode, start, end, startIsStation = false) => {
+    const body = mode === 'subway' ? { start, end, startIsStation }
+      : mode === 'taxi' ? { start, end, mode: 'taxi' } : { start, end };
+    const key = `${mode}:${JSON.stringify(body)}`;
+    const cached = preparedTransportRequests.get(key);
+    if (cached && (!cached.completedAt || Date.now() - cached.completedAt < 15000)) return cached.request;
+    const entry = { completedAt: 0, request: null };
+    const url = mode === 'taxi' ? '/api/transit/walk' : `/api/transit/${mode}`;
+    entry.request = fetch(url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    }).then(async (response) => {
+      const payload = await response.json().catch(() => ({}));
+      const fallback = mode === 'subway' ? 'TMAP 지하철 경로 조회에 실패했습니다.'
+        : mode === 'bus' ? 'TMAP 버스 경로 조회에 실패했습니다.' : 'TMAP 자동차 경로 조회에 실패했습니다.';
+      if (!response.ok) throw new Error(payload.error || fallback);
+      entry.completedAt = Date.now();
+      return payload;
+    });
+    if (preparedTransportRequests.size >= 8) preparedTransportRequests.delete(preparedTransportRequests.keys().next().value);
+    preparedTransportRequests.set(key, entry);
+    entry.request.catch(() => {
+      if (preparedTransportRequests.get(key) === entry) preparedTransportRequests.delete(key);
+    });
+    return entry.request;
+  };
+  const prepareTransportRoutes = (start, end, startIsStation) => {
+    const key = JSON.stringify({ start, end, startIsStation });
+    if (transportPreparationKey === key) return;
+    transportPreparationKey = key;
+    for (const mode of ['subway', 'bus', 'taxi']) {
+      void loadTransportRoute(mode, start, end, startIsStation).catch(() => {});
+    }
+  };
   let subwayRequested = document.querySelector('.transport-option[data-mode="subway"]')?.getAttribute('aria-pressed') === 'true';
   let busRequested = document.querySelector('.transport-option[data-mode="bus"]')?.getAttribute('aria-pressed') === 'true';
   let walkRequested = document.querySelector('.transport-option[data-mode="walk"]')?.getAttribute('aria-pressed') === 'true';
@@ -388,10 +447,10 @@ function initializeNaverRouteMap() {
   let changeTaxiMode = null;
   let changeMapType = null;
   let activeTransportMode = routeTransportMode || 'preview';
-  let keepMapUntilSubwayReady = false;
+  let keepMapUntilTransportReady = false;
   mapElement.addEventListener('transport-mode-change', (event) => {
     const nextMode = event.detail?.mode || 'preview';
-    keepMapUntilSubwayReady = nextMode === 'subway';
+    keepMapUntilTransportReady = ['subway', 'bus', 'taxi'].includes(nextMode);
     if (activeTransportMode !== nextMode) {
       if (activeTransportMode === 'subway') changeSubwayMode?.(false);
       if (activeTransportMode === 'bus') changeBusMode?.(false);
@@ -400,7 +459,7 @@ function initializeNaverRouteMap() {
         || (activeTransportMode === 'preview' && nextMode !== 'walk')) changeWalkMode?.(false);
     }
     activeTransportMode = nextMode;
-    if (nextMode !== 'subway') changeMapType?.('normal');
+    if (!keepMapUntilTransportReady) changeMapType?.('normal');
     subwayRequested = nextMode === 'subway';
     busRequested = nextMode === 'bus';
     walkRequested = nextMode === 'walk';
@@ -437,7 +496,8 @@ function initializeNaverRouteMap() {
       draggable: true,
       pinchZoom: true,
       scrollWheel: true,
-      zoomControl: false
+      zoomControl: false,
+      tileTransition: false
     });
     changeMapType = (type) => map.setMapTypeId(type);
     mapElement.addEventListener('guide-layout-change', () => {
@@ -581,7 +641,7 @@ function initializeNaverRouteMap() {
       });
     };
     const updateMapView = () => {
-      if (keepMapUntilSubwayReady && routeLines.length) return;
+      if (keepMapUntilTransportReady && routeLines.length) return;
       if (!initialMapRevealScheduled && (destinationLocation || mapChoiceLocations.length)
         && (locationState !== 'pending' || mapChoiceLocations.length)) {
         initialMapRevealScheduled = true;
@@ -618,7 +678,7 @@ function initializeNaverRouteMap() {
       }
     };
     const removeRouteLines = () => {
-      if (keepMapUntilSubwayReady) return;
+      if (keepMapUntilTransportReady) return;
       routeLines.forEach((line) => line.setMap(null));
       routeLines = [];
       routeCoordinates = [];
@@ -655,7 +715,7 @@ function initializeNaverRouteMap() {
     const requestSubwayRoute = () => {
       if (!subwayRequested || destinationState !== 'success' || !destinationLocation) return;
       if (locationState === 'error') {
-        keepMapUntilSubwayReady = false;
+        keepMapUntilTransportReady = false;
         changeMapType?.('subway');
         showSubwayMessage(routeStartQuery ? '출발지를 확인할 수 없어 지하철 경로를 요청하지 않았습니다.' : '현재 GPS 위치를 확인할 수 없어 지하철 경로를 요청하지 않았습니다.', true);
         return;
@@ -676,16 +736,7 @@ function initializeNaverRouteMap() {
       const requestId = ++routeRequestId;
       removeRouteLines();
       showSubwayMessage('TMAP에서 실제 지하철 경로를 조회하고 있습니다.');
-      fetch('/api/transit/subway', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ start, end, startIsStation }),
-        signal: controller.signal
-      }).then(async (response) => {
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(payload.error || 'TMAP 지하철 경로 조회에 실패했습니다.');
-        return payload;
-      }).then((payload) => {
+      loadTransportRoute('subway', start, end, startIsStation).then((payload) => {
         if (session !== routeMapSession || currentPage !== 'guide' || !subwayRequested || requestId !== routeRequestId) return;
         const route = payload.route;
         if (!payload.coordinateMatch || !route || !Array.isArray(route.segments)
@@ -705,7 +756,7 @@ function initializeNaverRouteMap() {
           });
           return { ...segment, points };
         });
-        keepMapUntilSubwayReady = false;
+        keepMapUntilTransportReady = false;
         removeRouteLines();
         changeMapType?.('subway');
         routeCoordinates = segments.flatMap((segment) => segment.points);
@@ -723,7 +774,8 @@ function initializeNaverRouteMap() {
       }).catch((error) => {
         if (controller.signal.aborted || session !== routeMapSession || currentPage !== 'guide'
           || !subwayRequested || requestId !== routeRequestId) return;
-        keepMapUntilSubwayReady = false;
+        preparedTransportRequests.clear();
+        keepMapUntilTransportReady = false;
         removeRouteLines();
         changeMapType?.('subway');
         showSubwayMessage(error instanceof Error ? error.message : 'TMAP 지하철 경로 조회에 실패했습니다.', true);
@@ -779,6 +831,8 @@ function initializeNaverRouteMap() {
     const requestBusRoute = () => {
       if (!busRequested || destinationState !== 'success' || !destinationLocation) return;
       if (locationState === 'error') {
+        keepMapUntilTransportReady = false;
+        changeMapType?.('normal');
         showBusMessage(routeStartQuery ? '출발지를 확인할 수 없어 버스 경로를 요청하지 않았습니다.' : '현재 GPS 위치를 확인할 수 없어 버스 경로를 요청하지 않았습니다.', true);
         return;
       }
@@ -797,16 +851,7 @@ function initializeNaverRouteMap() {
       const requestId = ++routeRequestId;
       removeRouteLines();
       showBusMessage('TMAP에서 실제 버스 경로를 조회하고 있습니다.');
-      fetch('/api/transit/bus', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ start, end }),
-        signal: controller.signal
-      }).then(async (response) => {
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(payload.error || 'TMAP 버스 경로 조회에 실패했습니다.');
-        return payload;
-      }).then((payload) => {
+      loadTransportRoute('bus', start, end).then((payload) => {
         if (session !== routeMapSession || currentPage !== 'guide' || !busRequested || requestId !== routeRequestId) return;
         const route = payload.route;
         if (!payload.coordinateMatch || !route || !Array.isArray(route.segments)
@@ -826,6 +871,9 @@ function initializeNaverRouteMap() {
           });
           return { ...segment, points };
         });
+        keepMapUntilTransportReady = false;
+        removeRouteLines();
+        changeMapType?.('normal');
         routeCoordinates = segments.flatMap((segment) => segment.points);
         routeLines = segments.map((segment) => new maps.Polyline({
           map,
@@ -841,7 +889,10 @@ function initializeNaverRouteMap() {
       }).catch((error) => {
         if (controller.signal.aborted || session !== routeMapSession || currentPage !== 'guide'
           || !busRequested || requestId !== routeRequestId) return;
+        preparedTransportRequests.clear();
+        keepMapUntilTransportReady = false;
         removeRouteLines();
+        changeMapType?.('normal');
         showBusMessage(error instanceof Error ? error.message : 'TMAP 버스 경로 조회에 실패했습니다.', true);
       }).finally(() => {
         if (routeController === controller) {
@@ -871,6 +922,8 @@ function initializeNaverRouteMap() {
     const requestTaxiRoute = () => {
       if (!taxiRequested || destinationState !== 'success' || !destinationLocation) return;
       if (locationState === 'error') {
+        keepMapUntilTransportReady = false;
+        changeMapType?.('normal');
         showTaxiMessage(routeStartQuery ? '출발지를 확인할 수 없어 택시 경로를 요청하지 않았습니다.' : '현재 GPS 위치를 확인할 수 없어 택시 경로를 요청하지 않았습니다.', true);
         return;
       }
@@ -889,16 +942,7 @@ function initializeNaverRouteMap() {
       const requestId = ++routeRequestId;
       removeRouteLines();
       showTaxiMessage('TMAP에서 실제 자동차 주행 경로를 조회하고 있습니다.');
-      fetch('/api/transit/walk', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ start, end, mode: 'taxi' }),
-        signal: controller.signal
-      }).then(async (response) => {
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(payload.error || 'TMAP 자동차 경로 조회에 실패했습니다.');
-        return payload;
-      }).then((payload) => {
+      loadTransportRoute('taxi', start, end).then((payload) => {
         if (session !== routeMapSession || currentPage !== 'guide' || !taxiRequested || requestId !== routeRequestId) return;
         const route = payload.route;
         const matches = (actual, expected) => actual && Math.abs(actual.lat - expected.lat) < 0.00001
@@ -916,6 +960,9 @@ function initializeNaverRouteMap() {
           });
           return { ...segment, points };
         });
+        keepMapUntilTransportReady = false;
+        removeRouteLines();
+        changeMapType?.('normal');
         routeCoordinates = segments.flatMap((segment) => segment.points);
         routeLines = segments.map((segment) => new maps.Polyline({
           map, path: segment.points, strokeColor: segment.color,
@@ -938,7 +985,10 @@ function initializeNaverRouteMap() {
       }).catch((error) => {
         if (controller.signal.aborted || session !== routeMapSession || currentPage !== 'guide'
           || !taxiRequested || requestId !== routeRequestId) return;
+        preparedTransportRequests.clear();
+        keepMapUntilTransportReady = false;
         removeRouteLines();
+        changeMapType?.('normal');
         showTaxiMessage(error instanceof Error ? error.message : 'TMAP 자동차 경로 조회에 실패했습니다.', true);
       }).finally(() => {
         if (routeController === controller) {
@@ -1149,6 +1199,7 @@ function initializeNaverRouteMap() {
       }
       const start = { lat: currentLocation.lat(), lng: currentLocation.lng() };
       const end = { lat: destinationLocation.lat(), lng: destinationLocation.lng() };
+      prepareTransportRoutes(start, end, startIsStation);
       const requestKey = `${start.lat},${start.lng}:${end.lat},${end.lng}`;
       if (walkRouteReady?.key === requestKey) {
         beginWalkPanorama(walkRouteReady);
@@ -1649,6 +1700,7 @@ function legalScreen(title, sections) {
 
 function render({ preserveSearch = false } = {}) {
   stopRouteRecognition();
+  window.clearTimeout(routePlacePreparationTimer);
   finishMapEntry();
   const origin = preserveSearch ? root.querySelector('.app-shell')?.cloneNode(true) : null;
   const screens = {
@@ -1714,7 +1766,7 @@ function render({ preserveSearch = false } = {}) {
     document.querySelector('.guide-chat-tabs')?.addEventListener('click', syncGuideChatButtons);
   }
   else routeMapSession += 1;
-  if (currentPage === 'route') void loadNaverMaps().catch(() => {});
+  if (currentPage === 'route' || currentPage === 'home') void loadNaverMaps().catch(() => {});
 
   document.querySelectorAll('.transport-option').forEach((button) => {
     button.addEventListener('click', () => {
@@ -1912,6 +1964,12 @@ if (currentPage === 'user-language-list' && !supportedUserLanguagesLoaded && !su
   });
   routeInput?.addEventListener('input', (event) => {
     routeInput.setCustomValidity('');
+    window.clearTimeout(routePlacePreparationTimer);
+    if (!event.isComposing) {
+      routePlacePreparationTimer = window.setTimeout(() => {
+        if (currentPage === 'route' && routeInput.isConnected) prepareRoutePlaces(routeInput.value.trim(), routeEntryMode);
+      }, 300);
+    }
     const feedback = document.querySelector('.route-search-feedback');
     if (feedback) {
       feedback.textContent = '';
@@ -1928,6 +1986,7 @@ if (currentPage === 'user-language-list' && !supportedUserLanguagesLoaded && !su
     if (!query || routeInput.readOnly) return;
     const feedback = document.querySelector('.route-search-feedback');
     const directIntent = directRouteIntent(query, routeEntryMode);
+    if (directIntent) prepareRoutePlaces(query, routeEntryMode);
     if (feedback) {
       feedback.textContent = '';
       feedback.classList.remove('is-error');
