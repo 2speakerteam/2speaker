@@ -1013,7 +1013,7 @@ export function createWalkPanorama(maps, section) {
     section.classList.remove('is-loading');
     setStatus('경로보기');
     const transitionMs = startStationName === '면목역' && destinationStationName === '사가정역' ? 180 : 0;
-    if (transitionMs) routeArrowLayer = createWalkRouteArrowLayer(canvas, view);
+    routeArrowLayer = createWalkRouteArrowLayer(canvas, view);
     walkBuffer = createWalkPanoramaBuffer(maps, canvas, view, panorama, { transitionMs });
     await showFrame(0);
     if (run !== generation) return false;
