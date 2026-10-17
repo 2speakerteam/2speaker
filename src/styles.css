@@ -145,6 +145,8 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .guide-chat-bubble { max-width: 88%; display: flex; align-items: end; gap: 7px; color: #f3fbff; font-size: 13px; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: pan-y; }
 .guide-chat-bubble.user, .guide-chat-bubble.other { justify-self: start; }
 .guide-chat-bubble.assistant, .guide-chat-bubble.self { justify-self: end; flex-direction: row-reverse; }
+.guide-content[data-guide-view="route"] .guide-chat-bubble.user, .guide-content[data-guide-view="route"] .guide-chat-bubble.assistant { max-width: calc(88% - 36px); flex-direction: column; align-items: flex-start; }
+.guide-content[data-guide-view="route"] .guide-chat-bubble.assistant { align-items: flex-end; }
 .guide-chat-bubble > span { width: 29px; height: 29px; flex: 0 0 29px; display: grid; place-items: center; border-radius: 50%; background: #126aab; font-size: 11px; font-weight: 700; }
 .guide-chat-bubble.assistant > span, .guide-chat-bubble.self > span { background: #008eaa; }
 .guide-chat-bubble > div { min-width: 0; padding: 9px 11px; border: 1px solid rgba(74, 190, 231, .4); border-radius: 15px; background: #07528c; overflow-wrap: anywhere; }
