@@ -107,6 +107,11 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
   let acquiring = false;
   let microphoneRequest = 0;
   let speechRequest = 0;
+  const voiceAudio = new Audio();
+  voiceAudio.preload = 'auto';
+  let speechController = null;
+  let retainedUtterance = null;
+  let speechTimer = null;
   let stream = null;
   let audioContext = null;
   let silenceTimer = null;
@@ -124,7 +129,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     const entries = historyMemory[mode];
     log.innerHTML = entries.map(t => `<article class="roadview-guide-message ${t.role}">
       <span>${t.role === 'user' ? '내가 말한 내용' : mode === 'ai' ? 'AI 답변' : '상대방 응답'}</span>
-      <p>${esc(t.text)}</p>${t.translation ? `<p class="roadview-guide-translation">${esc(t.translation)}</p>` : ''}
+      <p>${esc(t.text)}</p>${t.role === 'assistant' && mode === 'ai' ? `<button type="button" class="roadview-guide-replay" data-replay-id="${esc(t.id)}" aria-label="AI 답변 다시 듣기">🔊 다시 듣기</button>` : ''}${t.translation ? `<p class="roadview-guide-translation">${esc(t.translation)}</p>` : ''}
       ${t.sources?.length ? `<div class="roadview-guide-sources">${t.sources.map(s => `<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${esc(s.title)}</a>`).join('')}</div>` : ''}
     </article>`).join('') || '<p class="roadview-guide-empty">말씀하신 내용과 답변이 여기에 남습니다.</p>';
     if (follow) requestAnimationFrame(() => { if (opened) log.scrollTop = log.scrollHeight; });
@@ -162,43 +167,97 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     recorder = null;
     if (active?.state === 'recording') active.stop();
     releaseMicrophone();
-    window.speechSynthesis?.cancel();
+    stopSpeech();
     speaking = false;
     updateVoice();
   };
-  const speak = (text, listenAfter = false) => {
+  function stopSpeech() {
+    clearTimeout(speechTimer);
+    speechTimer = null;
+    speechController?.abort();
+    speechController = null;
+    voiceAudio.onended = voiceAudio.onerror = null;
+    voiceAudio.pause();
+    voiceAudio.removeAttribute('src');
+    voiceAudio.load();
+    window.speechSynthesis?.cancel();
+    retainedUtterance = null;
+  }
+
+  async function speak(text, listenAfter = false) {
     if (!opened || stopped || !autoListen) return;
-    if (!window.speechSynthesis || !window.SpeechSynthesisUtterance) {
-      setStatus('음성 재생을 지원하지 않는 브라우저입니다. 아래 글로 답변을 확인해 주세요.');
-      if (listenAfter && autoListen) void startRecording();
-      return;
-    }
     const speechRun = ++speechRequest;
-    window.speechSynthesis.cancel();
     const run = generation;
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = /[가-힣]/.test(text) ? 'ko-KR' : 'en-US';
+    stopSpeech();
+    const current = () => run === generation && speechRun === speechRequest && opened && !stopped && autoListen;
+    let fallbackStarted = false;
+    const completed = () => {
+      if (!current()) return;
+      clearTimeout(speechTimer);
+      retainedUtterance = null;
+      speaking = false;
+      updateVoice();
+      if (listenAfter && !busy) void startRecording();
+    };
+    const failed = () => {
+      if (!current()) return;
+      clearTimeout(speechTimer);
+      speaking = false;
+      autoListen = false;
+      setStatus('음성이 재생되지 않았습니다. 답변의 다시 듣기를 눌러 주세요.');
+      updateVoice();
+    };
+    const nativeFallback = () => {
+      if (!current() || fallbackStarted) return;
+      fallbackStarted = true;
+      clearTimeout(speechTimer);
+      voiceAudio.onended = voiceAudio.onerror = null;
+      voiceAudio.pause();
+      const synth = window.speechSynthesis;
+      const korean = /[가-힣]/.test(text);
+      const voices = synth?.getVoices() || [];
+      const voice = voices.find(v => (korean ? /^ko/i : /^en/i).test(v.lang)
+        && /female|여성|Heami|Yuna|Seoyeon|SunHi|SoonBok|Zira|Samantha|Susan|Karen|Aria|Ava|Jenny/i.test(v.name));
+      if (!voice || !window.SpeechSynthesisUtterance) { failed(); return; }
+      retainedUtterance = new SpeechSynthesisUtterance(text);
+      retainedUtterance.voice = voice;
+      retainedUtterance.lang = korean ? 'ko-KR' : 'en-US';
+      retainedUtterance.rate = 0.9;
+      retainedUtterance.pitch = 1;
+      retainedUtterance.volume = 1;
+      retainedUtterance.onend = completed;
+      retainedUtterance.onerror = failed;
+      try { synth.resume(); synth.speak(retainedUtterance); }
+      catch { failed(); }
+    };
     speaking = true;
     updateVoice();
-    utterance.onend = () => {
-      if (run !== generation || speechRun !== speechRequest || !opened || stopped) return;
-      speaking = false;
-      updateVoice();
-      if (listenAfter && autoListen && !busy) void startRecording();
-    };
-    utterance.onerror = () => {
-      if (run !== generation || speechRun !== speechRequest || !opened || stopped) return;
-      speaking = false;
-      updateVoice();
-      if (listenAfter && autoListen && !busy) void startRecording();
-    };
-    try { window.speechSynthesis.speak(utterance); }
-    catch {
-      speaking = false;
-      setStatus('음성을 재생하지 못했습니다. 아래 글로 답변을 확인해 주세요.');
-      updateVoice();
+    voiceAudio.volume = 1;
+    voiceAudio.muted = false;
+    voiceAudio.onended = completed;
+    voiceAudio.onerror = nativeFallback;
+    speechTimer = setTimeout(() => { if (current()) { voiceAudio.pause(); nativeFallback(); } }, 22000);
+    try {
+      if (text === GREETING || text === CHECKING) {
+        const phrase = text === GREETING ? 'greeting' : 'checking';
+        voiceAudio.src = `/api/assistant/reply?task=roadview-phrase&phrase=${phrase}&v=soft-female-1`;
+        // Run play inside the original button tap, before any await. The fixed
+        // greeting is cached audio, not a model-generated reply.
+        await voiceAudio.play();
+      } else {
+        speechController = new AbortController();
+        const result = await post('/api/assistant/reply', { task: 'roadview-speech', message: text }, speechController.signal);
+        if (!current()) return;
+        voiceAudio.src = `data:audio/mpeg;base64,${result.audioContent}`;
+        await voiceAudio.play();
+      }
+      if (current()) clearTimeout(speechTimer);
+    } catch (error) {
+      if (!current() || error.name === 'AbortError') return;
+      if (error.name === 'NotAllowedError') failed();
+      else nativeFallback();
     }
-  };
+  }
 
   async function submit(value) {
     const text = value.trim();
@@ -214,7 +273,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     const signal = controller.signal;
     busy = true;
     speaking = false;
-    window.speechSynthesis?.cancel();
+    stopSpeech();
     input.value = '';
     append({ role: 'user', text });
     setStatus(mode === 'ai' ? '지도와 관련 정보를 확인하고 있습니다.' : '통역하고 있습니다.');
@@ -255,7 +314,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     } catch (error) {
       if (run !== generation || !opened || error.name === 'AbortError') return;
       busy = false;
-      window.speechSynthesis?.cancel();
+      stopSpeech();
       speaking = false;
       autoListen = false;
       setStatus(error.message || '답변을 확인하지 못했습니다. 다시 말씀해 주세요.');
@@ -393,10 +452,20 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     updateVoice();
     if (mode === 'ai') {
       if (!greeted) { append({ role: 'assistant', text: GREETING }); greeted = true; }
-      // Fixed local speech: no model request or paid speech-synthesis API call.
+      // Fixed cached audio: no generative model call for the greeting.
       speak(GREETING, true);
     } else void startRecording();
   }
+  log.addEventListener('click', event => {
+    const replay = event.target.closest('[data-replay-id]');
+    if (!replay || busy) return;
+    const entry = historyMemory.ai.find(t => t.id === replay.dataset.replayId);
+    if (!entry) return;
+    cancelVoice();
+    autoListen = true;
+    setStatus('');
+    void speak(entry.text, false);
+  });
   panel.querySelector('[data-guide-action="close"]').addEventListener('click', close);
   auto.addEventListener('click', () => {
     if (autoListen) { cancelVoice(); setStatus('음성을 껐습니다. 기록은 유지됩니다.'); }
@@ -406,7 +475,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     if (recorder?.state === 'recording') { recorder.stop(); return; }
     if (busy) return;
     speechRequest++;
-    window.speechSynthesis?.cancel();
+    stopSpeech();
     speaking = false;
     autoListen = true;
     void startRecording();

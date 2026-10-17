@@ -99,6 +99,11 @@ function normalizeHistory(value) {
 
 module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
+  if (req.method === 'GET' && req.query?.task === 'roadview-phrase'
+    && ['greeting', 'checking'].includes(req.query?.phrase)) {
+    const { handleRoadviewSpeech } = require('../../lib/roadview-speech');
+    return handleRoadviewSpeech(req, res, req.query.phrase);
+  }
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ error: 'POST 요청만 사용할 수 있어요.' });
@@ -110,6 +115,11 @@ module.exports = async function handler(req, res) {
   const message = typeof req.body?.message === 'string' ? req.body.message.trim() : '';
   if (!message || message.length > 2000) {
     return res.status(400).json({ error: '메시지를 확인해 주세요. 한 번에 2,000자까지 입력할 수 있어요.' });
+  }
+
+  if (req.body?.task === 'roadview-speech') {
+    const { handleRoadviewSpeech } = require('../../lib/roadview-speech');
+    return handleRoadviewSpeech(req, res);
   }
 
   if (req.body?.task === 'roadview-guide') {
