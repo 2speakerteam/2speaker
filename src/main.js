@@ -388,10 +388,8 @@ function initializeNaverRouteMap() {
   let changeTaxiMode = null;
   let changeMapType = null;
   let activeTransportMode = routeTransportMode || 'preview';
-  let keepMapUntilSubwayReady = false;
   mapElement.addEventListener('transport-mode-change', (event) => {
     const nextMode = event.detail?.mode || 'preview';
-    keepMapUntilSubwayReady = nextMode === 'subway';
     if (activeTransportMode !== nextMode) {
       if (activeTransportMode === 'subway') changeSubwayMode?.(false);
       if (activeTransportMode === 'bus') changeBusMode?.(false);
@@ -400,7 +398,7 @@ function initializeNaverRouteMap() {
         || (activeTransportMode === 'preview' && nextMode !== 'walk')) changeWalkMode?.(false);
     }
     activeTransportMode = nextMode;
-    if (nextMode !== 'subway') changeMapType?.('normal');
+    changeMapType?.(nextMode === 'subway' ? 'subway' : 'normal');
     subwayRequested = nextMode === 'subway';
     busRequested = nextMode === 'bus';
     walkRequested = nextMode === 'walk';
@@ -483,7 +481,6 @@ function initializeNaverRouteMap() {
     let walkPanoramaPreparing = false;
     let walkPreparationId = 0;
     let initialMapRevealScheduled = false;
-    let initialPreviewRouteSettled = false;
     const targetMapViewportReady = () => {
       const targets = destinationLocation ? [destinationLocation] : mapChoiceLocations;
       if (!targets.length) return false;
@@ -503,8 +500,6 @@ function initializeNaverRouteMap() {
     };
     const revealMap = () => {
       if (session !== routeMapSession || currentPage !== 'guide' || !mapElement.isConnected) return;
-      if (activeTransportMode === 'preview' && !initialPreviewRouteSettled
-        && !mapChoiceLocations.length && locationState !== 'error') return;
       if (targetMapViewportReady() && targetMapImagesReady()) {
         mapElement.classList.remove('is-awaiting-location');
         finishMapEntry();
@@ -581,7 +576,6 @@ function initializeNaverRouteMap() {
       });
     };
     const updateMapView = () => {
-      if (keepMapUntilSubwayReady && routeLines.length) return;
       if (!initialMapRevealScheduled && (destinationLocation || mapChoiceLocations.length)
         && (locationState !== 'pending' || mapChoiceLocations.length)) {
         initialMapRevealScheduled = true;
@@ -618,7 +612,6 @@ function initializeNaverRouteMap() {
       }
     };
     const removeRouteLines = () => {
-      if (keepMapUntilSubwayReady) return;
       routeLines.forEach((line) => line.setMap(null));
       routeLines = [];
       routeCoordinates = [];
@@ -655,8 +648,6 @@ function initializeNaverRouteMap() {
     const requestSubwayRoute = () => {
       if (!subwayRequested || destinationState !== 'success' || !destinationLocation) return;
       if (locationState === 'error') {
-        keepMapUntilSubwayReady = false;
-        changeMapType?.('subway');
         showSubwayMessage(routeStartQuery ? '출발지를 확인할 수 없어 지하철 경로를 요청하지 않았습니다.' : '현재 GPS 위치를 확인할 수 없어 지하철 경로를 요청하지 않았습니다.', true);
         return;
       }
@@ -705,9 +696,6 @@ function initializeNaverRouteMap() {
           });
           return { ...segment, points };
         });
-        keepMapUntilSubwayReady = false;
-        removeRouteLines();
-        changeMapType?.('subway');
         routeCoordinates = segments.flatMap((segment) => segment.points);
         routeLines = segments.map((segment) => new maps.Polyline({
           map,
@@ -723,9 +711,7 @@ function initializeNaverRouteMap() {
       }).catch((error) => {
         if (controller.signal.aborted || session !== routeMapSession || currentPage !== 'guide'
           || !subwayRequested || requestId !== routeRequestId) return;
-        keepMapUntilSubwayReady = false;
         removeRouteLines();
-        changeMapType?.('subway');
         showSubwayMessage(error instanceof Error ? error.message : 'TMAP 지하철 경로 조회에 실패했습니다.', true);
       }).finally(() => {
         if (routeController === controller) {
@@ -1090,7 +1076,6 @@ function initializeNaverRouteMap() {
         if (activeTransportMode !== 'preview') updateWalkMapView();
       }
       if (activeTransportMode === 'preview') {
-        initialPreviewRouteSettled = true;
         document.querySelector('.transport-option[data-mode="walk"]')?.setAttribute('aria-pressed', 'true');
         window.requestAnimationFrame(() => window.requestAnimationFrame(revealMap));
       }
@@ -1238,7 +1223,6 @@ function initializeNaverRouteMap() {
         if (walkRequested || activeTransportMode === 'preview') removeRouteLines();
         showWalkMessage(error instanceof Error ? error.message : 'TMAP 도보 경로 조회에 실패했습니다.', true);
         if (activeTransportMode === 'preview') {
-          initialPreviewRouteSettled = true;
           revealMap();
         }
         if (walkRequested && guideView === 'panorama') setGuideView('route');
