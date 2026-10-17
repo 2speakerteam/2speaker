@@ -93,5 +93,5 @@
 .guide-content[data-guide-view="panorama"][data-roadview-below="true"] .walk-panorama-view { flex: 0 0 var(--roadview-full-height, 100dvh); height: var(--roadview-full-height, 100dvh); }
 .guide-content[data-guide-view="panorama"][data-roadview-below="true"] .roadview-guide-panel[data-mode="ai"] { flex: 0 0 auto; min-height: calc(var(--roadview-full-height, 100dvh) * .35); overflow: visible; }
 .guide-content[data-guide-view="panorama"][data-roadview-below="true"] .roadview-guide-body { flex: 1 0 auto; }
-.guide-content[data-guide-view="panorama"][data-roadview-below="true"] .roadview-guide-messages { flex: 1 0 auto; height: auto; overflow-y: visible; }
+.guide-content[data-guide-view="panorama"][data-roadview-below="true"] .roadview-guide-messages { flex: 1 1 0; height: auto; overflow: visible; }
 .guide-content[data-guide-view="panorama"][data-roadview-below="true"] .roadview-guide-form { position: sticky; bottom: 0; z-index: 10; }
