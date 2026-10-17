@@ -582,7 +582,7 @@ function initializeNaverRouteMap() {
       }
       if (mapChoiceLocations.length) {
         map.fitBounds([currentLocation, ...mapChoiceLocations].filter(Boolean),
-          { top: 28, right: 42, bottom: 48, left: 42, maxZoom: 16 });
+          { top: 28, right: 42, bottom: 48, left: 42, maxZoom: activeTransportMode === 'preview' ? 14 : 16 });
       } else if (currentLocation && destinationLocation) {
         let bounds = maps.LatLngBounds.bounds(currentLocation, destinationLocation);
         if (routeCoordinates.length) {
@@ -602,13 +602,13 @@ function initializeNaverRouteMap() {
           );
         }
         map.fitBounds(bounds, { top: 28, right: 42, bottom: 48, left: 42,
-          maxZoom: routeTransportMode === '' ? 16 : 13 });
+          maxZoom: activeTransportMode === 'preview' ? 14 : 13 });
       } else if (destinationLocation) {
         map.setCenter(destinationLocation);
-        map.setZoom(15);
+        map.setZoom(activeTransportMode === 'preview' ? 14 : 15);
       } else if (currentLocation) {
         map.setCenter(currentLocation);
-        map.setZoom(15);
+        map.setZoom(activeTransportMode === 'preview' ? 14 : 15);
       }
     };
     const removeRouteLines = () => {
@@ -1073,7 +1073,7 @@ function initializeNaverRouteMap() {
           })
         ]);
         map.autoResize();
-        updateWalkMapView();
+        if (activeTransportMode !== 'preview') updateWalkMapView();
       }
       if (activeTransportMode === 'preview') {
         document.querySelector('.transport-option[data-mode="walk"]')?.setAttribute('aria-pressed', 'true');
