@@ -388,7 +388,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
       busy = false;
       setStatus('');
       updateVoice();
-      speak(answer.text, mode !== 'ai', answer.language || '');
+      speak(answer.text, mode === 'translation' && Boolean(sourceLanguage), answer.language || '');
     } catch (error) {
       if (run !== generation || !opened || error.name === 'AbortError') return;
       busy = false;
