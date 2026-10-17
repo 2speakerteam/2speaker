@@ -1,6 +1,5 @@
 import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261017-all-walk-arrow-hidden-2';
 import { createGuideConversation } from './guide-conversation.js?v=20261016-guide-spoken-reply-1';
-import { createRoadviewGuide } from './roadview-guide.js?v=20261017-page3-voice-2';
 
 const root = document.querySelector('#root');
 let currentPage = 'home';
@@ -19,7 +18,6 @@ let routeMapAuthFailureInstalled = false;
 let activeWalkPanorama = null;
 let activeBoardingPanorama = null;
 let activeGuideConversation = null;
-let activeRoadviewGuides = [];
 let activeRouteRecognition = null;
 let mapEntryOrigin = null;
 function finishMapEntry() {
@@ -1733,8 +1731,6 @@ function render({ preserveSearch = false } = {}) {
       ['6. 개인정보 문의', '개인정보와 관련된 문의는 2SPEAKER 문의 / 오류 신고를 통해 접수할 수 있습니다.']
     ])
   };
-  activeRoadviewGuides.forEach(guide => guide.stop());
-  activeRoadviewGuides = [];
   activeWalkPanorama?.stop();
   activeWalkPanorama = null;
   activeBoardingPanorama?.stop();
@@ -1762,28 +1758,10 @@ function render({ preserveSearch = false } = {}) {
         routeText: document.querySelector('.guide-dialogue')?.innerText?.slice(0, 2600) || ''
       })
     });
-    document.querySelectorAll('.walk-panorama').forEach((section) => {
-      const viewer = () => section.dataset.panoramaKind === 'boarding'
-        ? activeBoardingPanorama : activeWalkPanorama;
-      const resize = () => {
-        if (guideView !== 'panorama' || section.classList.contains('is-preloading')) return;
-        viewer()?.resize?.();
-        window.requestAnimationFrame(() => {
-          if (section.isConnected && guideView === 'panorama') viewer()?.resize?.();
-        });
-      };
-      const conversation = createRoadviewGuide(section, {
-        getContext: () => ({ destination: routeDestinationQuery }),
-        onOpen: () => {
-          activeRoadviewGuides.forEach(guide => guide.close());
-          viewer()?.pause?.();
-        },
-        onLayoutChange: resize
-      });
-      activeRoadviewGuides.push(conversation);
-      section.querySelectorAll('[data-panorama-chat]').forEach((button) => {
-        button.addEventListener('click', () => conversation.open(button.dataset.panoramaChat));
-      });
+    document.querySelectorAll('[data-panorama-chat]').forEach((button) => {
+      button.addEventListener('click', () => toggleGuideChat(
+        button.dataset.panoramaChat
+      ));
     });
     document.querySelector('.guide-chat-tabs')?.addEventListener('click', syncGuideChatButtons);
   }
@@ -2339,7 +2317,6 @@ function toggleGuideChat(mode) {
 function setGuideView(view, { fromHistory = false, kind = null } = {}) {
   const previousView = guideView;
   if (view === 'route' && previousView === 'panorama') {
-    activeRoadviewGuides.forEach(guide => guide.close());
     activeWalkPanorama?.pause?.();
     activeBoardingPanorama?.pause?.();
   }
