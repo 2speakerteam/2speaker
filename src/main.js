@@ -2299,7 +2299,19 @@ function toggleGuideChat(mode) {
     tab.click();
   }
   syncGuideChatButtons();
-  if (returningFromPanorama) window.requestAnimationFrame(() => window.scrollTo(0, 0));
+  if (returningFromPanorama && mode === 'ai') {
+    const revealChat = () => {
+      if (currentPage !== 'guide' || guideView !== 'route'
+        || content.dataset.chatExpanded !== 'true') return;
+      content.scrollTop = content.scrollHeight;
+    };
+    window.requestAnimationFrame(revealChat);
+    if (guideHistoryStep() === 'panorama') {
+      window.addEventListener('popstate', () => {
+        window.requestAnimationFrame(revealChat);
+      }, { once: true });
+    }
+  } else if (returningFromPanorama) window.requestAnimationFrame(() => window.scrollTo(0, 0));
 }
 
 function setGuideView(view, { fromHistory = false, kind = null } = {}) {
