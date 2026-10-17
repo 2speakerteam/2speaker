@@ -60,7 +60,7 @@
 .walk-panorama .roadview-guide-controls [data-panorama-action="playback"]::before { width: 0; height: 0; margin-left: 2px; border-top: 7px solid transparent; border-bottom: 7px solid transparent; border-left: 10px solid currentColor; }
 .walk-panorama .roadview-guide-controls [data-panorama-action="playback"][aria-label="로드뷰 일시정지"]::before { width: 10px; height: 12px; margin: 0; border: 0; background: linear-gradient(to right, currentColor 0 35%, transparent 35% 65%, currentColor 65%); }
 .walk-panorama .roadview-guide-heading > .roadview-guide-controls { position: static; flex: 0 0 auto; margin-left: auto; }
-.walk-panorama .roadview-guide-panel[data-mode="ai"] { flex-basis: clamp(240px, 48dvh, 480px); gap: 8px; padding: 10px 12px; }
+.walk-panorama .roadview-guide-panel[data-mode="ai"] { flex-basis: 35%; gap: 8px; padding: 10px 12px; }
 .roadview-guide-panel[data-mode="ai"] .roadview-guide-heading { min-height: 42px; gap: 6px; }
 .roadview-guide-panel[data-mode="ai"] .roadview-guide-heading strong { flex: 0 1 auto; min-width: 0; font-size: 14px; }
 .roadview-guide-panel[data-mode="ai"] .roadview-guide-heading .roadview-guide-voice { flex: 0 0 40px; position: relative; align-self: center; gap: 0; }
@@ -69,16 +69,16 @@
 .roadview-guide-panel[data-mode="ai"] .roadview-guide-state { position: absolute; top: 100%; font-size: 9px; white-space: nowrap; }
 .roadview-guide-panel[data-mode="ai"] .roadview-guide-body { display: flex; min-width: 0; }
 .roadview-guide-panel[data-mode="ai"] .roadview-guide-messages { flex: 1; gap: 10px; padding: 2px 0; }
-.roadview-guide-panel[data-mode="ai"] .roadview-guide-message { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; width: auto; max-width: calc(88% - 36px); padding: 0; border: 0; border-radius: 0; background: transparent; }
+.roadview-guide-panel[data-mode="ai"] .roadview-guide-message { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; width: auto; max-width: calc(88% - 36px); padding: 0; border: 0; border-radius: 0; background: transparent; }
 .roadview-guide-panel[data-mode="ai"] .roadview-guide-message.assistant { align-items: flex-end; }
-.roadview-guide-panel[data-mode="ai"] .roadview-guide-message > span { flex: 0 0 29px; width: 29px; height: 29px; margin: 0; display: grid; place-items: center; border-radius: 50%; background: #126aab; color: #f3fbff; font-size: 11px; font-weight: 700; }
+.roadview-guide-panel[data-mode="ai"] .roadview-guide-message > span { flex: 0 0 auto; width: auto; height: auto; margin: 0; display: block; border-radius: 0; background: transparent; color: #f3fbff; font-size: 11px; font-weight: 700; }
 .roadview-guide-panel[data-mode="ai"] .roadview-guide-message-content { box-sizing: border-box; min-width: 0; max-width: 100%; margin-top: 0; padding: 9px 11px; border: 1px solid rgba(74, 190, 231, .4); border-radius: 15px; background: #07528c; overflow-wrap: anywhere; }
 .roadview-guide-panel[data-mode="ai"] .roadview-guide-message.assistant .roadview-guide-message-content { background: #173c56; }
 .roadview-guide-panel[data-mode="ai"] .roadview-guide-select-row .roadview-guide-message.assistant { justify-self: end; }
 .roadview-guide-panel[data-mode="ai"] .roadview-guide-select-row.is-selected .roadview-guide-message-content { border-color: #21d9f1; }
 
 .roadview-guide-form input:focus, .roadview-guide-form input:focus-visible { outline: none; outline-offset: 0; box-shadow: none; }
-.roadview-guide-panel[data-mode="ai"] .roadview-guide-message.assistant > span { background: #008eaa; }
+.roadview-guide-panel[data-mode="ai"] .roadview-guide-message.assistant > span { background: transparent; }
 
 .roadview-guide-panel[data-mode="ai"] .roadview-guide-form { box-sizing: border-box; width: calc(100% + 2px); align-self: center; height: 43px; min-height: 43px; min-width: 0; gap: 5px; align-items: center; padding: 4px 5px 4px 12px; border: 1px solid rgba(67, 187, 223, .55); border-radius: 14px; background: rgba(0, 31, 54, .88); }
 .roadview-guide-panel[data-mode="ai"] .roadview-guide-form input { flex: 1 1 auto; width: auto; color: #fff; font-size: 13px; }
