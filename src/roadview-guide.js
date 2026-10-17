@@ -86,7 +86,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
       <div class="roadview-guide-voice"><button type="button" data-guide-action="mic" aria-label="음성 질문 시작" aria-pressed="false">${microphone}</button><span class="roadview-guide-state" role="status">말하기</span></div>
       <div class="roadview-guide-messages" role="log" aria-live="polite" aria-label="사용자와 AI 대화 기록"></div>
     </div>
-    <form class="roadview-guide-form" aria-label="거리뷰 대화 입력"><input type="text" maxlength="2000" autocomplete="off" placeholder="필요하면 문자로 입력하세요" aria-label="거리뷰 질문"><button type="submit" aria-label="거리뷰 질문 보내기">➤</button></form>
+    <form class="roadview-guide-form" aria-label="거리뷰 대화 입력"><input type="text" maxlength="2000" autocomplete="off" placeholder="음성 또는 문자로 질문하세요" aria-label="거리뷰 질문"><button type="submit" aria-label="거리뷰 질문 보내기">➤</button></form>
     <p class="roadview-guide-status" role="status"></p>`;
   section.insertBefore(panel, section.querySelector('.walk-panorama-controls'));
   const log = panel.querySelector('.roadview-guide-messages');
@@ -240,7 +240,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     try {
       if (text === GREETING || text === CHECKING) {
         const phrase = text === GREETING ? 'greeting' : 'checking';
-        voiceAudio.src = `/public/audio/roadview-${phrase}-voice3.mp3`;
+        voiceAudio.src = `/api/assistant/reply?task=roadview-phrase&phrase=${phrase}&v=announcer-bright-1`;
         // Run play inside the original button tap, before any await. The fixed
         // greeting is cached audio, not a model-generated reply.
         await voiceAudio.play();
@@ -439,7 +439,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     section.dataset.voiceGuideOpen = 'true';
     panel.querySelector('.roadview-guide-title').textContent = mode === 'ai' ? 'AI 음성 가이드' : '실시간 통역';
     panel.querySelector('.roadview-guide-languages').hidden = mode !== 'translation';
-    input.placeholder = mode === 'ai' ? '필요하면 문자로 입력하세요' : '음성 또는 문자로 통역하세요';
+    input.placeholder = mode === 'ai' ? '음성 또는 문자로 질문하세요' : '음성 또는 문자로 통역하세요';
     buttons().forEach(b => {
       const selected = b.dataset.panoramaChat === mode;
       b.setAttribute('aria-expanded', String(selected));
