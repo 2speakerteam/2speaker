@@ -1,6 +1,6 @@
 import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261017-all-walk-arrow-hidden-2';
 import { createGuideConversation } from './guide-conversation.js?v=20261016-guide-spoken-reply-1';
-import { createRoadviewGuide } from './roadview-guide.js?v=20261018-panel-layout-2';
+import { createRoadviewGuide } from './roadview-guide.js?v=20261018-panel-polish-1';
 
 const root = document.querySelector('#root');
 let currentPage = 'home';
@@ -252,7 +252,7 @@ function panoramaSection(kind) {
               <span>AI대화</span>
             </button>
             <button type="button" class="walk-panorama-chat-button" data-panorama-chat="translation" aria-label="실시간 통역 열기" aria-expanded="false">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 13v-2a9 9 0 0 1 18 0v2M3 13h3a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-6ZM21 13h-3a2 2 0 0 0-2 2v4a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-6Z"/></svg><span>통역</span>
+              <span>통역</span>
             </button>
           </div>` : ''}
         </div>
