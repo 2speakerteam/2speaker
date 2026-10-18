@@ -1,4 +1,4 @@
-import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261018-boarding-touch-release-1';
+import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261018-boarding-landmark-hold-1';
 import { createGuideConversation } from './guide-conversation.js?v=20261018-page2-always-trash-1';
 import { createRoadviewGuide } from './roadview-guide.js?v=20261018-translation-playback-1';
 
@@ -689,7 +689,6 @@ function initializeNaverRouteMap() {
       if (!destinationChoicesElement || destinationState !== 'success') return;
       boardingTarget = null;
       destinationChoicesElement.innerHTML = `<div class="subway-route-panel${isError ? ' is-error' : ''}" role="status">${escapeHtml(message)}</div>`;
-      scrollTransportDetailsIntoView('subway');
     };
     const showSubwayRoute = (route) => {
       if (!destinationChoicesElement) return;
@@ -714,7 +713,6 @@ function initializeNaverRouteMap() {
         ${route.departureBasis ? `<p class="subway-transfer">TMAP ${escapeHtml(route.departureBasis)} 출발 기준 경로입니다. 지금 출발 가능한 경로는 아닙니다.</p>` : ''}
         <ol>${accessWalk}${legs}</ol>${transfers}${geometryNotice}${boardingButton}
       </div>`;
-      scrollTransportDetailsIntoView('subway');
     };
     const requestSubwayRoute = () => {
       if (!subwayRequested || destinationState !== 'success' || !destinationLocation) return;
@@ -807,7 +805,6 @@ function initializeNaverRouteMap() {
       if (!destinationChoicesElement || destinationState !== 'success') return;
       boardingTarget = null;
       destinationChoicesElement.innerHTML = `<div class="subway-route-panel${isError ? ' is-error' : ''}" role="status">${escapeHtml(message)}</div>`;
-      scrollTransportDetailsIntoView('bus');
     };
     const showBusRoute = (route) => {
       if (!destinationChoicesElement) return;
@@ -832,7 +829,6 @@ function initializeNaverRouteMap() {
         ${route.departureBasis ? `<p class="subway-transfer">TMAP ${escapeHtml(route.departureBasis)} 출발 기준 경로입니다. 지금 출발 가능한 경로는 아닙니다.</p>` : ''}
         <ol>${accessWalk}${legs}${arrivalWalk}</ol>${transfers}${missingWalk}${boardingButton}
       </div>`;
-      scrollTransportDetailsIntoView('bus');
     };
     const requestBusRoute = () => {
       if (!busRequested || destinationState !== 'success' || !destinationLocation) return;
@@ -924,7 +920,6 @@ function initializeNaverRouteMap() {
       if (!destinationChoicesElement || destinationState !== 'success') return;
       boardingTarget = null;
       destinationChoicesElement.innerHTML = `<div class="subway-route-panel${isError ? ' is-error' : ''}" role="status">${escapeHtml(message)}</div>`;
-      scrollTransportDetailsIntoView('taxi');
     };
     const requestTaxiRoute = () => {
       if (!taxiRequested || destinationState !== 'success' || !destinationLocation) return;
@@ -989,7 +984,6 @@ function initializeNaverRouteMap() {
           <strong>택시 주행 약 ${Math.ceil(route.totalSeconds / 60)}분 · ${Math.round(route.distanceMeters).toLocaleString('ko-KR')}m</strong>
           ${fare}${boardingButton}
         </div>`;
-        scrollTransportDetailsIntoView('taxi');
       }).catch((error) => {
         if (controller.signal.aborted || session !== routeMapSession || currentPage !== 'guide'
           || !taxiRequested || requestId !== routeRequestId) return;
@@ -1810,9 +1804,6 @@ function render({ preserveSearch = false } = {}) {
       document.querySelector('#route-map')?.dispatchEvent(new CustomEvent('transport-mode-change', {
         detail: { mode: button.dataset.mode }
       }));
-      if (['subway', 'bus', 'taxi'].includes(button.dataset.mode)) {
-        scrollTransportDetailsIntoView(button.dataset.mode);
-      }
     });
   });
 
@@ -2302,22 +2293,6 @@ function pushGuideHistory(step) {
     ...(state && typeof state === 'object' ? state : {}),
     [guideHistoryStateKey]: step
   }, '', window.location.href);
-}
-
-function scrollTransportDetailsIntoView(mode) {
-  window.requestAnimationFrame(() => {
-    if (currentPage !== 'guide' || guideView !== 'route' || routeTransportMode !== mode) return;
-    const content = document.querySelector('.guide-content[data-guide-view="route"]');
-    const details = content?.querySelector('.guide-dialogue');
-    if (!details?.firstElementChild) return;
-    const anchor = content.dataset.chatExpanded === 'true' ? details
-      : content.querySelector('.guide-chat-tabs') || details;
-    const bottom = content.getBoundingClientRect().top + content.clientHeight;
-    content.scrollTo({
-      top: Math.max(0, content.scrollTop + anchor.getBoundingClientRect().bottom - bottom + 8),
-      behavior: 'smooth'
-    });
-  });
 }
 
 function syncGuideChatButtons() {

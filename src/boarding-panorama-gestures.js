@@ -101,11 +101,7 @@ export function bindBoardingPanoramaGestures({
     }, DOUBLE_TAP_MS);
   }, true);
   canvas.addEventListener('pointercancel', reset, true);
-  canvas.addEventListener('pointerleave', (event) => {
-    // Touch emits pointerleave after pointerup. That completed tap must keep
-    // its double-tap delay; only a still-pressed pointer leaving cancels it.
-    if (event.target === canvas && pointers.has(event.pointerId)) reset();
-  });
+  canvas.addEventListener('pointerleave', (event) => { if (event.target === canvas) reset(); });
   window.addEventListener('pointerup', () => { if (hold || pointers.size) reset(); });
   window.addEventListener('blur', reset);
   document.addEventListener('visibilitychange', () => { if (document.hidden) reset(); });
