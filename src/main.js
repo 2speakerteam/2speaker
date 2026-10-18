@@ -1,7 +1,6 @@
 import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261018-boarding-touch-release-1';
 import { createGuideConversation } from './guide-conversation.js?v=20261018-page2-always-trash-1';
 import { createRoadviewGuide } from './roadview-guide.js?v=20261018-translation-playback-1';
-import { createTransitArrivals, arrivalPlaceholder, transitLineLabel } from './transit-arrivals.js?v=20261018-arrivals-1';
 
 const root = document.querySelector('#root');
 let currentPage = 'home';
@@ -20,7 +19,6 @@ let routeMapAuthFailureInstalled = false;
 let activeWalkPanorama = null;
 let activeBoardingPanorama = null;
 let activeGuideConversation = null;
-let activeTransitArrivals = null;
 let activeRoadviewGuides = [];
 let activeRouteRecognition = null;
 let mapEntryOrigin = null;
@@ -404,10 +402,6 @@ function initializeNaverRouteMap() {
   const statusElement = document.querySelector('#route-map-status');
   const destinationChoicesElement = document.querySelector('.guide-dialogue');
   if (!mapElement || !statusElement) return;
-  activeTransitArrivals?.stop();
-  const transitArrivals = createTransitArrivals({ isActive: mode => session === routeMapSession
-    && currentPage === 'guide' && guideView === 'route' && routeTransportMode === mode });
-  activeTransitArrivals = transitArrivals;
   if (routeStartQuery) void fetchNaverPlaces(routeStartQuery);
   if (routeDestinationQuery) void fetchNaverPlaces(routeDestinationQuery);
   const preparedTransportRequests = new Map();
@@ -458,7 +452,6 @@ function initializeNaverRouteMap() {
   let keepMapUntilTransportReady = false;
   mapElement.addEventListener('transport-mode-change', (event) => {
     const nextMode = event.detail?.mode || 'preview';
-    transitArrivals.stop();
     keepMapUntilTransportReady = ['subway', 'bus', 'taxi'].includes(nextMode);
     if (activeTransportMode !== nextMode) {
       if (activeTransportMode === 'subway') changeSubwayMode?.(false);
@@ -694,7 +687,6 @@ function initializeNaverRouteMap() {
     };
     const showSubwayMessage = (message, isError = false) => {
       if (!destinationChoicesElement || destinationState !== 'success') return;
-      transitArrivals.stop();
       boardingTarget = null;
       destinationChoicesElement.innerHTML = `<div class="subway-route-panel${isError ? ' is-error' : ''}" role="status">${escapeHtml(message)}</div>`;
       scrollTransportDetailsIntoView('subway');
@@ -709,7 +701,7 @@ function initializeNaverRouteMap() {
         && Number.isFinite(route.accessWalk.distanceMeters)
         ? `<li><strong>도보 접근 · ${escapeHtml(route.accessWalk.station)}</strong><span>${escapeHtml(startTitle || '현재 위치')} → ${escapeHtml(route.accessWalk.station)} · ${Math.ceil(route.accessWalk.seconds / 60)}분 · ${Math.round(route.accessWalk.distanceMeters)}m</span></li>`
         : '';
-      const legs = route.transportLegs.map((leg) => `<li><strong>지하철 · ${escapeHtml(leg.route)}</strong><span>${transitLineLabel(leg, route.segments.find(segment => segment.mode === 'SUBWAY' && segment.route === leg.route)?.color)} 승차 → ${escapeHtml(leg.alight)} 하차 · ${Math.ceil(leg.seconds / 60)}분</span></li>`).join('');
+      const legs = route.transportLegs.map((leg) => `<li><strong>지하철 · ${escapeHtml(leg.route)}</strong><span>${escapeHtml(leg.board)} 탑승 → ${escapeHtml(leg.alight)} 하차 · ${Math.ceil(leg.seconds / 60)}분</span></li>`).join('');
       const transfers = route.transfers.length
         ? `<p class="subway-transfer">환승: ${route.transfers.map((transfer) => escapeHtml(transfer.from === transfer.to ? transfer.from : `${transfer.from} → ${transfer.to}`)).join(' · ')}</p>`
         : '';
@@ -717,13 +709,11 @@ function initializeNaverRouteMap() {
       const geometryNotice = missingModes.length
         ? '<p class="subway-transfer">TMAP이 일부 도보 접근 구간 좌표를 제공하지 않아 확인된 구간만 지도에 표시했습니다.</p>'
         : '';
-      destinationChoicesElement.innerHTML = `<div class="subway-route-panel transit-route-panel" role="status" aria-label="TMAP 지하철 경로">
+      destinationChoicesElement.innerHTML = `<div class="subway-route-panel" role="status" aria-label="TMAP 지하철 경로">
         <strong>${transportLabel} 약 ${minutes}분 · 환승 ${route.transferCount}회</strong>
         ${route.departureBasis ? `<p class="subway-transfer">TMAP ${escapeHtml(route.departureBasis)} 출발 기준 경로입니다. 지금 출발 가능한 경로는 아닙니다.</p>` : ''}
-        <ol>${accessWalk}${legs}</ol>${transfers}${geometryNotice}
-        ${arrivalPlaceholder('subway')}
-      </div>${boardingButton}`;
-      transitArrivals.start('subway', route, destinationChoicesElement);
+        <ol>${accessWalk}${legs}</ol>${transfers}${geometryNotice}${boardingButton}
+      </div>`;
       scrollTransportDetailsIntoView('subway');
     };
     const requestSubwayRoute = () => {
@@ -815,7 +805,6 @@ function initializeNaverRouteMap() {
     };
     const showBusMessage = (message, isError = false) => {
       if (!destinationChoicesElement || destinationState !== 'success') return;
-      transitArrivals.stop();
       boardingTarget = null;
       destinationChoicesElement.innerHTML = `<div class="subway-route-panel${isError ? ' is-error' : ''}" role="status">${escapeHtml(message)}</div>`;
       scrollTransportDetailsIntoView('bus');
@@ -828,7 +817,7 @@ function initializeNaverRouteMap() {
       const accessWalk = route.accessWalk
         ? `<li><strong>도보 접근 · ${escapeHtml(route.accessWalk.station)}</strong><span>${escapeHtml(startTitle || '현재 위치')} → ${escapeHtml(route.accessWalk.station)} · ${Math.ceil(route.accessWalk.seconds / 60)}분 · ${Math.round(route.accessWalk.distanceMeters)}m</span></li>`
         : '';
-      const legs = route.transportLegs.map((leg) => `<li><strong>버스 · ${escapeHtml(leg.route.replace(':', ' '))}</strong><span>${transitLineLabel(leg, route.segments.find(segment => segment.mode === 'BUS' && segment.route === leg.route)?.color)} 승차 → ${escapeHtml(leg.alight)} 하차 · ${Math.ceil(leg.seconds / 60)}분</span></li>`).join('');
+      const legs = route.transportLegs.map((leg) => `<li><strong>버스 · ${escapeHtml(leg.route)}</strong><span>${escapeHtml(leg.board)} 탑승 → ${escapeHtml(leg.alight)} 하차 · ${Math.ceil(leg.seconds / 60)}분</span></li>`).join('');
       const arrivalWalk = route.arrivalWalk
         ? `<li><strong>도보 도착</strong><span>하차 정류장 → 목적지 · ${Math.ceil(route.arrivalWalk.seconds / 60)}분 · ${Math.round(route.arrivalWalk.distanceMeters)}m</span></li>`
         : '';
@@ -838,13 +827,11 @@ function initializeNaverRouteMap() {
       const missingWalk = route.missingGeometryModes?.includes('WALK')
         ? '<p class="subway-transfer">TMAP이 일부 도보 구간 좌표를 제공하지 않아 확인된 구간만 지도에 표시했습니다.</p>'
         : '';
-      destinationChoicesElement.innerHTML = `<div class="subway-route-panel transit-route-panel" role="status" aria-label="TMAP 버스 경로">
+      destinationChoicesElement.innerHTML = `<div class="subway-route-panel" role="status" aria-label="TMAP 버스 경로">
         <strong>버스 약 ${minutes}분 · 환승 ${route.transferCount}회</strong>
         ${route.departureBasis ? `<p class="subway-transfer">TMAP ${escapeHtml(route.departureBasis)} 출발 기준 경로입니다. 지금 출발 가능한 경로는 아닙니다.</p>` : ''}
-        <ol>${accessWalk}${legs}${arrivalWalk}</ol>${transfers}${missingWalk}
-        ${arrivalPlaceholder('bus', `${firstLeg?.route?.split(':').at(-1) || '버스'}번`)}
-      </div>${boardingButton}`;
-      transitArrivals.start('bus', route, destinationChoicesElement);
+        <ol>${accessWalk}${legs}${arrivalWalk}</ol>${transfers}${missingWalk}${boardingButton}
+      </div>`;
       scrollTransportDetailsIntoView('bus');
     };
     const requestBusRoute = () => {
@@ -935,7 +922,6 @@ function initializeNaverRouteMap() {
     };
     const showTaxiMessage = (message, isError = false) => {
       if (!destinationChoicesElement || destinationState !== 'success') return;
-      transitArrivals.stop();
       boardingTarget = null;
       destinationChoicesElement.innerHTML = `<div class="subway-route-panel${isError ? ' is-error' : ''}" role="status">${escapeHtml(message)}</div>`;
       scrollTransportDetailsIntoView('taxi');
@@ -991,7 +977,7 @@ function initializeNaverRouteMap() {
         }));
         updateMapView();
         const fare = Number.isFinite(route.taxiFare)
-          ? `${Math.round(route.taxiFare).toLocaleString('ko-KR')}원` : '확인 불가';
+          ? `<p class="subway-transfer">TMAP 예상 택시요금 ${Math.round(route.taxiFare).toLocaleString('ko-KR')}원 · 실제 요금과 다를 수 있습니다.</p>` : '';
         const searchedStand = /택시.*(?:승강장|승차대|정류장|타는\s*곳)|(?:승강장|승차대).*택시/
           .test(`${routeDestinationQuery} ${destinationTitle}`);
         boardingTarget = {
@@ -999,14 +985,10 @@ function initializeNaverRouteMap() {
           title: searchedStand ? destinationTitle : startTitle || '현재 위치',
           exactStand: searchedStand && /택시.*(?:승강장|승차대|정류장|타는\s*곳)|(?:승강장|승차대).*택시/.test(destinationTitle)
         };
-        destinationChoicesElement.innerHTML = `<div class="subway-route-panel transit-route-panel" role="status" aria-label="TMAP 택시 경로">
-          <strong>택시 약 ${Math.ceil(route.totalSeconds / 60)}분 · ${Math.round(route.distanceMeters).toLocaleString('ko-KR')}m</strong>
-          <ol><li><strong>승차 위치 · ${escapeHtml(boardingTarget.title)}</strong><span>정확한 승차 지점은 ‘승차 위치 보기’에서 확인</span></li>
-          <li><strong>택시 이동 · ${escapeHtml(destinationTitle)}</strong><span>${escapeHtml(startTitle || '현재 위치')} → ${escapeHtml(destinationTitle)} · 약 ${Math.ceil(route.totalSeconds / 60)}분</span></li></ol>
-          <div class="transit-arrival" role="status"><span class="transit-arrival-label">기사님</span>
-          <span class="transit-arrival-values"><strong>배차 후 확인</strong><span class="transit-arrival-next"> · 예상요금 </span><strong>${fare}</strong></span>
-          <small class="transit-arrival-source">TMAP 예상요금 · 실제 요금과 다를 수 있습니다.</small></div>
-        </div>${boardingButton.replace('탑승 위치 보기', '승차 위치 보기')}`;
+        destinationChoicesElement.innerHTML = `<div class="subway-route-panel" role="status" aria-label="TMAP 택시 경로">
+          <strong>택시 주행 약 ${Math.ceil(route.totalSeconds / 60)}분 · ${Math.round(route.distanceMeters).toLocaleString('ko-KR')}m</strong>
+          ${fare}${boardingButton}
+        </div>`;
         scrollTransportDetailsIntoView('taxi');
       }).catch((error) => {
         if (controller.signal.aborted || session !== routeMapSession || currentPage !== 'guide'
@@ -1811,7 +1793,7 @@ function render({ preserveSearch = false } = {}) {
     });
     document.querySelector('.guide-chat-tabs')?.addEventListener('click', syncGuideChatButtons);
   }
-  else { routeMapSession += 1; activeTransitArrivals?.stop(); }
+  else routeMapSession += 1;
   if (currentPage === 'route' || currentPage === 'home') void loadNaverMaps().catch(() => {});
 
   document.querySelectorAll('.transport-option').forEach((button) => {
@@ -2413,7 +2395,6 @@ function setGuideView(view, { fromHistory = false, kind = null } = {}) {
   window.scrollTo({ top: 0, behavior: 'instant' });
   if (view === 'route' && previousView === 'panorama') {
     content.querySelector('#route-map')?.dispatchEvent(new Event('guide-layout-change'));
-    activeTransitArrivals?.resume();
   }
 }
 
