@@ -296,6 +296,8 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .subway-transfer { margin: 9px 0 0; }
 .transit-route-panel li + li { margin-top: 10px; padding-top: 12px; border-top: 1px solid rgba(49, 206, 255, .25); }
 .transit-line-badge { display: inline-grid; min-width: 22px; height: 24px; margin-right: 6px; padding: 0 4px; place-items: center; vertical-align: middle; border-radius: 4px; background: var(--line-badge-color); color: #fff; font-size: 14px; line-height: 1; font-weight: 700; }
+.transit-line-badge.is-subway { min-width: 16px; height: 18px; padding: 0 3px; font-size: 12px; }
+.transit-station-exits { margin: 10px 0 0; color: #b9d4e7; font-size: 14px; line-height: 1.6; }
 .transit-arrival { min-height: 70px; margin-top: 14px; padding: 10px 12px; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 12px; align-items: center; border: 1px solid rgba(49, 156, 195, .38); border-radius: 13px; background: rgba(1, 24, 40, .75); }
 .transit-arrival-label { padding-right: 12px; border-right: 1px solid rgba(49, 156, 195, .3); color: #edf7ff; font-size: 13px; font-weight: 650; white-space: nowrap; }
 .transit-arrival-values { min-width: 0; color: #b9d4e7; font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
@@ -303,6 +305,11 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .transit-arrival-next { color: #b9d4e7; }
 .transit-arrival-source { grid-column: 1 / -1; color: #93b3ca; font-size: 10px; line-height: 1.4; }
 .transit-arrival.is-unavailable .transit-arrival-values { color: #b9d4e7; }
+.transit-arrival.is-unavailable, .transit-arrival.is-taxi { min-height: 0; margin-top: 10px; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 8px; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.transit-arrival.is-unavailable .transit-arrival-label, .transit-arrival.is-taxi .transit-arrival-label { padding: 0; border: 0; color: #b9d4e7; font-size: 14px; font-weight: 400; }
+.transit-arrival.is-unavailable .transit-arrival-values, .transit-arrival.is-taxi .transit-arrival-values { font-size: 14px; }
+.transit-arrival.is-taxi .transit-arrival-values strong { color: inherit; font-size: inherit; font-weight: inherit; text-shadow: none; }
+.transit-arrival.is-taxi .transit-arrival-source { flex-basis: 100%; }
 .guide-dialogue > .boarding-location-button { min-height: 48px; margin-top: 12px; border: 2px solid #26e7ed; border-radius: 999px; background: linear-gradient(115deg, #07546b, #033248); }
 
 

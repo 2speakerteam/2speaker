@@ -2,7 +2,7 @@ const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
 })[ch]);
 
-export const arrivalPlaceholder = (mode, label = '') => `<div class="transit-arrival" data-arrival-mode="${mode}" role="status" aria-live="polite">
+export const arrivalPlaceholder = (mode, label = '') => `<div class="transit-arrival is-unavailable" data-arrival-mode="${mode}" role="status" aria-live="polite">
   <span class="transit-arrival-label">${escapeHtml(label || (mode === 'subway' ? '다음 열차' : '버스'))}</span>
   <span class="transit-arrival-values">도착정보 조회 중</span>
 </div>`;
@@ -13,7 +13,7 @@ export function transitLineLabel(leg, color) {
   const code = subway ? route.match(/(\d+)호선/)?.[1] : route.split(':').at(-1).trim();
   if (!code) return escapeHtml(leg.board);
   const background = /^#[\da-f]{6}$/i.test(color || '') ? color : subway ? '#747f00' : '#087ddd';
-  return `<b class="transit-line-badge" style="--line-badge-color:${background}">${escapeHtml(code)}</b>${escapeHtml(leg.board)}`;
+  return `<b class="transit-line-badge${subway ? ' is-subway' : ''}" style="--line-badge-color:${background}">${escapeHtml(code)}</b>${escapeHtml(leg.board)}`;
 }
 
 export function createTransitArrivals({ isActive }) {

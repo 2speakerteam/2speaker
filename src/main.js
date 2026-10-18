@@ -1,7 +1,8 @@
 import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261018-boarding-touch-release-1';
 import { createGuideConversation } from './guide-conversation.js?v=20261018-page2-always-trash-1';
 import { createRoadviewGuide } from './roadview-guide.js?v=20261018-translation-playback-1';
-import { createTransitArrivals, arrivalPlaceholder, transitLineLabel } from './transit-arrivals.js?v=20261018-arrivals-1';
+import { createTransitArrivals, arrivalPlaceholder, transitLineLabel } from './transit-arrivals.js?v=20261018-arrivals-text-2';
+import { hasTransitStationExits, showTransitStationExits } from './transit-station-exits.js?v=20261018-exits-1';
 
 const root = document.querySelector('#root');
 let currentPage = 'home';
@@ -721,8 +722,14 @@ function initializeNaverRouteMap() {
         <strong>${transportLabel} 약 ${minutes}분 · 환승 ${route.transferCount}회</strong>
         ${route.departureBasis ? `<p class="subway-transfer">TMAP ${escapeHtml(route.departureBasis)} 출발 기준 경로입니다. 지금 출발 가능한 경로는 아닙니다.</p>` : ''}
         <ol>${accessWalk}${legs}</ol>${transfers}${geometryNotice}
+        <p class="transit-station-exits" data-transit-station-exits aria-live="polite">역 출구 확인 중</p>
         ${arrivalPlaceholder('subway')}
       </div>${boardingButton}`;
+      const target = boardingTarget;
+      void showTransitStationExits({ mode: 'subway', route, panel: destinationChoicesElement,
+        start: { title: startTitle, point: currentLocation && { lat: currentLocation.lat(), lng: currentLocation.lng() } },
+        end: { title: destinationTitle, point: destinationLocation && { lat: destinationLocation.lat(), lng: destinationLocation.lng() } },
+        onBoardExit: exit => { if (boardingTarget === target && target) target.exit = exit; } });
       transitArrivals.start('subway', route, destinationChoicesElement);
       scrollTransportDetailsIntoView('subway');
     };
@@ -842,8 +849,12 @@ function initializeNaverRouteMap() {
         <strong>버스 약 ${minutes}분 · 환승 ${route.transferCount}회</strong>
         ${route.departureBasis ? `<p class="subway-transfer">TMAP ${escapeHtml(route.departureBasis)} 출발 기준 경로입니다. 지금 출발 가능한 경로는 아닙니다.</p>` : ''}
         <ol>${accessWalk}${legs}${arrivalWalk}</ol>${transfers}${missingWalk}
+        ${hasTransitStationExits('bus', startTitle, destinationTitle) ? '<p class="transit-station-exits" data-transit-station-exits aria-live="polite">역 출구 확인 중</p>' : ''}
         ${arrivalPlaceholder('bus', `${firstLeg?.route?.split(':').at(-1) || '버스'}번`)}
       </div>${boardingButton}`;
+      void showTransitStationExits({ mode: 'bus', route, panel: destinationChoicesElement,
+        start: { title: startTitle, point: currentLocation && { lat: currentLocation.lat(), lng: currentLocation.lng() } },
+        end: { title: destinationTitle, point: destinationLocation && { lat: destinationLocation.lat(), lng: destinationLocation.lng() } } });
       transitArrivals.start('bus', route, destinationChoicesElement);
       scrollTransportDetailsIntoView('bus');
     };
@@ -1003,7 +1014,7 @@ function initializeNaverRouteMap() {
           <strong>택시 약 ${Math.ceil(route.totalSeconds / 60)}분 · ${Math.round(route.distanceMeters).toLocaleString('ko-KR')}m</strong>
           <ol><li><strong>승차 위치 · ${escapeHtml(boardingTarget.title)}</strong><span>정확한 승차 지점은 ‘승차 위치 보기’에서 확인</span></li>
           <li><strong>택시 이동 · ${escapeHtml(destinationTitle)}</strong><span>${escapeHtml(startTitle || '현재 위치')} → ${escapeHtml(destinationTitle)} · 약 ${Math.ceil(route.totalSeconds / 60)}분</span></li></ol>
-          <div class="transit-arrival" role="status"><span class="transit-arrival-label">기사님</span>
+          <div class="transit-arrival is-taxi" role="status"><span class="transit-arrival-label">기사님</span>
           <span class="transit-arrival-values"><strong>배차 후 확인</strong><span class="transit-arrival-next"> · 예상요금 </span><strong>${fare}</strong></span>
           <small class="transit-arrival-source">TMAP 예상요금 · 실제 요금과 다를 수 있습니다.</small></div>
         </div>${boardingButton.replace('탑승 위치 보기', '승차 위치 보기')}`;
@@ -1057,7 +1068,7 @@ function initializeNaverRouteMap() {
           const stationName = target.title.match(/^(.+?역)(?:\s|\(|$)/)?.[1] || target.title;
           const start = currentLocation
             ? { lat: currentLocation.lat(), lng: currentLocation.lng() } : location;
-          const exit = await findStationExit(stationName, start, location)
+          const exit = target.exit || await findStationExit(stationName, start, location)
             || await findStationExit(stationName, location, location);
           if (exit) {
             location = { lat: exit.lat, lng: exit.lng };
