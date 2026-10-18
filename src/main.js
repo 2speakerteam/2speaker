@@ -1,4 +1,4 @@
-import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261018-user-guide-arrow-3';
+import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261017-all-walk-arrow-hidden-2';
 import { createGuideConversation } from './guide-conversation.js?v=20261018-page2-always-trash-1';
 import { createRoadviewGuide } from './roadview-guide.js?v=20261018-translation-playback-1';
 
