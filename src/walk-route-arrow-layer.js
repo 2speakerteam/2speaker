@@ -1,5 +1,5 @@
-// Project a ground-level bearing through the current camera. Keep the supplied
-// image's shape, but let its anchor leave the screen when the ground is out of view.
+// Follow the camera matrix actually rendered by the panorama, so the ground
+// anchor and the photograph move in the same frame, including inertial drags.
 const WALK_ROUTE_ARROW_IMAGE = '/public/walk-guide-arrow.png';
 const WALK_ROUTE_ARROW_MASK = '/public/walk-guide-arrow-mask.svg';
 const WALK_ROUTE_ARROW_SCALE = 1.09;
@@ -30,17 +30,36 @@ export function createWalkRouteArrowLayer(canvas, view) {
   view.appendChild(style);
   let bearing = null;
   let pov = null;
+  let renderer = null;
+  let scene = null;
+  let headingOffset = null;
   let stopped = false;
 
+  const renderedCamera = () => {
+    const cube = [...(renderer?.querySelectorAll('.cube') || [])]
+      .find(element => element.style.display !== 'none');
+    const face = cube?.querySelector('[class^="cube_face_0_"]');
+    const focal = Number.parseFloat(cube?.style.perspective);
+    if (!face?.style.transform?.startsWith('matrix3d(') || !(focal > 0)) return null;
+    const matrix = new DOMMatrixReadOnly(face.style.transform);
+    return {
+      pan: Math.atan2(matrix.m31, matrix.m11) / RADIANS,
+      tilt: Math.atan2(matrix.m23, matrix.m22) / RADIANS,
+      focal
+    };
+  };
   const paint = () => {
     if (stopped || !Number.isFinite(bearing) || !pov) return;
     const width = view.clientWidth, height = view.clientHeight;
-    const relative = ((bearing - pov.pan + 540) % 360) - 180;
-    const pan = relative * RADIANS, tilt = pov.tilt * RADIANS;
+    const camera = renderedCamera();
+    if (camera && headingOffset === null) headingOffset = pov.pan - camera.pan;
+    const cameraPan = camera ? camera.pan + headingOffset : pov.pan;
+    const relative = ((bearing - cameraPan + 540) % 360) - 180;
+    const pan = relative * RADIANS, tilt = (camera?.tilt ?? pov.tilt) * RADIANS;
     const forward = Math.cos(pan);
     const depth = forward * Math.cos(tilt) - GROUND_DROP * Math.sin(tilt);
     const up = -GROUND_DROP * Math.cos(tilt) - forward * Math.sin(tilt);
-    const focal = height / (2 * Math.tan(pov.fov * RADIANS / 2));
+    const focal = camera?.focal ?? height / (2 * Math.tan(pov.fov * RADIANS / 2));
     const x = width / 2 + focal * Math.sin(pan) / depth;
     const y = height / 2 - focal * up / depth;
     if (width <= 0 || height <= 0 || depth <= .01 || !Number.isFinite(x + y)
@@ -61,17 +80,30 @@ export function createWalkRouteArrowLayer(canvas, view) {
   };
   const observer = new ResizeObserver(paint);
   observer.observe(view);
+  const cameraObserver = new MutationObserver(paint);
 
   const clear = () => {
+    cameraObserver.disconnect();
     root.hidden = true;
     bearing = null;
     pov = null;
+    renderer = null;
+    scene = null;
+    headingOffset = null;
     canvas.classList.remove('has-retained-route-arrow');
   };
-  const show = (source, directionKey, refreshPose = false, sceneKey = null, targetAngle = null, cameraPov = null) => {
+  const show = (source, directionKey, refreshPose = false, sceneKey = null, targetAngle = null, cameraPov = null, cameraElement = null) => {
     if (stopped) return;
     if (canvas.classList.contains('is-arrival')) { clear(); return; }
     if (!Number.isFinite(targetAngle) || !Number.isFinite(cameraPov?.pan)) { clear(); return; }
+    if (renderer !== cameraElement || scene !== sceneKey) {
+      cameraObserver.disconnect();
+      renderer = cameraElement;
+      scene = sceneKey;
+      headingOffset = null;
+      if (renderer) cameraObserver.observe(renderer, { subtree: true, childList: true,
+        attributes: true, attributeFilter: ['style'] });
+    }
     bearing = cameraPov.pan + targetAngle;
     setPov(cameraPov);
   };
