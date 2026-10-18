@@ -165,9 +165,10 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     followFrame = null;
     if (!opened || selecting) return;
     log.style.paddingBottom = '2px';
+    log.scrollTop = log.scrollHeight;
     if (guideContent?.dataset.roadviewBelow === 'true') {
       guideContent.scrollTo({ top: guideContent.scrollHeight, behavior: 'smooth' });
-    } else log.scrollTop = log.scrollHeight;
+    }
   };
   const render = (follow = true) => {
     const entries = historyMemory[mode];

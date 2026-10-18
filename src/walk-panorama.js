@@ -3,7 +3,7 @@ import { createWalkPanoramaBuffer } from './walk-panorama-buffer.js?v=20261017-w
 import { createWalkMiniMap } from './walk-mini-map.js?v=20261016-route-arrow-sync-1';
 import { bindBoardingPanoramaGestures } from './boarding-panorama-gestures.js?v=20261018-boarding-touch-release-1';
 import { createBoardingPanoramaTravel } from './boarding-panorama-travel.js?v=20261018-boarding-landmark-hold-1';
-import { createWalkRouteArrowLayer } from './walk-route-arrow-layer.js?v=20261018-arrow-shape-fixed-1';
+import { createWalkRouteArrowLayer } from './walk-route-arrow-layer.js?v=20261018-arrow-ground-anchor-1';
 
 const CAMERA_TO_ROUTE_LIMIT_METERS = 15;
 const CAMERA_TO_REQUEST_LIMIT_METERS = 25;
@@ -328,7 +328,8 @@ export function createWalkPanorama(maps, section) {
   const paintNativeArrow = (refreshPose = false) => {
     if (!Number.isFinite(nativeArrowTarget) || !panorama || !arrowFrame
       || panorama.getPanoId() !== arrowFrame.panoId) return;
-    const cameraBearing = panorama.getPov()?.pan;
+    const cameraPov = panorama.getPov();
+    const cameraBearing = cameraPov?.pan;
     if (!Number.isFinite(cameraBearing)) return;
     const targetAngle = signedAngle(cameraBearing, nativeArrowTarget);
     const arrows = [...panorama.getElement().querySelectorAll('img.arrow_image')];
@@ -360,7 +361,7 @@ export function createWalkPanorama(maps, section) {
       const decision = routeDecisions.find((item) => item.priority >= 3 && !item.crossing
         && item.progress >= arrowFrame.progress - 2 && item.progress <= arrowFrame.progress + 20);
       const followCamera = refreshPose || performance.now() < arrowPoseRefreshUntil;
-      routeArrowLayer.show(chosen?.image, decision?.progress ?? 'straight', followCamera && !busy && !switchingFrame, arrowFrame.panoId, targetAngle);
+      routeArrowLayer.show(chosen?.image, decision?.progress ?? 'straight', followCamera && !busy && !switchingFrame, arrowFrame.panoId, targetAngle, cameraPov);
     }
     if (routeEdges.length) {
       const position = candidateAt(routeEdges, arrowFrame.progress);
@@ -471,6 +472,7 @@ export function createWalkPanorama(maps, section) {
     listeners = [
       maps.Event.addListener(panorama, 'pov_changed', () => {
         scheduleMarkerRefresh();
+        if (routeArrowLayer && !busy && !switchingFrame) routeArrowLayer.setPov(panorama.getPov());
         if (routeArrowLayer && !busy && !switchingFrame) arrowPoseRefreshUntil = performance.now() + 80;
         paintNativeArrow();
         if (routeArrowLayer && !busy && !switchingFrame) {
