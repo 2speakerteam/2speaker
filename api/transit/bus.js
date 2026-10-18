@@ -119,6 +119,9 @@ module.exports = async function handler(req, res) {
     res.setHeader('Allow', 'POST');
     return res.status(405).json({ error: 'POST 요청만 사용할 수 있어요.' });
   }
+  if (req.body?.task === 'arrivals') {
+    return require('../../lib/transit-arrivals').handleTransitArrivals(req, res, 'bus');
+  }
   const start = point(req.body?.start);
   const end = point(req.body?.end);
   if (!start || !end || samePoint(start, end)) {
