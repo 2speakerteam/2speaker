@@ -1,4 +1,5 @@
-import { readAiHistory, saveAiHistory as persistAiHistory } from './guide-history.js';
+import { readAiHistory, saveAiHistory as persistAiHistory } from './guide-history.js?v=20261018-cloud-history-1';
+import { readConversation, saveConversation, HISTORY_EVENT, HISTORY_STATUS_EVENT, conversationStatus } from './conversation-store.js?v=20261018-cloud-history-1';
 import { translationPartner, rememberTranslationPartner, translationRecordingType, createTranslationSpeech } from './translation-auto.js?v=20261018-auto-1';
 
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({
@@ -101,13 +102,14 @@ export function createGuideConversation(section, { getContext }) {
   let busy = false;
   let stopped = false;
   let controller = null;
+  let generation = 0;
   let recorder = null;
   let stream = null;
   let recordTimer = null;
   const translationVoice = createTranslationSpeech(() => { if (!stopped) setStatus('통역 음성을 재생하지 못했습니다. 번역문은 화면에서 확인해 주세요.'); });
   let selecting = false;
   const selectedIds = new Set();
-  const messages = { ai: readAiHistory(), translation: [] };
+  const messages = { ai: readAiHistory(), translation: readConversation('guide_translation') };
   let historySaved = true;
   const saveAiHistory = () => {
     historySaved = persistAiHistory(messages.ai);
@@ -175,8 +177,10 @@ export function createGuideConversation(section, { getContext }) {
       });
     }
   };
+  let statusMessage = '';
   const setStatus = (message) => {
-    status.textContent = [message, !historySaved
+    statusMessage = message;
+    status.textContent = [message, conversationStatus(), !historySaved
       ? '대화를 브라우저에 저장하지 못했습니다. 이 화면을 닫기 전에 필요한 내용을 복사해 주세요.' : '']
       .filter(Boolean).join(' ');
   };
@@ -185,6 +189,7 @@ export function createGuideConversation(section, { getContext }) {
     const text = message.trim();
     if (!text || busy || stopped || selecting) return;
     busy = true;
+    const run = ++generation;
     const requestMode = mode;
     if (requestMode === 'translation') translationVoice.stop();
     controller = new AbortController();
@@ -212,12 +217,12 @@ export function createGuideConversation(section, { getContext }) {
                 role, text: role === 'assistant' ? plainAssistantReply(content) : content
               }))
             }, signal)).text;
-        if (!stopped) {
+        if (!stopped && run === generation) {
           messages.ai = readAiHistory();
           messages.ai.push({ id: makeId(), role: 'assistant', text: plainAssistantReply(answer) });
           saveAiHistory();
         }
-        if (speakReply && !stopped && mode === 'ai') {
+        if (speakReply && !stopped && run === generation && mode === 'ai') {
           if (window.speechSynthesis && window.SpeechSynthesisUtterance) {
             try {
               const utterance = new SpeechSynthesisUtterance(plainAssistantReply(answer));
@@ -235,8 +240,10 @@ export function createGuideConversation(section, { getContext }) {
         const result = await jsonPost('/api/translation/translate', {
           text, userLanguage: 'ko', counterpartLanguage: translationPartner(), automatic: true, sourceLanguage
         }, signal);
+        if (stopped || run !== generation) return;
         if (result.needsCounterpart) {
           messages.translation.push({ id: makeId(), speaker: '나', text });
+          historySaved = saveConversation('guide_translation', messages.translation);
           renderMessages(true);
           setStatus('상대방이 먼저 한 문장 말해 주세요. 언어를 확인한 뒤 통역하겠습니다.');
           return;
@@ -245,20 +252,22 @@ export function createGuideConversation(section, { getContext }) {
         if (!source) throw new Error('원문 언어를 확인하지 못해 발화자를 지정하지 않았습니다.');
         const speaker = source.startsWith('ko') ? '나' : '상대방';
         rememberTranslationPartner(result);
-        if (!stopped) messages.translation.push({
-          id: makeId(), speaker, text, translation: result.text,
-          targetLanguage: result.targetLanguage
-        });
+        if (!stopped) {
+          messages.translation.push({
+            id: makeId(), speaker, text, translation: result.text,
+            targetLanguage: result.targetLanguage
+          });
+          historySaved = saveConversation('guide_translation', messages.translation);
+        }
         if (speakReply && !stopped && mode === 'translation') void translationVoice.play(result.text, result.targetLanguage);
       }
-      if (!stopped) renderMessages(true);
-      if (!stopped) setStatus(speechUnavailable
+      if (!stopped && run === generation) renderMessages(true);
+      if (!stopped && run === generation) setStatus(speechUnavailable
         ? '이 브라우저에서 답변 음성 재생을 사용할 수 없습니다. 답변은 화면에서 확인해 주세요.' : '');
     } catch (error) {
-      if (!stopped && error.name !== 'AbortError') setStatus(error.message || '요청에 실패했습니다.');
+      if (!stopped && run === generation && error.name !== 'AbortError') setStatus(error.message || '요청에 실패했습니다.');
     } finally {
-      busy = false;
-      controller = null;
+      if (run === generation) { busy = false; controller = null; }
     }
   }
 
@@ -422,22 +431,41 @@ export function createGuideConversation(section, { getContext }) {
     void translationVoice.play(item.translation, item.targetLanguage);
   });
   const syncHistory = (event) => {
-    if (event.key !== '2speaker:guide-ai-history:v3') return;
+    if (event.detail?.scopes && !event.detail.scopes.some(scope => scope.startsWith('guide_'))) return;
+    if (event.detail?.accountChanged) {
+      generation++;
+      controller?.abort();
+      controller = null;
+      busy = false;
+      translationVoice.stop();
+      window.speechSynthesis?.cancel();
+      if (recorder?.state === 'recording') { recorder.onstop = null; recorder.stop(); }
+      stream?.getTracks().forEach(track => track.stop());
+      clearTimeout(recordTimer);
+      selecting = false;
+      selectedIds.clear();
+      setStatus('');
+    }
     messages.ai = readAiHistory();
+    messages.translation = readConversation('guide_translation');
     for (const id of selectedIds) {
       if (!messages.ai.some((item) => item.id === id)) selectedIds.delete(id);
     }
     updateDeleteUi();
-    if (mode === 'ai') renderMessages();
+    renderMessages();
   };
-  window.addEventListener('storage', syncHistory);
+  const syncStatus = () => setStatus(statusMessage);
+  window.addEventListener(HISTORY_EVENT, syncHistory);
+  window.addEventListener(HISTORY_STATUS_EVENT, syncStatus);
   updateDeleteUi();
   renderMessages();
+  setStatus('');
   return { cancelSelection, stop() {
     stopped = true;
     translationVoice.stop();
     cancelHold();
-    window.removeEventListener('storage', syncHistory);
+    window.removeEventListener(HISTORY_EVENT, syncHistory);
+    window.removeEventListener(HISTORY_STATUS_EVENT, syncStatus);
     controller?.abort();
     clearTimeout(recordTimer);
     if (recorder?.state === 'recording') recorder.stop();

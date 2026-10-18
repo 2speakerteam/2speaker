@@ -1,7 +1,6 @@
 import { translationPartner, rememberTranslationPartner, translationRecordingType, translationSpeechLocale } from './translation-auto.js?v=20261018-auto-1';
+import { readConversation, saveConversation, HISTORY_EVENT, HISTORY_STATUS_EVENT, conversationStatus } from './conversation-store.js?v=20261018-cloud-history-1';
 
-const HISTORY_KEY = '2speaker:roadview-voice-history:v1';
-const RECOVERY_KEY = `${HISTORY_KEY}:recovery`;
 const GREETING = '안녕하세요. 무엇을 도와드릴까요?';
 const CHECKING = '지도와 관련 정보를 확인한 후 안내드리겠습니다.';
 const esc = v => String(v || '').replace(/[&<>"']/g, c => ({
@@ -9,7 +8,6 @@ const esc = v => String(v || '').replace(/[&<>"']/g, c => ({
 })[c]);
 const id = () => `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 let historyMemory = { ai: [], translation: [] };
-let unsavedHistory = false;
 
 function safeSource(source) {
   try {
@@ -20,37 +18,14 @@ function safeSource(source) {
 }
 
 function readHistory() {
-  if (unsavedHistory) return historyMemory;
-  try {
-    const decode = raw => {
-      if (!raw) return null;
-      const value = JSON.parse(raw);
-      if (!value || !Array.isArray(value.ai) || !Array.isArray(value.translation)) return null;
-      return Object.fromEntries(['ai', 'translation'].map(mode => [mode,
-        value[mode].filter(t => t && ['user', 'assistant'].includes(t.role) && typeof t.text === 'string')
-          .filter(t => mode !== 'ai' || t.role !== 'assistant' || t.text !== GREETING)
-          .map(t => ({ id: t.id || id(), role: t.role, text: t.text,
-            translation: typeof t.translation === 'string' ? t.translation : '',
-            sourceLanguage: typeof t.sourceLanguage === 'string' ? t.sourceLanguage : '',
-            targetLanguage: typeof t.targetLanguage === 'string' ? t.targetLanguage : '',
-            sources: (Array.isArray(t.sources) ? t.sources : []).map(safeSource).filter(Boolean) }))]));
-    };
-    let value;
-    try { value = decode(localStorage.getItem(HISTORY_KEY)); } catch { value = null; }
-    if (!value) try { value = decode(localStorage.getItem(RECOVERY_KEY)); } catch { value = null; }
-    if (value) historyMemory = value;
-  } catch { /* Keep unsaved visible messages in this document. */ }
+  historyMemory = { ai: readConversation('roadview_ai'), translation: readConversation('roadview_translation') };
   return historyMemory;
 }
 
 function saveHistory() {
-  try {
-    const value = JSON.stringify(historyMemory);
-    localStorage.setItem(HISTORY_KEY, value);
-    try { localStorage.setItem(RECOVERY_KEY, value); } catch { /* Primary remains saved. */ }
-    unsavedHistory = false;
-    return true;
-  } catch { unsavedHistory = true; return false; }
+  const aiSaved = saveConversation('roadview_ai', historyMemory.ai);
+  const translationSaved = saveConversation('roadview_translation', historyMemory.translation);
+  return aiSaved && translationSaved;
 }
 
 async function post(url, body, signal) {
@@ -151,7 +126,8 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
   };
   layoutControls();
   const buttons = () => section.querySelectorAll('[data-panorama-chat]');
-  const setStatus = text => { status.textContent = [text, saved ? ''
+  let statusMessage = '';
+  const setStatus = text => { statusMessage = text; status.textContent = [text, conversationStatus(), saved ? ''
     : '기록을 이 기기에 저장하지 못했습니다. 화면을 닫기 전에 복사해 주세요.'].filter(Boolean).join(' '); };
   const updateDeleteUi = () => {
     panel.querySelector('.roadview-guide-title').textContent = selecting
@@ -199,6 +175,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     updateDeleteUi();
   };
   const append = entry => {
+    readHistory();
     historyMemory[mode].push({ id: id(), sources: [], ...entry });
     saved = saveHistory();
     render();
@@ -640,7 +617,16 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     otherLanguage.value = old;
   });
   const sync = event => {
-    if (event.key !== HISTORY_KEY) return;
+    if (event.detail?.scopes && !event.detail.scopes.some(scope => scope.startsWith('roadview_'))) return;
+    if (event.detail?.accountChanged) {
+      generation++;
+      controller?.abort();
+      controller = null;
+      busy = false;
+      cancelVoice();
+      cancelSelection();
+      setStatus('');
+    }
     readHistory();
     for (const key of selectedIds) if (!historyMemory[mode].some(t => t.id === key)) selectedIds.delete(key);
     if (selecting && !selectedIds.size) cancelSelection();
@@ -660,9 +646,11 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
       setStatus('음성을 잠시 멈췄습니다. 마이크를 누르면 다시 대화합니다.');
     }
   };
-  window.addEventListener('storage', sync);
+  const syncStatus = () => setStatus(statusMessage);
+  window.addEventListener(HISTORY_EVENT, sync);
+  window.addEventListener(HISTORY_STATUS_EVENT, syncStatus);
   window.addEventListener('resize', resizeMessages);
   document.addEventListener('visibilitychange', visibility);
   window.addEventListener('pagehide', close);
-  return { open, close, stop() { close(); stopped = true; window.removeEventListener('storage', sync); window.removeEventListener('resize', resizeMessages); document.removeEventListener('visibilitychange', visibility); window.removeEventListener('pagehide', close); section.append(playbackControls); playbackControls.classList.remove('roadview-guide-controls'); panel.remove(); } };
+  return { open, close, stop() { close(); stopped = true; window.removeEventListener(HISTORY_EVENT, sync); window.removeEventListener(HISTORY_STATUS_EVENT, syncStatus); window.removeEventListener('resize', resizeMessages); document.removeEventListener('visibilitychange', visibility); window.removeEventListener('pagehide', close); section.append(playbackControls); playbackControls.classList.remove('roadview-guide-controls'); panel.remove(); } };
 }

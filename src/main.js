@@ -1,11 +1,14 @@
 import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261018-arrow-rendered-ground-2';
-import { createGuideConversation } from './guide-conversation.js?v=20261018-page2-always-trash-1';
-import { createRoadviewGuide } from './roadview-guide.js?v=20261018-composer-bottom-1';
+import { createGuideConversation } from './guide-conversation.js?v=20261018-cloud-history-1';
+import { createRoadviewGuide } from './roadview-guide.js?v=20261018-cloud-history-1';
+import { ACCOUNT_EVENT, currentAccount, initializeAccount, signIn, signUp, signOut } from './account-session.js?v=20261018-cloud-history-1';
+import { startConversationSync, syncConversations, conversationAccountStatus, HISTORY_STATUS_EVENT } from './conversation-store.js?v=20261018-cloud-history-1';
 import { createTransitArrivals, arrivalPlaceholder, transitLineLabel } from './transit-arrivals.js?v=20261018-arrivals-text-2';
 import { hasTransitStationExits, showTransitStationExits } from './transit-station-exits.js?v=20261018-exits-3';
 
 const root = document.querySelector('#root');
 let currentPage = 'home';
+let accountNotice = '';
 let routeEntryMode = 'dual';
 let routeStartQuery = '';
 let routeDestinationQuery = '';
@@ -1610,18 +1613,22 @@ function moreScreen() {
 }
 
 function loginScreen() {
+  const account = currentAccount();
   return `<main class="screen content-screen">${header('로그인 / 회원가입')}
     <section class="page-body account-body">
+      ${account ? `<article class="account-card"><h2>대화 보관 계정</h2>
+        <p>${escapeHtml(account.email)}</p>
+        <button class="primary-button" data-account-action="로그아웃">로그아웃</button></article>` : `
       <article class="account-card"><h2>로그인</h2>
-        <label class="account-input">${icon('mail', 25)}<input type="email" placeholder="이메일"></label>
-        <label class="account-input">${icon('lock', 25)}<input type="password" placeholder="비밀번호"></label>
+        <label class="account-input">${icon('mail', 25)}<input type="email" autocomplete="username" aria-label="이메일" placeholder="이메일" required></label>
+        <label class="account-input">${icon('lock', 25)}<input type="password" autocomplete="current-password" aria-label="비밀번호" placeholder="비밀번호" required></label>
         <button class="primary-button" data-account-action="로그인">로그인</button>
       </article>
       <article class="account-card"><h2>회원가입</h2><p>간편 회원가입</p>
         <div class="social-grid"><button data-account-action="Google"><b class="google-mark">G</b>Google</button><button data-account-action="Apple"><b>●</b>Apple</button><button data-account-action="Naver"><b class="naver-mark">N</b>Naver</button></div>
         <button class="email-signup" data-account-action="이메일 회원가입">이메일로 회원가입 ${icon('chevron', 22)}</button>
-      </article>
-      <p class="account-notice" role="status" aria-live="polite"></p>
+      </article>`}
+      <p class="account-notice" role="status" aria-live="polite">${escapeHtml(accountNotice || conversationAccountStatus())}</p>
     </section>
   </main>`;
 }
@@ -1906,8 +1913,42 @@ function render({ preserveSearch = false } = {}) {
   });
   document.querySelector('#language-search')?.addEventListener('input', (event) => renderUserLanguageOptions(event.target.value));
   document.querySelectorAll('[data-account-action]').forEach((button) => {
-    button.addEventListener('click', () => {
-      document.querySelector('.account-notice').textContent = `${button.dataset.accountAction} 기능은 인증 서버 연결 후 이용할 수 있습니다.`;
+    button.addEventListener('click', async () => {
+      const action = button.dataset.accountAction;
+      if (!['로그인', '이메일 회원가입', '로그아웃'].includes(action)) {
+        document.querySelector('.account-notice').textContent = `${action} 기능은 인증 서버 연결 후 이용할 수 있습니다.`;
+        return;
+      }
+      const email = document.querySelector('.account-input input[type="email"]');
+      const password = document.querySelector('.account-input input[type="password"]');
+      if (action !== '로그아웃' && (!email?.reportValidity() || !password?.reportValidity())) return;
+      const credentials = { email: email?.value || '', password: password?.value || '' };
+      document.querySelectorAll('[data-account-action]').forEach(item => { item.disabled = true; });
+      accountNotice = action === '로그아웃' ? '로그아웃 중입니다.' : '계정을 확인하고 있습니다.';
+      updateAccountNotice();
+      try {
+        if (action === '로그아웃') {
+          await syncConversations().catch(() => {});
+          await signOut();
+          accountNotice = '로그아웃했습니다. 서버에 보관된 대화는 같은 계정으로 로그인하면 다시 보입니다.';
+        } else if (action === '이메일 회원가입') {
+          const signedIn = await signUp(credentials.email, credentials.password);
+          if (signedIn) { await syncConversations(); accountNotice = ''; }
+          else accountNotice = '가입 이메일로 보낸 인증 링크를 확인한 뒤 같은 이메일과 비밀번호로 로그인해 주세요. 로그인 후 대화를 서버에 보관합니다.';
+        } else {
+          await signIn(credentials.email, credentials.password);
+          await syncConversations();
+          accountNotice = '';
+        }
+      } catch (error) {
+        accountNotice = currentAccount()
+          ? `로그인은 되었지만 대화의 서버 보관을 완료하지 못했습니다. ${error.message || ''}`
+          : error.message || '계정에 연결하지 못했습니다.';
+      } finally {
+        credentials.password = '';
+        if (password) password.value = '';
+        if (currentPage === 'login') render();
+      }
     });
   });
 
@@ -2491,4 +2532,27 @@ window.addEventListener('popstate', (event) => {
   }
 });
 
+function updateAccountNotice() {
+  const notice = document.querySelector('.account-notice');
+  if (notice) notice.textContent = accountNotice || conversationAccountStatus();
+}
+
+window.addEventListener(HISTORY_STATUS_EVENT, updateAccountNotice);
+window.addEventListener(ACCOUNT_EVENT, () => { if (currentPage === 'login') render(); });
+
+// Email confirmation happens on the Auth server. The app does not trust or
+// retain credentials from a URL fragment; the user signs in with their account.
+const accountCallback = new URLSearchParams(window.location.hash.slice(1));
+if (accountCallback.has('access_token') || accountCallback.get('type') === 'signup') {
+  window.history.replaceState(window.history.state, '', `${window.location.pathname}${window.location.search}`);
+  currentPage = 'login';
+  accountNotice = '이메일 인증 후 같은 이메일과 비밀번호로 로그인하면 대화를 서버에 보관·복원합니다.';
+}
+
 render();
+void initializeAccount().catch(error => {
+  if (currentAccount()) accountNotice = error.message || '계정 연결을 확인해 주세요.';
+}).finally(() => {
+  startConversationSync();
+  updateAccountNotice();
+});
