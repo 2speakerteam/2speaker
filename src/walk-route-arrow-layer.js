@@ -2,8 +2,8 @@
 // No panorama image/canvas is copied, and no SDK node is moved or rewritten.
 // Keep the working arrow implementation available for re-enabling later.
 const WALK_ROUTE_ARROW_VISIBLE = true;
-const WALK_ROUTE_ARROW_IMAGE = '/walk-guide-arrow.png';
-const WALK_ROUTE_ARROW_MASK = '/walk-guide-arrow-mask.svg';
+const WALK_ROUTE_ARROW_IMAGE = '/public/walk-guide-arrow.png';
+const WALK_ROUTE_ARROW_MASK = '/public/walk-guide-arrow-mask.svg';
 
 export function createWalkRouteArrowLayer(canvas, view) {
   if (!WALK_ROUTE_ARROW_VISIBLE) {
