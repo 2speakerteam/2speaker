@@ -1,7 +1,9 @@
-// Keep only the existing SDK guidance graphic independent of photo opacity.
+// Keep the supplied guidance graphic on the existing SDK arrow projection.
 // No panorama image/canvas is copied, and no SDK node is moved or rewritten.
 // Keep the working arrow implementation available for re-enabling later.
-const WALK_ROUTE_ARROW_VISIBLE = false;
+const WALK_ROUTE_ARROW_VISIBLE = true;
+const WALK_ROUTE_ARROW_IMAGE = '/walk-guide-arrow.png';
+const WALK_ROUTE_ARROW_MASK = '/walk-guide-arrow-mask.svg';
 
 export function createWalkRouteArrowLayer(canvas, view) {
   if (!WALK_ROUTE_ARROW_VISIBLE) {
@@ -61,6 +63,7 @@ export function createWalkRouteArrowLayer(canvas, view) {
     poseAdjusted = false;
   };
   const show = (source, directionKey, refreshPose = false, sceneKey = null) => {
+    if (canvas.classList.contains('is-arrival')) { clear(); return; }
     if (source?.tagName !== 'IMG' || !source.classList.contains('arrow_image')
       || !source.complete || !source.naturalWidth || !source.parentElement?.parentElement) return;
     const nextScene = scene !== sceneKey;
@@ -97,12 +100,18 @@ export function createWalkRouteArrowLayer(canvas, view) {
     projection.style.top = `${(origin.top - bounds.top) * height / bounds.height}px`;
     plane.style.cssText = sourcePlane.style.cssText;
     graphic.style.cssText = source.style.cssText;
-    graphic.style.filter = getComputedStyle(source).filter;
+    graphic.style.filter = 'none';
+    graphic.style.transform = `${source.style.transform || ''} scale(1.15)`.trim();
+    graphic.style.transformOrigin = '50% 50%';
+    graphic.style.maskImage = `url("${WALK_ROUTE_ARROW_MASK}")`;
+    graphic.style.webkitMaskImage = `url("${WALK_ROUTE_ARROW_MASK}")`;
+    graphic.style.maskSize = graphic.style.webkitMaskSize = '100% 100%';
+    graphic.style.maskRepeat = graphic.style.webkitMaskRepeat = 'no-repeat';
     graphic.style.visibility = 'visible';
     graphic.style.opacity = '1';
     graphic.style.pointerEvents = 'auto';
     graphic.className = source.className;
-    if (graphic.getAttribute('src') !== source.getAttribute('src')) graphic.src = source.src;
+    if (graphic.getAttribute('src') !== WALK_ROUTE_ARROW_IMAGE) graphic.src = WALK_ROUTE_ARROW_IMAGE;
     root.hidden = false;
     canvas.classList.add('has-retained-route-arrow');
     direction = directionKey;
