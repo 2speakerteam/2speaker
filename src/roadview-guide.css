@@ -54,9 +54,9 @@
 .walk-panorama .walk-panorama-controls.roadview-guide-controls { position: absolute; z-index: 9; top: 8px; right: 8px; display: grid; grid-template-columns: repeat(3, 40px); align-items: center; gap: 0; margin: 0; }
 .walk-panorama .roadview-guide-controls button { position: relative; width: 32px; height: 32px; min-height: 32px; justify-self: center; display: grid; place-items: center; padding: 0; border-radius: 50%; border-color: #527e94; background: #073249; color: #d9edf5; font-size: 0; }
 .walk-panorama .roadview-guide-controls button::after { content: ''; position: absolute; inset: -4px; border-radius: 50%; }
-.walk-panorama .roadview-guide-controls button::before { content: ''; display: block; box-sizing: border-box; }
-.walk-panorama .roadview-guide-controls [data-panorama-action="previous"]::before, .walk-panorama .roadview-guide-controls [data-panorama-action="next"]::before { width: 11px; height: 11px; border-left: 2.4px solid currentColor; border-bottom: 2.4px solid currentColor; transform: rotate(45deg); }
-.walk-panorama .roadview-guide-controls [data-panorama-action="next"]::before { transform: rotate(225deg); }
+.walk-panorama .roadview-guide-controls button::before { content: ''; position: absolute; left: 50%; top: 50%; display: block; box-sizing: border-box; transform: translate(-50%, -50%); }
+.walk-panorama .roadview-guide-controls [data-panorama-action="previous"]::before, .walk-panorama .roadview-guide-controls [data-panorama-action="next"]::before { width: 11px; height: 11px; border-left: 2.4px solid currentColor; border-bottom: 2.4px solid currentColor; transform: translate(calc(-50% + 3px), -50%) rotate(45deg); }
+.walk-panorama .roadview-guide-controls [data-panorama-action="next"]::before { transform: translate(calc(-50% - 3px), -50%) rotate(225deg); }
 .walk-panorama .roadview-guide-controls [data-panorama-action="playback"]::before { width: 0; height: 0; margin-left: 2px; border-top: 7px solid transparent; border-bottom: 7px solid transparent; border-left: 10px solid currentColor; }
 .walk-panorama .roadview-guide-controls [data-panorama-action="playback"][aria-label="로드뷰 일시정지"]::before { width: 10px; height: 12px; margin: 0; border: 0; background: linear-gradient(to right, currentColor 0 35%, transparent 35% 65%, currentColor 65%); }
 .walk-panorama .roadview-guide-heading > .roadview-guide-controls { position: static; flex: 0 0 auto; margin-left: auto; }
