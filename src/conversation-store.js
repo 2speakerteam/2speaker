@@ -261,7 +261,7 @@ export function startConversationSync() {
 
 window.addEventListener(ACCOUNT_EVENT, changeOwner);
 window.addEventListener('online', () => { if (currentAccount()) scheduleSync(0); });
-window.addEventListener('visibilitychange', () => {
+document.addEventListener('visibilitychange', () => {
   if (!document.hidden && currentAccount()) scheduleSync(0);
 });
 window.addEventListener('storage', event => {

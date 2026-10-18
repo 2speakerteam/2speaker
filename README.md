@@ -32,6 +32,11 @@
 Supabase 이메일 인증은 유지합니다. 인증 메일의 Site URL은 실제 앱 주소여야 하며,
 운영 계정의 메일 발송은 Supabase의 SMTP 설정과 발송 제한을 따릅니다.
 
+실제 서버 회귀 확인은 `tests/conversation-history-live.mjs`로 실행합니다. 별도의 일반
+`history-qa-*@example.com` 계정 두 개의 자격 증명을 저장소 밖 JSON으로 전달하며 관리자 키를 쓰지 않습니다.
+네 기록 종류의 저장, 빈 기기 저장소에서 로그인 복원, 로그아웃, 기존 기록 병합,
+회원 간 조회·쓰기 차단, 비회원 접근 차단, 삭제 기록의 재등장 방지를 확인합니다.
+
 ## AI 및 번역 서버 설정
 
 Vercel 서버리스 API는 `api/`에서 실행됩니다. 일반 한국어·영어 통역은 의도 분류 뒤 Google Cloud Translation API를 사용하며 AI 모델을 호출하지 않습니다. 표현 설명과 회화 연습만 `AI_PROVIDER`가 지정한 AI 공급자로 전달합니다. 기본값은 `vertex`이며, Vertex 요청 실패 시 다른 유료 공급자로 자동 전환하지 않습니다.
