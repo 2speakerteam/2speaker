@@ -1,8 +1,53 @@
+import { createPanoramaProbe } from './panorama-probe.js?v=20261017-panorama-isolation-2';
+
 const RAD = Math.PI / 180;
 const MAX_TAP_DIRECTION_ERROR = 60;
 const LOAD_TIMEOUT_MS = 6000;
 
 const angleDifference = (a, b) => Math.abs(((a - b + 540) % 360) - 180);
+
+function tapDirection(viewer, tap) {
+  const host = viewer.getElement();
+  const bounds = host.getBoundingClientRect();
+  const pov = viewer.getPov();
+  const coordinate = viewer.getLocation()?.coord;
+  if (!coordinate || !bounds.width || !bounds.height || !pov
+    || ![pov.pan, pov.tilt, pov.fov].every(Number.isFinite)
+    || tap.x < bounds.left || tap.x > bounds.right || tap.y < bounds.top || tap.y > bounds.bottom) return null;
+  const cube = [...host.querySelectorAll('.cube')].find((node) => node.style.display !== 'none');
+  const renderedFocalLength = Number.parseFloat(cube?.style.perspective || cube?.style.webkitPerspective);
+  const focalLength = renderedFocalLength > 0 ? renderedFocalLength
+    : Math.max(bounds.width, bounds.height) / (2 * Math.tan(pov.fov * RAD / 2));
+  const rayX = (tap.x - bounds.left - bounds.width / 2) / focalLength;
+  const rayY = (tap.y - bounds.top - bounds.height / 2) / focalLength;
+  const tilt = pov.tilt * RAD;
+  const forward = Math.cos(tilt) + rayY * Math.sin(tilt);
+  const down = rayY * Math.cos(tilt) - Math.sin(tilt);
+  const horizontal = Math.hypot(rayX, forward);
+  if (horizontal < 0.01) return null;
+  // A photo does not supply landmark depth. Use a bounded look-ahead distance,
+  // then accept only a real camera returned by the public position lookup.
+  const groundDistance = down > 0.04 ? 2.8 * horizontal / down : 55;
+  const distance = Math.max(12, Math.min(90, groundDistance));
+  return {
+    origin: { lat: coordinate.lat(), lng: coordinate.lng() },
+    bearing: (pov.pan + Math.atan2(rayX, forward) / RAD + 360) % 360,
+    distance: tap.holding ? Math.max(40, Math.min(90, distance * 1.4)) : distance
+  };
+}
+
+function aheadOf(origin, bearing, distance) {
+  return {
+    lat: origin.lat + Math.cos(bearing * RAD) * distance / 6371000 / RAD,
+    lng: origin.lng + Math.sin(bearing * RAD) * distance / 6371000 / RAD / Math.cos(origin.lat * RAD)
+  };
+}
+
+function cameraOffset(origin, camera) {
+  const north = (camera.lat - origin.lat) * RAD * 6371000;
+  const east = (camera.lng - origin.lng) * RAD * 6371000 * Math.cos(origin.lat * RAD);
+  return { distance: Math.hypot(north, east), bearing: Math.atan2(east, north) / RAD };
+}
 
 // These are the SDK's real, connected road links. Their orientation is not
 // necessarily their on-screen location, especially for side roads and forks.
@@ -24,49 +69,20 @@ function roadLinkDirection(image, tilt) {
 
 export function selectBoardingRoadLink(viewer, tap) {
   const host = viewer.getElement();
-  const bounds = host.getBoundingClientRect();
+  const direction = tapDirection(viewer, tap);
+  if (!direction) return null;
   const pov = viewer.getPov();
-  if (!bounds.width || !bounds.height || !pov
-    || ![pov.pan, pov.tilt, pov.fov].every(Number.isFinite)
-    || tap.x < bounds.left || tap.x > bounds.right || tap.y < bounds.top || tap.y > bounds.bottom) {
-    return null;
-  }
   const tilt = pov.tilt * RAD;
-  const cube = [...host.querySelectorAll('.cube')].find((node) => node.style.display !== 'none');
-  const renderedFocalLength = Number.parseFloat(cube?.style.perspective || cube?.style.webkitPerspective);
-  const focalLength = renderedFocalLength > 0 ? renderedFocalLength
-    : Math.max(bounds.width, bounds.height) / (2 * Math.tan(pov.fov * RAD / 2));
-  const rayX = (tap.x - bounds.left - bounds.width / 2) / focalLength;
-  const rayY = (tap.y - bounds.top - bounds.height / 2) / focalLength;
-  const forward = Math.cos(tilt) + rayY * Math.sin(tilt);
-  if (forward <= 0) return null;
-  // A distant landmark can be above the horizon. Use its horizontal direction;
-  // its height in a photograph is not a ground coordinate or a travel distance.
-  const direction = Math.atan2(rayX, forward) / RAD;
   const candidates = [...host.querySelectorAll('img.arrow_image')].flatMap((image) => {
     const parent = image.parentElement?.parentElement;
     if (!parent || getComputedStyle(parent).display === 'none') return [];
-    if (roadLinkDirection(image, tilt) === null) return [];
-    const rect = image.getBoundingClientRect();
-    if (![rect.left, rect.right, rect.top, rect.bottom].every(Number.isFinite)
-      || rect.width <= 0 || rect.height <= 0) return [];
-    const left = Math.max(bounds.left, rect.left);
-    const right = Math.min(bounds.right, rect.right);
-    const top = Math.max(bounds.top, rect.top);
-    const bottom = Math.min(bounds.bottom, rect.bottom);
-    if (right <= left || bottom <= top) return [];
-    const x = (left + right) / 2;
-    const y = (top + bottom) / 2;
-    const linkRayX = (x - bounds.left - bounds.width / 2) / focalLength;
-    const linkRayY = (y - bounds.top - bounds.height / 2) / focalLength;
-    const linkForward = Math.cos(tilt) + linkRayY * Math.sin(tilt);
-    if (linkForward <= 0) return [];
-    const bearing = Math.atan2(linkRayX, linkForward) / RAD;
-    return [{ image, error: angleDifference(direction, bearing) }];
+    const bearing = roadLinkDirection(image, tilt);
+    if (bearing === null) return [];
+    return [{ image, error: angleDifference(direction.bearing - pov.pan, bearing) }];
   }).sort((a, b) => a.error - b.error);
   const best = candidates[0];
-  // A tap must identify a visible connected link. Keep genuinely equidistant
-  // branches still so a tap between two roads does not choose one arbitrarily.
+  // Compare actual road bearings, not the screen positions of floor arrows:
+  // side-road arrows can be clipped below a tall mobile viewport.
   if (!best || best.error > MAX_TAP_DIRECTION_ERROR
     || (candidates[1] && candidates[1].error - best.error < 3)) return null;
   return best.image;
@@ -104,11 +120,12 @@ function previewUrls(host) {
 export function createBoardingPanoramaTravel({ maps, isActive, getPanorama }) {
   let active = null;
   let dispatchingLink = false;
+  let probe = null;
   const releaseFrame = () => {
     active?.frame?.remove();
     if (active) active.frame = null;
   };
-  const reset = () => {
+  const finish = () => {
     if (!active) return;
     const run = active;
     active = null;
@@ -120,13 +137,18 @@ export function createBoardingPanoramaTravel({ maps, isActive, getPanorama }) {
     run.rafIds.forEach((id) => cancelAnimationFrame(id));
     run.resolve(run.moved);
   };
+  const reset = () => {
+    probe?.stop();
+    probe = null;
+    finish();
+  };
   const frameReady = (run) => {
     const id = requestAnimationFrame(() => {
       run.rafIds.delete(id);
       if (active !== run) return;
-      if (!isActive() || getPanorama() !== run.viewer) { reset(); return; }
+      if (!isActive() || getPanorama() !== run.viewer) { finish(); return; }
       const urls = previewUrls(run.host);
-      if (!urls.length) { reset(); return; }
+      if (!urls.length) { finish(); return; }
       Promise.all(urls.map((url) => new Promise((resolve) => {
         const image = new Image();
         const finish = () => {
@@ -148,7 +170,7 @@ export function createBoardingPanoramaTravel({ maps, isActive, getPanorama }) {
           if (active !== run) return;
           const paint = requestAnimationFrame(() => {
             run.rafIds.delete(paint);
-            if (active === run) reset();
+            if (active === run) finish();
           });
           run.rafIds.add(paint);
         });
@@ -157,6 +179,32 @@ export function createBoardingPanoramaTravel({ maps, isActive, getPanorama }) {
     });
     run.rafIds.add(id);
   };
+  const findCamera = async (run, tap, direction) => {
+    probe ||= createPanoramaProbe(maps, LOAD_TIMEOUT_MS);
+    const lookup = probe;
+    const distances = [...new Set([
+      direction.distance,
+      Math.min(120, direction.distance * 1.7),
+      Math.max(12, direction.distance * 0.5)
+    ])];
+    for (const distance of distances) {
+      if (active !== run || !isActive() || (tap.isCurrent && !tap.isCurrent())) return null;
+      const target = aheadOf(direction.origin, direction.bearing, distance);
+      const result = await lookup.lookup(target, aheadOf(target, direction.bearing, 5));
+      if (active !== run || probe !== lookup) return null;
+      if (result.status !== 'OK' || !result.camera || !result.panoId
+        || result.panoId === run.panoId || tap.visited?.has(result.panoId)) continue;
+      const offset = cameraOffset(direction.origin, result.camera);
+      const targetOffset = cameraOffset(target, result.camera);
+      // setPosition can snap up to 300 m away. Reject that broad fallback,
+      // cameras behind the tap, and cameras far from the requested direction.
+      if (offset.distance < 3 || offset.distance > distance + 25
+        || targetOffset.distance > Math.max(18, distance * 0.6)
+        || angleDifference(offset.bearing, direction.bearing) > 50) continue;
+      return result;
+    }
+    return null;
+  };
   const move = (tap) => {
     if (active || !isActive()) return Promise.resolve(false);
     const viewer = getPanorama();
@@ -164,19 +212,21 @@ export function createBoardingPanoramaTravel({ maps, isActive, getPanorama }) {
     const pov = viewer.getPov();
     if (angleDifference(pov.pan, tap.pov.pan) > 0.5
       || Math.abs(pov.tilt - tap.pov.tilt) > 0.5 || Math.abs(pov.fov - tap.pov.fov) > 0.5) return Promise.resolve(false);
-    const link = selectBoardingRoadLink(viewer, tap);
-    if (!link) return Promise.resolve(false);
+    const direction = tapDirection(viewer, tap);
+    if (!direction) return Promise.resolve(false);
     const host = viewer.getElement();
     const bounds = host.getBoundingClientRect();
     let resolve;
     const completed = new Promise((done) => { resolve = done; });
     const run = {
-      viewer, host, panoId: tap.panoId, pov: { ...pov }, frame: copyCurrentFrame(host),
+      viewer, host, panoId: tap.panoId, pov: { ...pov }, frame: null,
       listeners: [], cancelImages: new Set(), rafIds: new Set(), timeout: null, resizeObserver: null,
       resolve, moved: false
     };
     active = run;
-    run.timeout = window.setTimeout(() => { if (active === run) reset(); }, LOAD_TIMEOUT_MS);
+    // Several bounded lookups may be needed when a diagonal point falls
+    // between camera positions. The visible viewer stays still until found.
+    run.timeout = window.setTimeout(() => { if (active === run) finish(); }, LOAD_TIMEOUT_MS * 3);
     run.listeners.push(
       maps.Event.addListener(viewer, 'pov_changed', () => {
         if (active !== run || viewer.getPanoId() !== run.panoId) return;
@@ -188,18 +238,21 @@ export function createBoardingPanoramaTravel({ maps, isActive, getPanorama }) {
         }
       }),
       maps.Event.addListener(viewer, 'pano_status', (status) => {
-        if (active === run && status !== 'OK') reset();
+        if (active === run && status !== 'OK') finish();
       }),
       maps.Event.addListener(viewer, 'pano_changed', () => {
         if (active !== run) return;
         if (!isActive() || getPanorama() !== viewer || viewer.getPanoId() === run.panoId) {
-          reset();
+          finish();
           return;
         }
         // A native road link preserves absolute POV. Also retain any drag or
         // double-tap zoom performed while its metadata was being requested.
         run.moved = true;
+        tap.visited?.add(viewer.getPanoId());
         viewer.setPov(run.pov);
+        window.clearTimeout(run.timeout);
+        run.timeout = window.setTimeout(() => { if (active === run) finish(); }, 1500);
         frameReady(run);
       })
     );
@@ -210,12 +263,31 @@ export function createBoardingPanoramaTravel({ maps, isActive, getPanorama }) {
       });
       run.resizeObserver.observe(host);
     }
-    // Activate the existing SDK link and its actual target ID; do not access
-    // private model state or fabricate a panorama ID/latitude/longitude.
-    dispatchingLink = true;
-    try { link.click(); }
-    catch { reset(); }
-    finally { dispatchingLink = false; }
+    void findCamera(run, tap, direction).then((camera) => {
+      if (active !== run) return;
+      if (!isActive() || getPanorama() !== viewer || viewer.getPanoId() !== run.panoId
+        || (tap.isCurrent && !tap.isCurrent())) { finish(); return; }
+      const current = viewer.getPov();
+      if (angleDifference(current.pan, pov.pan) > 0.5
+        || Math.abs(current.tilt - pov.tilt) > 0.5 || Math.abs(current.fov - pov.fov) > 0.5) {
+        finish();
+        return;
+      }
+      run.frame = copyCurrentFrame(host);
+      window.clearTimeout(run.timeout);
+      run.timeout = window.setTimeout(() => { if (active === run) finish(); }, LOAD_TIMEOUT_MS);
+      if (camera) {
+        viewer.setPanoIdWithPov(camera.panoId, run.pov);
+        return;
+      }
+      // Retain the existing connected-link step when the position lookup has
+      // no camera in that direction. It also covers sparse camera spacing.
+      const link = selectBoardingRoadLink(viewer, tap);
+      if (!link) { finish(); return; }
+      dispatchingLink = true;
+      try { link.click(); }
+      finally { dispatchingLink = false; }
+    }).catch(() => { if (active === run) finish(); });
     return completed;
   };
   return { move, reset, releaseFrame, isDispatchingLink: () => dispatchingLink };

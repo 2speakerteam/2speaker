@@ -1,8 +1,8 @@
 import { createPanoramaProbe } from './panorama-probe.js?v=20261017-panorama-isolation-2';
 import { createWalkPanoramaBuffer } from './walk-panorama-buffer.js?v=20261017-walk-gentle-1';
 import { createWalkMiniMap } from './walk-mini-map.js?v=20261016-route-arrow-sync-1';
-import { bindBoardingPanoramaGestures } from './boarding-panorama-gestures.js?v=20261018-boarding-touch-release-1';
-import { createBoardingPanoramaTravel } from './boarding-panorama-travel.js?v=20261018-boarding-landmark-hold-1';
+import { bindBoardingPanoramaGestures } from './boarding-panorama-gestures.js?v=20261019-boarding-direction-hold-1';
+import { createBoardingPanoramaTravel } from './boarding-panorama-travel.js?v=20261019-boarding-direction-hold-1';
 import { createWalkRouteArrowLayer } from './walk-route-arrow-layer.js?v=20261018-arrow-rendered-ground-2';
 
 const CAMERA_TO_ROUTE_LIMIT_METERS = 15;

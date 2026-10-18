@@ -20,19 +20,21 @@ export function bindBoardingPanoramaGestures({
   const stopHold = () => {
     clearTimeout(holdTimer);
     holdTimer = null;
+    if (hold?.captureTarget?.hasPointerCapture(hold.pointerId)) {
+      hold.captureTarget.releasePointerCapture(hold.pointerId);
+    }
     hold = null;
   };
   const reset = () => { cancelTap(); stopHold(); pointers.clear(); };
   const continueHold = async (run) => {
     if (hold !== run || !isActive() || pointers.size !== 1 || getPanorama() !== run.viewer) return;
     const pov = run.viewer.getPov();
-    const difference = Math.abs(((pov.pan - run.pov.pan + 540) % 360) - 180);
-    if (difference > 0.5 || Math.abs(pov.tilt - run.pov.tilt) > 0.5 || Math.abs(pov.fov - run.pov.fov) > 0.5) {
-      stopHold();
-      return;
-    }
     // Wait for each actual frame to finish; do not queue movements while loading.
-    const moved = await onSingleTap({ x: run.x, y: run.y, panoId: run.viewer.getPanoId(), pov: { ...pov } });
+    const moved = await onSingleTap({
+      x: run.x, y: run.y, panoId: run.viewer.getPanoId(), pov: { ...pov },
+      holding: true, visited: run.visited,
+      isCurrent: () => hold === run && pointers.size === 1 && isActive()
+    });
     if (hold !== run) return;
     if (!moved || !isActive()) { stopHold(); return; }
     holdTimer = setTimeout(() => { void continueHold(run); }, HOLD_STEP_PAUSE_MS);
@@ -61,7 +63,14 @@ export function bindBoardingPanoramaGestures({
       cancelTap();
       pointer.held = true;
       const viewer = getPanorama();
-      hold = { x: pointer.x, y: pointer.y, viewer, pov: { ...viewer.getPov() } };
+      // The SDK replaces scene descendants when travelling. Capture on its
+      // stable mount so a finger remains pressed across those replacements.
+      const captureTarget = viewer.getElement();
+      captureTarget.setPointerCapture?.(event.pointerId);
+      hold = {
+        x: pointer.x, y: pointer.y, viewer, captureTarget, pointerId: event.pointerId,
+        visited: new Set([viewer.getPanoId()])
+      };
       void continueHold(hold);
     }, HOLD_START_MS);
   }, true);

@@ -1,4 +1,4 @@
-import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261018-arrow-rendered-ground-2';
+import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261019-boarding-direction-hold-1';
 import { createGuideConversation } from './guide-conversation.js?v=20261018-cloud-history-1';
 import { createRoadviewGuide } from './roadview-guide.js?v=20261018-cloud-history-1';
 import { ACCOUNT_EVENT, currentAccount, initializeAccount, signIn, signUp, signOut } from './account-session.js?v=20261018-cloud-history-1';
