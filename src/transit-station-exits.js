@@ -63,7 +63,10 @@ async function exitNearWalk(target) {
   const candidates = places.filter(place => distance(place, target.point) <= 350)
     .map(place => ({ place, gap: traceDistance(place, target.walk) }))
     .filter(candidate => candidate.gap <= 25).sort((a, b) => a.gap - b.gap);
-  if (!candidates.length || candidates[1] && candidates[1].gap - candidates[0].gap < 8) return null;
+  if (!candidates.length) return null;
+  // Rail alighting needs an unambiguous walk-trace match. A bus journey to a
+  // station instead shows the nearest entrance alongside its surface walk.
+  if (!target.nearbyEntrance && candidates[1] && candidates[1].gap - candidates[0].gap < 8) return null;
   const place = candidates[0].place;
   return { title: `${target.station} ${place.title.match(/(\d+)번\s*출구/)?.[1]}번 출구`,
     lat: place.lat, lng: place.lng };
@@ -90,8 +93,8 @@ export async function showTransitStationExits({ mode, route, panel, start, end, 
     { station: railStation(legs.at(-1)?.alight), point: coordinate(segments[last]?.coordinates?.at(-1)),
       walk: egress, label: '하차 후 접근' }
   ] : [
-    { station: stationTitle(start.title), point: start.point, walk: access, label: '출발역 접근' },
-    { station: stationTitle(end.title), point: end.point, walk: egress, label: '도착역 접근' }
+    { station: stationTitle(start.title), point: start.point, walk: access, label: '출발역 접근', nearbyEntrance: true },
+    { station: stationTitle(end.title), point: end.point, walk: egress, label: '도착역 접근', nearbyEntrance: true }
   ];
   const results = await Promise.all(targets.filter(target => target.station).map(async target => {
     const exit = await exitNearWalk(target);

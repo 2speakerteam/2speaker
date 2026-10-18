@@ -2,7 +2,7 @@ import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=202610
 import { createGuideConversation } from './guide-conversation.js?v=20261018-page2-always-trash-1';
 import { createRoadviewGuide } from './roadview-guide.js?v=20261018-translation-playback-1';
 import { createTransitArrivals, arrivalPlaceholder, transitLineLabel } from './transit-arrivals.js?v=20261018-arrivals-text-2';
-import { hasTransitStationExits, showTransitStationExits } from './transit-station-exits.js?v=20261018-exits-1';
+import { hasTransitStationExits, showTransitStationExits } from './transit-station-exits.js?v=20261018-exits-2';
 
 const root = document.querySelector('#root');
 let currentPage = 'home';
