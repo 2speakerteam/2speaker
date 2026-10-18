@@ -32,6 +32,7 @@ export function createWalkRouteArrowLayer(canvas, view) {
   let projection = null;
   let plane = null;
   let graphic = null;
+  let fallback = null;
   let direction = null;
   let scene = null;
   let poseAdjusted = false;
@@ -57,15 +58,41 @@ export function createWalkRouteArrowLayer(canvas, view) {
     root.hidden = true;
     root.replaceChildren();
     canvas.classList.remove('has-retained-route-arrow');
-    projection = plane = graphic = null;
+    projection = plane = graphic = fallback = null;
     direction = null;
     scene = null;
     poseAdjusted = false;
   };
-  const show = (source, directionKey, refreshPose = false, sceneKey = null) => {
+  const show = (source, directionKey, refreshPose = false, sceneKey = null, targetAngle = null) => {
     if (canvas.classList.contains('is-arrival')) { clear(); return; }
     if (source?.tagName !== 'IMG' || !source.classList.contains('arrow_image')
-      || !source.complete || !source.naturalWidth || !source.parentElement?.parentElement) return;
+      || !source.complete || !source.naturalWidth || !source.parentElement?.parentElement) {
+      if (!Number.isFinite(targetAngle)) { clear(); return; }
+      if (!fallback) {
+        root.replaceChildren();
+        projection = plane = graphic = null;
+        fallback = document.createElement('img');
+        fallback.src = WALK_ROUTE_ARROW_IMAGE;
+        fallback.alt = '';
+        fallback.className = 'arrow_image walk-panorama-native-active';
+        fallback.style.cssText = 'position:absolute;left:50%;top:81%;width:clamp(110px,32vw,140px);height:auto;pointer-events:auto;transform-origin:50% 50%;';
+        fallback.style.maskImage = fallback.style.webkitMaskImage = `url("${WALK_ROUTE_ARROW_MASK}")`;
+        fallback.style.maskSize = fallback.style.webkitMaskSize = '100% 100%';
+        fallback.style.maskRepeat = fallback.style.webkitMaskRepeat = 'no-repeat';
+        root.appendChild(fallback);
+      }
+      fallback.style.transform = `translate(-50%,-50%) rotate(${targetAngle}deg) scale(1.15)`;
+      canvas.classList.add('has-retained-route-arrow');
+      root.hidden = false;
+      scene = sceneKey;
+      direction = directionKey;
+      return;
+    }
+    if (fallback) {
+      root.replaceChildren();
+      fallback = null;
+      projection = plane = graphic = null;
+    }
     const nextScene = scene !== sceneKey;
     const restoreRoutePose = nextScene && poseAdjusted;
     if (graphic && direction === directionKey && !layoutChanged && !refreshPose && !restoreRoutePose) {
