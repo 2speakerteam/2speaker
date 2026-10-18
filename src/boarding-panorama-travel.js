@@ -1,11 +1,11 @@
 const RAD = Math.PI / 180;
-const MAX_TAP_LINK_DISTANCE = 0.45;
+const MAX_DIRECTION_ERROR = 25;
 const LOAD_TIMEOUT_MS = 6000;
 
 const angleDifference = (a, b) => Math.abs(((a - b + 540) % 360) - 180);
 
-// These are the SDK's real, connected road links. Their orientation is not
-// necessarily their on-screen location, especially for side roads and forks.
+// These are the SDK's real, connected road links. Do not infer a destination
+// coordinate, query an arbitrary nearby panorama, or select by screen distance.
 function roadLinkDirection(image, tilt) {
   const container = image.parentElement;
   if (!container || ![...container.classList].some((name) => /^arrow_container_#\d+$/.test(name))) {
@@ -36,35 +36,24 @@ export function selectBoardingRoadLink(viewer, tap) {
   const renderedFocalLength = Number.parseFloat(cube?.style.perspective || cube?.style.webkitPerspective);
   const focalLength = renderedFocalLength > 0 ? renderedFocalLength
     : Math.max(bounds.width, bounds.height) / (2 * Math.tan(pov.fov * RAD / 2));
+  const rayX = (tap.x - bounds.left - bounds.width / 2) / focalLength;
   const rayY = (tap.y - bounds.top - bounds.height / 2) / focalLength;
   const groundY = rayY * Math.cos(tilt) - Math.sin(tilt);
   const forward = Math.cos(tilt) + rayY * Math.sin(tilt);
   // Taps above the ground horizon or behind the camera cannot choose a road.
   if (groundY <= 0.02 || forward <= 0) return null;
+  const direction = Math.atan2(rayX, forward) / RAD;
   const candidates = [...host.querySelectorAll('img.arrow_image')].flatMap((image) => {
     const parent = image.parentElement?.parentElement;
     if (!parent || getComputedStyle(parent).display === 'none') return [];
-    if (roadLinkDirection(image, tilt) === null) return [];
-    const rect = image.getBoundingClientRect();
-    if (![rect.left, rect.right, rect.top, rect.bottom].every(Number.isFinite)
-      || rect.width <= 0 || rect.height <= 0) return [];
-    const left = Math.max(bounds.left, rect.left);
-    const right = Math.min(bounds.right, rect.right);
-    const top = Math.max(bounds.top, rect.top);
-    const bottom = Math.min(bounds.bottom, rect.bottom);
-    if (right <= left || bottom <= top) return [];
-    const x = (left + right) / 2;
-    const y = (top + bottom) / 2;
-    const linkRayY = (y - bounds.top - bounds.height / 2) / focalLength;
-    if (linkRayY * Math.cos(tilt) - Math.sin(tilt) <= 0.02) return [];
-    const distance = Math.hypot((tap.x - x) / bounds.width, (tap.y - y) / bounds.height);
-    return [{ image, distance }];
-  }).sort((a, b) => a.distance - b.distance);
+    const angle = roadLinkDirection(image, tilt);
+    if (angle === null || Math.abs(angle) >= 90) return [];
+    const error = angleDifference(angle, direction);
+    return error <= MAX_DIRECTION_ERROR ? [{ image, angle, error }] : [];
+  }).sort((a, b) => a.error - b.error);
   const best = candidates[0];
-  // A tap must identify a visible connected link. Keep genuinely equidistant
-  // branches still so a tap between two roads does not choose one arbitrarily.
-  if (!best || best.distance > MAX_TAP_LINK_DISTANCE
-    || (candidates[1] && candidates[1].distance - best.distance < 0.025)) return null;
+  // At an ambiguous fork, leave the view still instead of guessing a branch.
+  if (!best || (candidates[1] && candidates[1].error - best.error < 3)) return null;
   return best.image;
 }
 
