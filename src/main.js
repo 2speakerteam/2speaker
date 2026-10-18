@@ -2,7 +2,7 @@ import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=202610
 import { createGuideConversation } from './guide-conversation.js?v=20261018-page2-always-trash-1';
 import { createRoadviewGuide } from './roadview-guide.js?v=20261018-translation-playback-1';
 import { createTransitArrivals, arrivalPlaceholder, transitLineLabel } from './transit-arrivals.js?v=20261018-arrivals-text-2';
-import { hasTransitStationExits, showTransitStationExits } from './transit-station-exits.js?v=20261018-exits-2';
+import { hasTransitStationExits, showTransitStationExits } from './transit-station-exits.js?v=20261018-exits-3';
 
 const root = document.querySelector('#root');
 let currentPage = 'home';
@@ -724,7 +724,7 @@ function initializeNaverRouteMap() {
         <ol>${accessWalk}${legs}</ol>${transfers}${geometryNotice}
         <p class="transit-station-exits" data-transit-station-exits aria-live="polite">역 출구 확인 중</p>
         ${arrivalPlaceholder('subway')}
-      </div>${boardingButton}`;
+        ${boardingButton}</div>`;
       const target = boardingTarget;
       void showTransitStationExits({ mode: 'subway', route, panel: destinationChoicesElement,
         start: { title: startTitle, point: currentLocation && { lat: currentLocation.lat(), lng: currentLocation.lng() } },
@@ -851,7 +851,7 @@ function initializeNaverRouteMap() {
         <ol>${accessWalk}${legs}${arrivalWalk}</ol>${transfers}${missingWalk}
         ${hasTransitStationExits('bus', startTitle, destinationTitle) ? '<p class="transit-station-exits" data-transit-station-exits aria-live="polite">역 출구 확인 중</p>' : ''}
         ${arrivalPlaceholder('bus', `${firstLeg?.route?.split(':').at(-1) || '버스'}번`)}
-      </div>${boardingButton}`;
+        ${boardingButton}</div>`;
       void showTransitStationExits({ mode: 'bus', route, panel: destinationChoicesElement,
         start: { title: startTitle, point: currentLocation && { lat: currentLocation.lat(), lng: currentLocation.lng() } },
         end: { title: destinationTitle, point: destinationLocation && { lat: destinationLocation.lat(), lng: destinationLocation.lng() } } });
@@ -1017,7 +1017,7 @@ function initializeNaverRouteMap() {
           <div class="transit-arrival is-taxi" role="status"><span class="transit-arrival-label">기사님</span>
           <span class="transit-arrival-values"><strong>배차 후 확인</strong><span class="transit-arrival-next"> · 예상요금 </span><strong>${fare}</strong></span>
           <small class="transit-arrival-source">TMAP 예상요금 · 실제 요금과 다를 수 있습니다.</small></div>
-        </div>${boardingButton.replace('탑승 위치 보기', '승차 위치 보기')}`;
+          ${boardingButton.replace('탑승 위치 보기', '승차 위치 보기')}</div>`;
         scrollTransportDetailsIntoView('taxi');
       }).catch((error) => {
         if (controller.signal.aborted || session !== routeMapSession || currentPage !== 'guide'

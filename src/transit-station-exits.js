@@ -105,7 +105,7 @@ export async function showTransitStationExits({ mode, route, panel, start, end, 
   results.forEach((result, index) => {
     if (index) node.append(document.createElement('br'));
     node.append(document.createTextNode(result.exit
-      ? `${result.label} · ${result.exit.title} (경로 인근)`
+      ? `${result.label} · ${result.exit.title}`
       : `${result.label} · ${result.station} 출구 정보 확인 불가`));
     if (result.boarding && result.exit) onBoardExit?.(result.exit);
   });

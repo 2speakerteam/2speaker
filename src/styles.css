@@ -288,7 +288,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .subway-route-panel li { padding: 4px 0; }
 .subway-route-panel li strong, .subway-route-panel li span { display: block; }
 .subway-route-panel li span, .subway-transfer { color: #b9d4e7; }
-.boarding-location-button { width: 100%; min-height: 43px; margin-top: 12px; border: 1px solid #26e7ed; border-radius: 12px; background: #07546b; color: #f2fcff; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: inset 0 1px 0 rgba(196, 253, 255, .17); }
+.boarding-location-button { width: 100%; min-height: 43px; margin-top: 12px; border: 1px solid #26e7ed; border-radius: 12px; background: #07546b; color: #f2fcff; font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; box-shadow: none; text-shadow: none; }
 .boarding-location-button:disabled { opacity: .55; cursor: default; }
 .boarding-location-button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .boarding-location-feedback { margin: 7px 0 0; color: #b9d4e7; font-size: 12px; }
@@ -310,7 +310,6 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .transit-arrival.is-unavailable .transit-arrival-values, .transit-arrival.is-taxi .transit-arrival-values { font-size: 14px; }
 .transit-arrival.is-taxi .transit-arrival-values strong { color: inherit; font-size: inherit; font-weight: inherit; text-shadow: none; }
 .transit-arrival.is-taxi .transit-arrival-source { flex-basis: 100%; }
-.guide-dialogue > .boarding-location-button { min-height: 48px; margin-top: 12px; border: 2px solid #26e7ed; border-radius: 999px; background: linear-gradient(115deg, #07546b, #033248); }
 
 
 .conversation-screen { padding-bottom: calc(94px + env(safe-area-inset-bottom)); }
