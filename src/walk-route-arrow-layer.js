@@ -52,8 +52,7 @@ export function createWalkRouteArrowLayer(canvas, view) {
     if (stopped || !Number.isFinite(bearing) || !pov) return;
     const width = view.clientWidth, height = view.clientHeight;
     const camera = renderedCamera();
-    if (camera && headingOffset === null) headingOffset = pov.pan - camera.pan;
-    const cameraPan = camera ? camera.pan + headingOffset : pov.pan;
+    const cameraPan = camera && headingOffset !== null ? camera.pan + headingOffset : pov.pan;
     const relative = ((bearing - cameraPan + 540) % 360) - 180;
     const pan = relative * RADIANS, tilt = (camera?.tilt ?? pov.tilt) * RADIANS;
     const forward = Math.cos(pan);
@@ -81,6 +80,13 @@ export function createWalkRouteArrowLayer(canvas, view) {
   const observer = new ResizeObserver(paint);
   observer.observe(view);
   const cameraObserver = new MutationObserver(paint);
+  // Calibrate after the new photo has appeared, immediately before a drag.
+  // The SDK may still contain the outgoing photo's matrix during scene setup.
+  const anchorCamera = () => {
+    const camera = renderedCamera();
+    if (camera && pov) headingOffset = pov.pan - camera.pan;
+  };
+  canvas.addEventListener('pointerdown', anchorCamera, { capture: true, passive: true });
 
   const clear = () => {
     cameraObserver.disconnect();
@@ -109,6 +115,7 @@ export function createWalkRouteArrowLayer(canvas, view) {
   };
   const stop = () => {
     stopped = true;
+    canvas.removeEventListener('pointerdown', anchorCamera, true);
     observer.disconnect();
     clear();
     root.remove();
