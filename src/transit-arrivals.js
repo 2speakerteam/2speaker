@@ -31,7 +31,7 @@ export function createTransitArrivals({ isActive }) {
       const seconds = Number(item.seconds);
       const time = Number.isFinite(seconds) && seconds > 0
         ? `${Math.max(1, Math.ceil(seconds / 60))}분 후` : item.message || '도착정보 없음';
-      return `${index ? '<span class="transit-arrival-next">· 그다음 </span>' : ''}<strong>${escapeHtml(time)}</strong>`;
+      return `${index ? '<span class="transit-arrival-next">· 그 다음</span>' : ''}<strong>${escapeHtml(time)}</strong>`;
     }).join('') : escapeHtml(result.message || '도착정보 확인 불가');
     const updated = live && result.checkedAt ? new Date(result.checkedAt) : null;
     const stamp = updated && Number.isFinite(updated.getTime())

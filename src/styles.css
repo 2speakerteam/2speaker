@@ -304,7 +304,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .transit-arrival-values { min-width: 0; color: #b9d4e7; font-size: 13px; line-height: 1.65; overflow-wrap: anywhere; }
 .transit-arrival-values strong { color: inherit; font-size: 17px; font-weight: 750; white-space: nowrap; text-shadow: none; }
 .transit-arrival-next { color: #b9d4e7; }
-.transit-arrival[data-arrival-mode] .transit-arrival-next { margin-left: .65em; color: #edf7ff; font-size: 13px; font-weight: 650; }
+.transit-arrival[data-arrival-mode] .transit-arrival-next { margin-left: .65em; margin-right: 13px; color: #edf7ff; font-size: 13px; font-weight: 650; }
 .transit-arrival-source { grid-column: 1 / -1; color: #93b3ca; font-size: 10px; line-height: 1.4; }
 .transit-arrival.is-unavailable .transit-arrival-values { color: #b9d4e7; }
 .transit-arrival.is-unavailable, .transit-arrival.is-taxi { min-height: 0; margin-top: 10px; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 8px; border: 0; border-radius: 0; background: transparent; box-shadow: none; }

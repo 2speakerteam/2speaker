@@ -3,7 +3,7 @@ import { createGuideConversation } from './guide-conversation.js?v=20261018-clou
 import { createRoadviewGuide } from './roadview-guide.js?v=20261018-cloud-history-1';
 import { ACCOUNT_EVENT, currentAccount, initializeAccount, signIn, signUp, signOut } from './account-session.js?v=20261018-cloud-history-1';
 import { startConversationSync, syncConversations, conversationAccountStatus, HISTORY_STATUS_EVENT } from './conversation-store.js?v=20261018-cloud-history-1';
-import { createTransitArrivals, arrivalPlaceholder, transitLineLabel } from './transit-arrivals.js?v=20261018-arrivals-text-2';
+import { createTransitArrivals, arrivalPlaceholder, transitLineLabel } from './transit-arrivals.js?v=20261018-arrival-label-spacing-1';
 import { hasTransitStationExits, showTransitStationExits } from './transit-station-exits.js?v=20261018-exits-3';
 
 const root = document.querySelector('#root');
