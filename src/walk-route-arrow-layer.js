@@ -4,8 +4,8 @@ const WALK_ROUTE_ARROW_IMAGE = '/public/walk-guide-arrow.png';
 const WALK_ROUTE_ARROW_MASK = '/public/walk-guide-arrow-mask.svg';
 const WALK_ROUTE_ARROW_SCALE = 1.09;
 const RADIANS = Math.PI / 180;
-// At the normal 95-degree forward view, anchor just below center (60% height).
-const GROUND_DROP = .20 * Math.tan(95 * RADIANS / 2);
+// At the normal 95-degree forward view, anchor above the AI chat button (72% height).
+const GROUND_DROP = .44 * Math.tan(95 * RADIANS / 2);
 
 export function createWalkRouteArrowLayer(canvas, view) {
   const root = document.createElement('div');

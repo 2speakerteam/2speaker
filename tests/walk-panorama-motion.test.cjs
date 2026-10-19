@@ -112,6 +112,10 @@ test('keeps the current photo until ready, then blends and turns without a north
   f.tick(600);
   assert.ok(Math.abs(f.viewers[1].pov.pan) >= 179);
   assert.equal(f.animations[0].options.duration, 1200);
+  const keys = f.animations[0].keys;
+  assert.ok(Math.abs((keys[2].offset - keys[1].offset) * 1200 - 100) < .001);
+  assert.equal(keys[1].opacity, 0);
+  assert.equal(keys[2].opacity, 1);
   f.animations[0].finish();
   assert.equal(await task, f.viewers[1]);
   assert.equal(f.initial.host.style.opacity, '0');
