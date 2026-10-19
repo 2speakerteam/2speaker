@@ -98,7 +98,7 @@ async function until(predicate) {
   assert.fail('Asynchronous panorama did not settle');
 }
 
-test('keeps the current photo until ready, then blends prepared scenes and turns without a north spin', async () => {
+test('keeps the current photo until ready, then switches opaque scenes and turns without a north spin', async () => {
   const f = fixture();
   f.setReady(false);
   let resolved = false;
@@ -113,12 +113,12 @@ test('keeps the current photo until ready, then blends prepared scenes and turns
   assert.ok(Math.abs(f.viewers[1].pov.pan) >= 179);
   assert.equal(f.animations[0].options.duration, 1200);
   const keys = f.animations[0].keys;
-  assert.equal(keys[0].opacity, 0);
-  assert.equal(keys[1].easing, 'ease-in-out');
-  assert.equal(keys[2].opacity, 1);
+  assert.equal(keys[0].easing, 'steps(1, end)');
+  assert.equal(keys[0].visibility, 'hidden');
+  assert.equal(keys[1].visibility, 'inherit');
   f.animations[0].finish();
   assert.equal(await task, f.viewers[1]);
-  assert.equal(f.initial.host.style.opacity, '0');
+  assert.equal(f.initial.host.style.visibility, 'hidden');
   assert.equal(f.viewers[1].pov.pan, -179);
   assert.equal(f.rafs.size, 0);
   f.buffer.stop();
@@ -187,7 +187,7 @@ test('prefetched photo gets current user zoom and tilt before becoming visible',
   const f = fixture();
   f.buffer.prefetch(frame('b', 5, 179));
   await until(() => f.viewers.length === 2);
-  assert.equal(f.viewers[1].host.style.opacity, '0');
+  assert.equal(f.viewers[1].host.style.visibility, 'hidden');
   f.initial.setPov({ pan: 179, tilt: 8, fov: 70 });
   const next = { ...frame('b', 5, 179), pov: { pan: 179, tilt: 8, fov: 70 } };
   const task = f.buffer.show(next, { durationMs: 420 });

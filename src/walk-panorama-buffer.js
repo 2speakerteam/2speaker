@@ -13,8 +13,7 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { tr
     channel.host.style.setProperty('position', 'absolute', 'important');
     channel.host.style.setProperty('inset', '0');
     // Inherit the section's hidden preload state until the user opens roadview.
-    channel.host.style.visibility = 'inherit';
-    channel.host.style.opacity = visible ? '1' : '0';
+    channel.host.style.visibility = visible ? 'inherit' : 'hidden';
     channel.host.style.zIndex = visible ? '2' : '1';
     channel.host.style.pointerEvents = visible ? '' : 'none';
     channel.host.setAttribute('aria-hidden', String(!visible));
@@ -29,7 +28,7 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { tr
     if (width <= 0 || height <= 0) throw new Error('Roadview viewport has no size.');
     const host = document.createElement('div');
     host.className = 'walk-panorama-renderer';
-    host.style.cssText = 'position:absolute;inset:0;opacity:0;pointer-events:none;';
+    host.style.cssText = 'position:absolute;inset:0;visibility:hidden;pointer-events:none;';
     canvas.appendChild(host);
     try {
       back = { host, viewer: new maps.Panorama(host, {
@@ -111,13 +110,12 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { tr
         previous.host.style.pointerEvents = 'none';
         previous.host.inert = true;
         previous.host.setAttribute('aria-hidden', 'true');
-        // Keep the gentle camera turn, but use a gentle eased 280ms reveal to soften the scene boundary.
-        const blendFraction = Math.min(1, 280 / durationMs);
+        // Hold the loaded original until the midpoint, then switch in one paint.
+        // Discrete visibility never blends or distorts the two photographs.
         const animation = target.host.animate([
-          { opacity: 0, offset: 0 },
-          { opacity: 0, offset: (1 - blendFraction) / 2, easing: 'ease-in-out' },
-          { opacity: 1, offset: (1 + blendFraction) / 2 },
-          { opacity: 1, offset: 1 }
+          { visibility: 'hidden', offset: 0, easing: 'steps(1, end)' },
+          { visibility: 'inherit', offset: .5 },
+          { visibility: 'inherit', offset: 1 }
         ], {
           duration: durationMs, easing: 'linear'
         });
