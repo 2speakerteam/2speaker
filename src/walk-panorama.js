@@ -1,6 +1,6 @@
 import { createPanoramaProbe } from './panorama-probe.js?v=20261017-panorama-isolation-2';
-import { createWalkPanoramaBuffer } from './walk-panorama-buffer.js?v=20261019-walk-flow-8';
-import { walkingViewPov, walkingPlaybackTiming } from './walk-panorama-motion.js?v=20261019-walk-flow-8';
+import { createWalkPanoramaBuffer } from './walk-panorama-buffer.js?v=20261019-walk-flow-9';
+import { walkingViewPov, walkingPlaybackTiming } from './walk-panorama-motion.js?v=20261019-walk-flow-9';
 import { createWalkMiniMap } from './walk-mini-map.js?v=20261016-route-arrow-sync-1';
 import { bindBoardingPanoramaGestures } from './boarding-panorama-gestures.js?v=20261019-boarding-direction-hold-1';
 import { createBoardingPanoramaTravel } from './boarding-panorama-travel.js?v=20261019-boarding-direction-hold-1';

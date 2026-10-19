@@ -1,4 +1,4 @@
-import { interpolateWalkingPov } from './walk-panorama-motion.js?v=20261019-walk-flow-8';
+import { interpolateWalkingPov } from './walk-panorama-motion.js?v=20261019-walk-flow-9';
 
 // Two actual SDK panoramas, prepared before revealing. Keep photo geometry intact.
 export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { transitionMs = 1200 } = {}) {
@@ -68,7 +68,12 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { tr
     const target = back;
     if (ready(target, frame)) return target;
     const task = (async () => {
-      if (!created) target.viewer.setPanoIdWithPov(frame.panoId, frame.pov);
+      if (!created) {
+        // Reuse the prefetched photo when only the viewing direction changed.
+        // Reopening the same panorama can restart its SDK scene preparation.
+        if (target.viewer.getPanoId() === frame.panoId) target.viewer.setPov(frame.pov);
+        else target.viewer.setPanoIdWithPov(frame.panoId, frame.pov);
+      }
       const started = performance.now();
       let stable = 0;
       while (!stopped && performance.now() - started < 6000) {
