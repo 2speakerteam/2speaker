@@ -1,5 +1,5 @@
-import { readAiHistory, saveAiHistory as persistAiHistory } from './guide-history.js?v=20261018-cloud-history-1';
-import { readConversation, saveConversation, HISTORY_EVENT, HISTORY_STATUS_EVENT, conversationStatus } from './conversation-store.js?v=20261018-cloud-history-1';
+import { readAiHistory, saveAiHistory as persistAiHistory } from './guide-history.js?v=20261020-explicit-delete-1';
+import { readConversation, saveConversation, deleteConversation, HISTORY_EVENT, HISTORY_STATUS_EVENT, conversationStatus } from './conversation-store.js?v=20261020-explicit-delete-1';
 import { translationPartner, rememberTranslationPartner, translationRecordingType, createTranslationSpeech } from './translation-auto.js?v=20261018-auto-1';
 
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({
@@ -465,7 +465,7 @@ export function createGuideConversation(section, { getContext }) {
     if (!deletedCount) return;
     if (deletedCount === messages.ai.length && !window.confirm('AI 대화 기록을 모두 삭제할까요?')) return;
     messages.ai = messages.ai.filter((item) => !deleting.has(item.id));
-    saveAiHistory();
+    historySaved = deleteConversation('guide_ai', deleting);
     selecting = false;
     selectedIds.clear();
     updateDeleteUi();

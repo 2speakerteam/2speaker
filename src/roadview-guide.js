@@ -1,5 +1,5 @@
 import { translationPartner, rememberTranslationPartner, translationRecordingType, translationSpeechLocale } from './translation-auto.js?v=20261018-auto-1';
-import { readConversation, saveConversation, HISTORY_EVENT, HISTORY_STATUS_EVENT, conversationStatus } from './conversation-store.js?v=20261018-cloud-history-1';
+import { readConversation, saveConversation, deleteConversation, HISTORY_EVENT, HISTORY_STATUS_EVENT, conversationStatus } from './conversation-store.js?v=20261020-explicit-delete-1';
 
 const GREETING = '안녕하세요. 무엇을 도와드릴까요?';
 const CHECKING = '지도와 관련 정보를 확인한 후 안내드리겠습니다.';
@@ -619,7 +619,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     if (!count) return;
     if (count === entries.length && !window.confirm(mode === 'ai' ? '거리뷰 대화 기록을 모두 삭제할까요?' : '거리뷰 통역 기록을 모두 삭제할까요?')) return;
     historyMemory[mode] = entries.filter(t => !deleting.has(t.id));
-    saved = saveHistory();
+    saved = deleteConversation(mode === 'ai' ? 'roadview_ai' : 'roadview_translation', deleting);
     cancelSelection();
     render();
     setStatus(`대화 ${count}개를 삭제했습니다.`);

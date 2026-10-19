@@ -13,7 +13,7 @@ for (const account of credentials) {
   assert.ok(account.password.length >= 16);
 }
 const authUrl = new URL('../src/account-session.js?v=20261018-cloud-history-1', import.meta.url);
-const storeUrl = new URL('../src/conversation-store.js?v=20261018-cloud-history-1', import.meta.url);
+const storeUrl = new URL('../src/conversation-store.js?v=20261020-explicit-delete-1', import.meta.url);
 const source = await readFile(authUrl, 'utf8');
 const project = source.match(/const PROJECT_URL = '([^']+)'/)[1];
 const publishable = source.match(/const PUBLISHABLE_KEY = '([^']+)'/)[1];
@@ -132,7 +132,7 @@ try {
 
   await check('explicit_delete_is_not_resurrected_by_stale_device', async () => {
     const older = secondDevice.store.readConversation('guide_ai');
-    cleanPhone.store.saveConversation('guide_ai', cleanPhone.store.readConversation('guide_ai').filter(item => item.id !== aMessages.guide_ai.id));
+    cleanPhone.store.deleteConversation('guide_ai', [aMessages.guide_ai.id]);
     await cleanPhone.store.syncConversations();
     secondDevice.store.saveConversation('guide_ai', older.map(item => ({ ...item, text: `${item.text} stale copy` })));
     await secondDevice.store.syncConversations();

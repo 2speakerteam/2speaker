@@ -132,12 +132,8 @@ export function saveConversation(scope, items) {
   const next = new Map(items.map(entry).filter(Boolean).map(item => [item.id, item]));
   let last = Object.values(state.rows).filter(row => row.stream === scope)
     .reduce((max, row) => Math.max(max, row.sort_key), 0);
-  for (const row of Object.values(state.rows)) {
-    if (row.stream !== scope || row.deleted_at || next.has(row.message_id)) continue;
-    row.deleted_at = new Date().toISOString();
-    row.payload = {};
-    state.pending[operationKey(scope, row.message_id)] = { ...copy(row), version: crypto.randomUUID() };
-  }
+  // A partial or empty browser snapshot must never delete server history.
+  // Only deleteConversation, called by the trash controls, creates deletions.
   for (const [id, item] of next) {
     const key = operationKey(scope, id);
     const previous = state.rows[key];
@@ -147,6 +143,22 @@ export function saveConversation(scope, items) {
       sort_key: previous?.sort_key || Math.max(last + 1, messageTime(item)), deleted_at: null };
     last = Math.max(last, row.sort_key);
     state.rows[key] = row;
+    state.pending[key] = { ...copy(row), version: crypto.randomUUID() };
+  }
+  const saved = persist(activeOwner, state);
+  if (currentAccount() && Object.keys(state.pending).length) { status('syncing'); scheduleSync(); }
+  return saved;
+}
+
+export function deleteConversation(scope, messageIds) {
+  if (!SCOPES.includes(scope)) return false;
+  const state = stateFor();
+  for (const id of messageIds) {
+    const key = operationKey(scope, id);
+    const row = state.rows[key];
+    if (!row || row.deleted_at) continue;
+    row.deleted_at = new Date().toISOString();
+    row.payload = {};
     state.pending[key] = { ...copy(row), version: crypto.randomUUID() };
   }
   const saved = persist(activeOwner, state);
