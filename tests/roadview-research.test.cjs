@@ -61,6 +61,11 @@ function harness(options = {}) {
     if (cache.has(filename)) return cache.get(filename);
     const module = { exports: {} };
     const requireMock = name => {
+      if (name === './roadview-public-page') return { readPublicPage: async (url, signal) => {
+        const response = await fakeFetch(url, { signal, redirect: 'manual' });
+        return { status: response.status, location: response.headers.get('location') || '',
+          contentType: response.headers.get('content-type') || '', html: await response.text() };
+      } };
       if (name.endsWith('/google-cloud')) return { cloudLocation: () => 'global', cloudProjectId: () => 'fixture', getAccessToken: async () => 'fixture-token' };
       if (name.endsWith('/map/place')) return async (req, res) => res.json({ places: options.placeError ? [] : [{
         title: req.body.query, lat: 37.5, lng: 127, category: '여행>등산'
