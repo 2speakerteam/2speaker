@@ -31,6 +31,9 @@ body {
 
 html:has(.guide-screen) { height: 100dvh; min-height: 0; overflow: hidden; }
 body:has(.guide-screen) { height: 100dvh; min-height: 0; overflow: hidden; }
+html:has(#root > .app-shell > .home-screen),
+body:has(#root > .app-shell > .home-screen) { height: 100dvh; min-height: 0; overflow: hidden; overscroll-behavior: none; }
+#root:has(> .app-shell > .home-screen) { height: 100dvh; min-height: 0; }
 
 .app-shell {
   position: relative;
@@ -41,6 +44,10 @@ body:has(.guide-screen) { height: 100dvh; min-height: 0; overflow: hidden; }
   background: linear-gradient(150deg, var(--bg-top) 0%, var(--bg) 43%, var(--bg-deep) 100%);
 }
 .app-shell:has(.guide-screen) { height: 100dvh; min-height: 0; }
+.app-shell:has(> .home-screen) { height: 100dvh; min-height: 0; }
+.app-shell > .home-screen { height: 100%; min-height: 0; overflow: hidden; }
+.home-content { height: 100%; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
+.home-content::-webkit-scrollbar { display: none; }
 
 .screen { position: relative; min-height: 100dvh; padding: max(28px, env(safe-area-inset-top)) 24px calc(110px + env(safe-area-inset-bottom)); }
 .screen::before { content: ""; position: fixed; inset: 0; pointer-events: none; background: radial-gradient(circle at 75% 30%, rgba(0, 173, 231, .12), transparent 30%); }
@@ -62,7 +69,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .feature-card > span:last-child { margin-top: 7px; color: var(--muted); font-size: clamp(16px, 3.5vw, 21px); }
 
 .bottom-nav { position: fixed; z-index: 10; left: 0; right: 0; bottom: 0; height: calc(94px + env(safe-area-inset-bottom)); display: grid; grid-template-columns: 1fr 1fr; padding-bottom: env(safe-area-inset-bottom); border: 1px solid rgba(26, 176, 226, .7); border-bottom: 0; border-radius: 40px 40px 0 0; background: rgba(0, 31, 56, .95); backdrop-filter: blur(18px); }
-.home-screen .bottom-nav { position: fixed; }
+.home-screen .bottom-nav { position: absolute; }
 .nav-item { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 16px; }
 .nav-item.active { color: white; }
 
@@ -437,11 +444,12 @@ input::placeholder { color: var(--muted); opacity: 1; }
 @media (min-width: 720px) {
   .app-shell { max-width: 520px; min-height: calc(100dvh - 32px); margin: 16px auto; border: 1px solid rgba(92, 189, 228, .35); border-radius: 42px; box-shadow: 0 30px 90px rgba(0,0,0,.42); }
   .app-shell:has(.guide-screen) { height: calc(100dvh - 32px); min-height: 0; }
+  .app-shell:has(> .home-screen) { height: calc(100dvh - 32px); min-height: 0; }
   .screen { min-height: calc(100dvh - 34px); }
   .guide-screen { height: 100%; min-height: 0; }
   .text-screen { height: calc(100dvh - 34px); min-height: 0; }
   .bottom-nav { left: 50%; right: auto; width: 520px; transform: translateX(-50%); bottom: 24px; border-radius: 36px 36px 42px 42px; }
-  .home-screen .bottom-nav { bottom: 16px; width: 520px; border-radius: 36px 36px 40px 40px; }
+  .home-screen .bottom-nav { bottom: 0; width: 100%; border-radius: 36px 36px 40px 40px; }
   .pause-button { bottom: 54px; }
   .message-composer { margin-bottom: 42px; }
 }

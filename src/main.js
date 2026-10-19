@@ -197,6 +197,7 @@ function conversationHeader(title, showBrand = true) {
 
 function homeScreen() {
   return `<main class="screen home-screen">
+    <div class="home-content">
     <section class="brand-block" aria-label="2SPEAKER">
       <svg class="brand-mark" viewBox="145 210 540 420" role="img" aria-label="2S 로고" xmlns="http://www.w3.org/2000/svg">
         <defs>
@@ -222,6 +223,7 @@ function homeScreen() {
         <span class="feature-icon">${icon('speechLetters', 66)}</span><strong>통역</strong><span>실시간 대화번역</span>
       </button>
     </section>
+    </div>
     ${bottomNav()}
   </main>`;
 }
