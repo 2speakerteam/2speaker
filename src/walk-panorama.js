@@ -1,10 +1,10 @@
 import { createPanoramaProbe } from './panorama-probe.js?v=20261017-panorama-isolation-2';
-import { createWalkPanoramaBuffer } from './walk-panorama-buffer.js?v=20261020-single-reveal-1';
+import { createWalkPanoramaBuffer } from './walk-panorama-buffer.js?v=20261020-steady-frames-1';
 import { walkingViewPov, walkingPlaybackTiming } from './walk-panorama-motion.js?v=20261019-walk-flow-10';
 import { createWalkMiniMap } from './walk-mini-map.js?v=20261016-route-arrow-sync-1';
 import { bindBoardingPanoramaGestures } from './boarding-panorama-gestures.js?v=20261019-boarding-direction-hold-1';
 import { createBoardingPanoramaTravel } from './boarding-panorama-travel.js?v=20261019-boarding-direction-hold-1';
-import { createWalkRouteArrowLayer } from './walk-route-arrow-layer.js?v=20261019-arrow-center-2';
+import { createWalkRouteArrowLayer } from './walk-route-arrow-layer.js?v=20261020-arrow-hold-1';
 
 const CAMERA_TO_ROUTE_LIMIT_METERS = 15;
 const CAMERA_TO_REQUEST_LIMIT_METERS = 25;
@@ -246,6 +246,7 @@ export function createWalkPanorama(maps, section) {
   const turn = section?.querySelector('.walk-panorama-turn');
   const status = section?.querySelector('.walk-panorama-status');
   const arrival = section?.querySelector('.walk-panorama-arrival');
+  const restart = section?.querySelector('[data-panorama-action="restart"]');
   const previous = section?.querySelector('[data-panorama-action="previous"]');
   const playback = section?.querySelector('[data-panorama-action="playback"]');
   const next = section?.querySelector('[data-panorama-action="next"]');
@@ -465,6 +466,10 @@ export function createWalkPanorama(maps, section) {
   const setStatus = (message) => { status.textContent = message; };
   const updateControls = () => {
     const atEnd = preparationDone && selected >= 0 && selected >= frames.length - 1;
+    if (restart) {
+      restart.disabled = busy || selected < 0;
+      restart.classList.toggle('is-scene-loading', busy && selected >= 0);
+    }
     previous.disabled = busy || selected <= 0;
     next.disabled = busy || selected < 0 || selected >= frames.length - 1;
     // Keep controls visually steady during scene preparation; retain the click guard.
@@ -654,13 +659,13 @@ export function createWalkPanorama(maps, section) {
     arrowPoseRefreshUntil = 0;
     switchingFrame = frame;
     if (!walkBuffer || selected < 0) miniMap.suspend();
+    routeArrowLayer?.hold();
     clearNativeArrow(true);
     updateControls();
     const currentCoord = panorama.getLocation()?.coord;
     if (walkBuffer && selected >= 0 && panorama.getPanoId() !== frame.panoId) {
       let preparedViewer = await walkBuffer.show(displayFrame, {
-        durationMs: timing.transitionMs, fromPov: panorama.getPov(),
-        onPov: pov => routeArrowLayer?.setPov(pov)
+        durationMs: timing.transitionMs
       });
       if (run !== generation) return;
       if (!preparedViewer && playing) {
@@ -670,8 +675,7 @@ export function createWalkPanorama(maps, section) {
         if (run !== generation) return;
         if (playing) {
           preparedViewer = await walkBuffer.show(displayFrame, {
-            durationMs: timing.transitionMs, fromPov: panorama.getPov(),
-            onPov: pov => routeArrowLayer?.setPov(pov), reload: true
+            durationMs: timing.transitionMs, reload: true
           });
           if (run !== generation) return;
         } else {
@@ -1143,6 +1147,16 @@ export function createWalkPanorama(maps, section) {
     allowNativeClick: () => boardingTravel.isDispatchingLink()
   });
 
+  const restartPlayback = async () => {
+    const run = generation;
+    pause();
+    await showFrame(0);
+    if (run !== generation || selected !== 0 || busy) return;
+    playing = true;
+    updateControls();
+    scheduleNext();
+  };
+  restart?.addEventListener('click', restartPlayback);
   previous.addEventListener('click', () => { pause(); void showFrame(selected - 1); });
   next.addEventListener('click', () => { pause(); void showFrame(selected + 1); });
   playback.addEventListener('click', async () => {

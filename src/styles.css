@@ -263,6 +263,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .walk-panorama.is-switching .walk-panorama-canvas { visibility: hidden; opacity: 0; transition: none; }
 .walk-panorama-arrival { margin: 9px 0 0; color: #a7c8d6; font-size: 12px; line-height: 1.4; }
 .walk-panorama-controls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+.walk-panorama-controls.has-restart { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .walk-panorama-controls button { min-height: 42px; border: 1px solid rgba(72, 198, 226, .38); border-radius: 12px; background: #0b354c; color: #e9f8ff; font: inherit; font-size: 14px; cursor: pointer; }
 .walk-panorama-controls button.is-replay:not(:disabled) { border-color: #27eef0; background: #086b82; color: #fff; box-shadow: 0 0 12px rgba(39, 238, 240, .22); }
 .walk-panorama-controls button:disabled { opacity: .45; cursor: default; }

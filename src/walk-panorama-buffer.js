@@ -1,5 +1,3 @@
-import { interpolateWalkingPov } from './walk-panorama-motion.js?v=20261020-single-reveal-1';
-
 // Two actual SDK panoramas, prepared before revealing. Keep photo geometry intact.
 export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { transitionMs = 1200 } = {}) {
   let stopped = false;
@@ -76,12 +74,17 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { tr
       }
       const started = performance.now();
       let stable = 0;
+      let tileSignature = '';
       while (!stopped && performance.now() - started < 6000) {
         await new Promise(resolve => window.setTimeout(resolve, 30));
         if (stopped) return null;
-        // Two loaded observations allow the SDK to paint before revealing it.
-        stable = ready(target, frame) ? stable + 1 : 0;
-        if (stable >= 2) return target;
+        // Let the complete set of original tiles settle before showing the photo.
+        const signature = ready(target, frame)
+          ? [...target.host.querySelectorAll('img')].map(image => image.currentSrc || image.src)
+            .filter(src => src.includes(`/image/${frame.panoId}/`)).sort().join('|') : '';
+        stable = signature && signature === tileSignature ? stable + 1 : signature ? 1 : 0;
+        tileSignature = signature;
+        if (stable >= 4) return target;
       }
       return null;
     })();
@@ -90,15 +93,11 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { tr
     finally { if (loading === task) loading = null; }
   }
 
-  async function show(frame, { durationMs = transitionMs, fromPov = null, onPov = null, reload = false } = {}) {
+  async function show(frame, { durationMs = transitionMs, reload = false } = {}) {
     try {
       const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-      const startPov = fromPov || front.viewer.getPov();
-      const preparedFrame = frame;
-      const needsTurn = Math.abs(((frame.pov.pan - startPov.pan + 540) % 360) - 180) > .01
-        || Math.abs(frame.pov.tilt - startPov.tilt) > .01 || Math.abs(frame.pov.fov - startPov.fov) > .01;
-      const target = await prepare(preparedFrame, reload);
-      if (stopped || !target || target !== back || !ready(target, preparedFrame)) return null;
+      const target = await prepare(frame, reload);
+      if (stopped || !target || target !== back || !ready(target, frame)) return null;
       const previous = front;
       layer(target, true);
       const animate = durationMs > 0 && typeof target.host.animate === 'function' && !reduced;
@@ -117,14 +116,13 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { tr
         ], {
           duration: durationMs, easing: 'linear'
         });
-        const run = { animation, done: null, raf: null, steering: false, cancel: null };
-        const steer = () => { run.steering = true; animation.finish(); };
+        const run = { animation, done: null, cancel: null };
+        const steer = () => animation.finish();
         for (const name of ['pointerdown', 'wheel', 'keydown']) target.host.addEventListener(name, steer, true);
         let settle;
         run.done = new Promise(resolve => { settle = resolve; });
         const finish = cancelled => {
           if (transition !== run) return;
-          cancelAnimationFrame(run.raf);
           for (const name of ['pointerdown', 'wheel', 'keydown']) target.host.removeEventListener(name, steer, true);
           if (!stopped && !cancelled) {
             layer(previous, false);
@@ -133,20 +131,9 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { tr
           settle(cancelled ? null : target.viewer);
         };
         run.cancel = () => { animation.cancel(); finish(true); };
-        const started = performance.now();
-        let lastPaint = -Infinity;
-        const turn = now => {
-          if (stopped || transition !== run) return;
-          if (!run.steering && now - lastPaint >= 30) {
-            const pov = interpolateWalkingPov(startPov, frame.pov, (now - started) / durationMs);
-            previous.viewer.setPov({ ...pov, fov: startPov.fov });
-            onPov?.(pov);
-            lastPaint = now;
-          }
-          run.raf = requestAnimationFrame(turn);
-        };
+        // Keep the outgoing original completely still. Moving its camera while
+        // tiles are being swapped can expose blank cube faces and shake overlays.
         transition = run;
-        if (needsTurn) run.raf = requestAnimationFrame(turn);
         animation.finished.then(() => finish(false), () => finish(true));
         const viewer = await run.done;
         if (stopped) return null;

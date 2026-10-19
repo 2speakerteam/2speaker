@@ -202,7 +202,7 @@ test('prefetched photo gets current user zoom and tilt before becoming visible',
 });
 
 
-test('next photo is ready at its final view and is not steered again during reveal', async () => {
+test('outgoing photo stays still and next photo is not repainted during handoff', async () => {
   const f = fixture();
   const next = frame('b', 5, -120);
   const task = f.buffer.show(next, { durationMs: 420 });
@@ -211,7 +211,8 @@ test('next photo is ready at its final view and is not steered again during reve
   assert.equal(target.pov.pan, -120);
   const preparedPoseCount = target.poses.length;
   f.tick(200);
-  assert.ok(f.initial.pov.pan > -180 && f.initial.pov.pan < -120);
+  assert.equal(f.initial.pov.pan, 179);
+  assert.equal(f.initial.poses.length, 0);
   assert.equal(target.pov.pan, -120);
   assert.equal(target.poses.length, preparedPoseCount);
   f.animations[0].finish();
