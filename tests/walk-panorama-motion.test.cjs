@@ -98,13 +98,13 @@ async function until(predicate) {
   assert.fail('Asynchronous panorama did not settle');
 }
 
-test('keeps the current photo until ready, then blends and turns without a north spin', async () => {
+test('keeps the current photo until ready, then switches opaque scenes and turns without a north spin', async () => {
   const f = fixture();
   f.setReady(false);
   let resolved = false;
   const task = f.buffer.show(frame('b', 5, -179), { durationMs: 1200 }).then(value => { resolved = true; return value; });
   await until(() => f.viewers.length === 2);
-  assert.equal(f.initial.host.style.opacity, '1');
+  assert.equal(f.initial.host.style.visibility, 'visible');
   assert.equal(f.animations.length, 0);
   f.setReady(true);
   await until(() => f.animations.length === 1);
@@ -113,18 +113,18 @@ test('keeps the current photo until ready, then blends and turns without a north
   assert.ok(Math.abs(f.viewers[1].pov.pan) >= 179);
   assert.equal(f.animations[0].options.duration, 1200);
   const keys = f.animations[0].keys;
-  assert.ok(Math.abs((keys[2].offset - keys[1].offset) * 1200 - 280) < .001);
-  assert.equal(keys[1].opacity, 0);
-  assert.equal(keys[2].opacity, 1);
+  assert.equal(keys[0].easing, 'steps(1, end)');
+  assert.equal(keys[0].visibility, 'hidden');
+  assert.equal(keys[1].visibility, 'visible');
   f.animations[0].finish();
   assert.equal(await task, f.viewers[1]);
-  assert.equal(f.initial.host.style.opacity, '0');
+  assert.equal(f.initial.host.style.visibility, 'hidden');
   assert.equal(f.viewers[1].pov.pan, -179);
   assert.equal(f.rafs.size, 0);
   f.buffer.stop();
 });
 
-test('does not reuse the outgoing photo for prefetch during a blend', async () => {
+test('does not reuse the outgoing photo for prefetch during a scene switch', async () => {
   const f = fixture();
   const task = f.buffer.show(frame('b', 5, -179));
   await until(() => f.animations.length === 1);
@@ -150,7 +150,7 @@ test('steering ends the automatic turn and keeps the view chosen by the user', a
   f.buffer.stop();
 });
 
-test('stopping during a blend settles the pending request and cleans up both viewers', async () => {
+test('stopping during a scene switch settles the pending request and cleans up both viewers', async () => {
   const f = fixture();
   const task = f.buffer.show(frame('b', 5, -179));
   await until(() => f.animations.length === 1);
@@ -187,7 +187,7 @@ test('prefetched photo gets current user zoom and tilt before becoming visible',
   const f = fixture();
   f.buffer.prefetch(frame('b', 5, 179));
   await until(() => f.viewers.length === 2);
-  assert.equal(f.viewers[1].host.style.opacity, '0');
+  assert.equal(f.viewers[1].host.style.visibility, 'hidden');
   f.initial.setPov({ pan: 179, tilt: 8, fov: 70 });
   const next = { ...frame('b', 5, 179), pov: { pan: 179, tilt: 8, fov: 70 } };
   const task = f.buffer.show(next, { durationMs: 420 });
