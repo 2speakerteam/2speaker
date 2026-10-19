@@ -21,7 +21,7 @@ export function walkingPlaybackTiming(previous, next, manual = false) {
   // Long blends of different capture dates make moving cars overlap.
   const transitionMs = Math.round(manual ? 420
     : clamp(gap * 30 + 250, 380, differentDate ? 420 : 650));
-  return { totalMs, transitionMs, holdMs: Math.max(180, totalMs - transitionMs) };
+  return { totalMs, transitionMs, holdMs: Math.max(180, Math.round((totalMs - transitionMs) * 0.9)) };
 }
 
 export function interpolateWalkingPov(from, to, fraction) {
