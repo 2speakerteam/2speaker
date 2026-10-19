@@ -1,4 +1,4 @@
-import { interpolateWalkingPov } from './walk-panorama-motion.js?v=20261019-walk-flow-4';
+import { interpolateWalkingPov } from './walk-panorama-motion.js?v=20261019-walk-flow-5';
 
 // Two actual SDK panoramas, prepared before revealing. Keep photo geometry intact.
 export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { transitionMs = 1200 } = {}) {
@@ -104,11 +104,11 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { tr
         previous.host.style.pointerEvents = 'none';
         previous.host.inert = true;
         previous.host.setAttribute('aria-hidden', 'true');
-        // Keep the gentle camera turn, but limit double-exposed photos to 100ms.
-        const blendFraction = Math.min(1, 100 / durationMs);
+        // Keep the gentle camera turn, but use a short eased 160ms reveal to soften the scene boundary.
+        const blendFraction = Math.min(1, 160 / durationMs);
         const animation = target.host.animate([
           { opacity: 0, offset: 0 },
-          { opacity: 0, offset: (1 - blendFraction) / 2 },
+          { opacity: 0, offset: (1 - blendFraction) / 2, easing: 'ease-in-out' },
           { opacity: 1, offset: (1 + blendFraction) / 2 },
           { opacity: 1, offset: 1 }
         ], {
