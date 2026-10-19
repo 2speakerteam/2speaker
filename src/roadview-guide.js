@@ -130,7 +130,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     const voice = panel.querySelector('.roadview-guide-voice');
     (opened ? heading : section.querySelector('.walk-panorama-view')).append(playbackControls);
     playbackControls.querySelector('[data-panorama-action="playback"]').hidden = false;
-    panel.querySelector('.roadview-guide-form').insertBefore(voice, panel.querySelector('[type="submit"]'));
+    panel.insertBefore(voice, panel.querySelector('.roadview-guide-form'));
     voice.hidden = mode === 'translation';
     speakerControls.hidden = speakerSelect.hidden = mode !== 'translation';
     input.setAttribute('aria-label', mode === 'translation' ? '통역할 문자' : '거리뷰 질문');
@@ -142,6 +142,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
   const setStatus = text => { statusMessage = text; status.textContent = [text, conversationStatus(), saved ? ''
     : '기록을 이 기기에 저장하지 못했습니다. 화면을 닫기 전에 복사해 주세요.'].filter(Boolean).join(' '); };
   const updateDeleteUi = () => {
+    panel.dataset.selecting = String(selecting);
     panel.querySelector('.roadview-guide-title').textContent = selecting
       ? `선택 ${selectedIds.size}개` : mode === 'ai' ? 'AI 음성 가이드' : '실시간 통역';
     trash.hidden = false;
@@ -412,7 +413,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder
       || !mimeType || !MediaRecorder.isTypeSupported(mimeType)) {
       autoListen = false;
-      setStatus('이 브라우저에서는 음성 입력을 사용할 수 없습니다. 아래 입력창을 이용해 주세요.');
+      setStatus('이 브라우저에서는 음성 입력을 사용할 수 없습니다. 마이크를 지원하는 브라우저에서 다시 열어 주세요.');
       updateVoice();
       return;
     }
@@ -493,7 +494,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
       if (request !== microphoneRequest || run !== generation || !opened) return;
       releaseMicrophone();
       autoListen = false;
-      setStatus('마이크 권한을 확인해 주세요. 아래 입력창으로도 질문할 수 있습니다.');
+      setStatus('마이크 권한을 허용한 뒤 다시 눌러 주세요.');
       updateVoice();
     }
   }

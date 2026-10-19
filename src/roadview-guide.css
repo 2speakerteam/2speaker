@@ -101,7 +101,7 @@
 
 /* Shared conversation finish; the surrounding street view keeps its existing layout. */
 .walk-panorama .roadview-guide-panel:is([data-mode="ai"], [data-mode="translation"]) {
-  --conversation-panel-height: clamp(340px, 48dvh, 460px);
+  --conversation-panel-height: clamp(370px, 52dvh, 490px);
   flex: 0 0 var(--conversation-panel-height);
   height: var(--conversation-panel-height);
   padding: 10px 14px 12px;
@@ -221,5 +221,42 @@
 .roadview-guide-speakers [data-listening="true"] { border-width: 2px; background: #174b50; }
 .roadview-guide-speakers button:disabled { opacity: .55; cursor: default; }
 @media (max-height: 580px) {
-  .walk-panorama .roadview-guide-panel:is([data-mode="ai"], [data-mode="translation"]) { --conversation-panel-height: 320px; }
+  .walk-panorama .roadview-guide-panel:is([data-mode="ai"], [data-mode="translation"]) { --conversation-panel-height: 350px; }
+}
+
+/* Voice-only panels: keep deletion available when messages are selected. */
+.roadview-guide-panel:is([data-mode="ai"], [data-mode="translation"]) .roadview-guide-form { display: none; }
+.roadview-guide-panel .roadview-guide-form input,
+.roadview-guide-panel .roadview-guide-speaker-select,
+.roadview-guide-panel .roadview-guide-form [type="submit"] { display: none !important; }
+.roadview-guide-panel:is([data-mode="ai"], [data-mode="translation"])[data-selecting="true"] .roadview-guide-form {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.roadview-guide-panel[data-mode="ai"] > .roadview-guide-voice {
+  position: relative;
+  flex: 0 0 34px;
+  width: 34px;
+  align-self: flex-end;
+  gap: 0;
+}
+.roadview-guide-panel[data-mode="ai"] > .roadview-guide-voice button {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 10px;
+  background: #323d43;
+  color: #e9f8fb;
+  box-shadow: none;
+}
+.roadview-guide-panel[data-mode="ai"] > .roadview-guide-voice button[aria-pressed="true"] { background: #13a4bb; }
+.roadview-guide-panel[data-mode="ai"] > .roadview-guide-voice .roadview-guide-state {
+  top: auto;
+  bottom: calc(100% + 3px);
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 10px;
 }
