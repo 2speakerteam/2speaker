@@ -1,0 +1,25 @@
+{
+  "id": "/",
+  "name": "2SPEAKER",
+  "short_name": "2SPEAKER",
+  "lang": "ko",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#001c34",
+  "theme_color": "#001c34",
+  "icons": [
+    {
+      "src": "/public/icons/2speaker-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/public/icons/2speaker-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

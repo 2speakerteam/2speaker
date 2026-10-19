@@ -11,6 +11,8 @@ const googleMapsApiKey = process.env.GOOGLE_MAPS_API_KEY?.trim() ?? '';
 await rm(outputDirectory, { recursive: true, force: true });
 await mkdir(outputDirectory, { recursive: true });
 await cp(resolve(projectRoot, 'index.html'), resolve(outputDirectory, 'index.html'));
+await cp(resolve(projectRoot, 'manifest.webmanifest'), resolve(outputDirectory, 'manifest.webmanifest'));
+await cp(resolve(projectRoot, 'service-worker.js'), resolve(outputDirectory, 'service-worker.js'));
 await cp(resolve(projectRoot, 'src'), resolve(outputDirectory, 'src'), { recursive: true });
 await cp(resolve(projectRoot, 'public'), resolve(outputDirectory, 'public'), { recursive: true });
 
