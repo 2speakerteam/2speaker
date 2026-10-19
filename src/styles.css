@@ -150,6 +150,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .guide-content[data-guide-view="route"][data-chat-expanded="false"] .guide-chat-form,
 .guide-content[data-guide-view="route"][data-chat-expanded="false"] .guide-chat-status { display: none; }
 .guide-chat-messages { min-height: 0; display: grid; align-content: start; gap: 9px; padding: 0 2px; }
+.guide-content[data-guide-view="route"] .guide-chat-messages { width: 100%; min-height: 180px; padding: 12px; border: 1px solid rgba(67, 187, 223, .55); border-radius: 14px; background: rgba(0, 31, 54, .88); }
 .guide-chat-bubble { max-width: 88%; display: flex; align-items: end; gap: 7px; color: #f3fbff; font-size: 13px; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: pan-y; }
 .guide-chat-bubble.user, .guide-chat-bubble.other { justify-self: start; }
 .guide-chat-bubble.assistant, .guide-chat-bubble.self { justify-self: end; flex-direction: row-reverse; }
