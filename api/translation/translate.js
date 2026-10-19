@@ -20,6 +20,7 @@ module.exports = async function handler(req, res) {
 
   const userLanguage = languageCode(req.body?.userLanguage) || 'ko';
   const automatic = req.body?.automatic === true;
+  const speaker = automatic && ['self', 'other'].includes(req.body?.speaker) ? req.body.speaker : '';
   const normalize = value => {
     const code = languageCode(value);
     const base = code.toLowerCase().split('-')[0];
@@ -41,14 +42,16 @@ module.exports = async function handler(req, res) {
     if (automatic && !sourceLanguage) {
       return res.status(422).json({ error: '말씀하신 언어를 확인하지 못했습니다. 한 문장으로 다시 말씀해 주세요.' });
     }
-    if (automatic && sourceLanguage === normalize(userLanguage) && !counterpartLanguage) {
+    if (automatic && !speaker && sourceLanguage === normalize(userLanguage) && !counterpartLanguage) {
       return res.status(200).json({ intent: 'translation', needsCounterpart: true, text: '',
         sourceLanguage, targetLanguage: '', provider: 'google-translation' });
     }
 
-    // If the speaker uses their selected language, translate toward the detected conversation partner.
-    // Otherwise translate the partner's message back into the user's selected language.
-    const targetLanguage = (automatic ? sourceLanguage === normalize(userLanguage) : sourceLanguage.toLowerCase() === userLanguage.toLowerCase())
+    // Explicit microphone/text selection determines direction, independently of the detected language.
+    // Existing clients without a selection keep their automatic language-based routing.
+    const fromUser = speaker ? speaker === 'self'
+      : automatic ? sourceLanguage === normalize(userLanguage) : sourceLanguage.toLowerCase() === userLanguage.toLowerCase();
+    const targetLanguage = fromUser
       ? counterpartLanguage || (userLanguage.toLowerCase() === 'en' ? 'ko' : 'en')
       : userLanguage;
 

@@ -67,7 +67,11 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
       <div class="roadview-guide-voice"><button type="button" data-guide-action="mic" aria-label="음성 질문 시작" aria-pressed="false">${microphone}</button><span class="roadview-guide-state" role="status"></span></div>
       <div class="roadview-guide-messages" role="log" aria-live="polite" aria-label="사용자와 AI 대화 기록"></div>
     </div>
-    <form class="roadview-guide-form" aria-label="거리뷰 대화 입력"><input type="text" maxlength="2000" autocomplete="off" placeholder="필요하면 문자로 입력하세요" aria-label="거리뷰 질문"><button type="submit" aria-label="거리뷰 질문 보내기">➤</button><button type="button" data-guide-action="trash" aria-label="대화 기록 전체 삭제">${trashIcon}</button></form>
+    <form class="roadview-guide-form" aria-label="거리뷰 대화 입력"><select class="roadview-guide-speaker-select" aria-label="문자를 입력하는 사람" hidden><option value="self">나</option><option value="other">사용자</option></select><input type="text" maxlength="2000" autocomplete="off" placeholder="필요하면 문자로 입력하세요" aria-label="거리뷰 질문"><button type="submit" aria-label="거리뷰 질문 보내기">➤</button><button type="button" data-guide-action="trash" aria-label="대화 기록 전체 삭제">${trashIcon}</button></form>
+    <div class="roadview-guide-speakers" role="group" aria-label="통역할 사람의 마이크" hidden>
+      <button type="button" data-guide-speaker="self" aria-label="나의 음성 통역 시작" aria-pressed="true">${microphone}<span>나</span></button>
+      <button type="button" data-guide-speaker="other" aria-label="상대방의 음성 통역 시작" aria-pressed="false">${microphone}<span>사용자</span></button>
+    </div>
     <p class="roadview-guide-status" role="status"></p>`;
   section.insertBefore(panel, section.querySelector('.walk-panorama-controls'));
   const guideContent = section.closest('.guide-content');
@@ -81,6 +85,10 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
   const trash = panel.querySelector('[data-guide-action="trash"]');
   const userLanguage = panel.querySelector('[data-guide-language="user"]');
   const otherLanguage = panel.querySelector('[data-guide-language="other"]');
+  const speakerSelect = panel.querySelector('.roadview-guide-speaker-select');
+  const speakerControls = panel.querySelector('.roadview-guide-speakers');
+  const speakerButtons = [...speakerControls.querySelectorAll('[data-guide-speaker]')];
+  let translationSpeaker = 'self';
   let mode = 'ai';
   let opened = false;
   let stopped = false;
@@ -123,6 +131,10 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     (opened ? heading : section.querySelector('.walk-panorama-view')).append(playbackControls);
     playbackControls.querySelector('[data-panorama-action="playback"]').hidden = false;
     panel.querySelector('.roadview-guide-form').insertBefore(voice, panel.querySelector('[type="submit"]'));
+    voice.hidden = mode === 'translation';
+    speakerControls.hidden = speakerSelect.hidden = mode !== 'translation';
+    input.setAttribute('aria-label', mode === 'translation' ? '통역할 문자' : '거리뷰 질문');
+    panel.querySelector('[type="submit"]').setAttribute('aria-label', mode === 'translation' ? '선택한 사람의 문자 통역' : '거리뷰 질문 보내기');
   };
   layoutControls();
   const buttons = () => section.querySelectorAll('[data-panorama-chat]');
@@ -176,9 +188,11 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
   };
   const append = entry => {
     readHistory();
-    historyMemory[mode].push({ id: id(), sources: [], ...entry });
+    const message = { id: id(), sources: [], ...entry };
+    historyMemory[mode].push(message);
     saved = saveHistory();
     render();
+    return message.id;
   };
   const updateVoice = () => {
     const recording = recorder?.state === 'recording';
@@ -189,6 +203,17 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     auto.textContent = autoListen ? '음성 끄기' : '음성 켜기';
     panel.dataset.listening = String(recording);
     panel.dataset.busy = String(busy);
+    panel.dataset.translationSpeaker = translationSpeaker;
+    speakerSelect.value = translationSpeaker;
+    speakerSelect.disabled = busy || acquiring || recording;
+    mic.disabled = busy || acquiring;
+    for (const button of speakerButtons) {
+      const selected = button.dataset.guideSpeaker === translationSpeaker;
+      button.setAttribute('aria-pressed', String(selected));
+      button.disabled = busy || acquiring || (recording && !selected);
+      button.dataset.listening = String(recording && selected);
+      button.setAttribute('aria-label', `${selected && recording ? '전송할' : '시작할'} ${button.dataset.guideSpeaker === 'self' ? '나의' : '상대방의'} 음성 통역`);
+    }
   };
   const releaseMicrophone = () => {
     microphoneRequest++;
@@ -304,11 +329,11 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     }
   }
 
-  async function submit(value, sourceLanguage = '') {
+  async function submit(value, sourceLanguage = '', speaker = translationSpeaker) {
     const text = value.trim();
     if (!text || busy || !opened || stopped) return;
     cancelSelection();
-    if (mode === 'ai') autoListen = true;
+    autoListen = true;
     // A typed question also ends the current recording; never record the app's reply.
     const active = recorder;
     recorder = null;
@@ -322,7 +347,8 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     speaking = false;
     stopSpeech();
     input.value = '';
-    append({ role: 'user', text });
+    const messageId = append({ role: mode === 'translation' && speaker === 'other' ? 'assistant' : 'user', text,
+      ...(mode === 'translation' ? { speaker: speaker === 'self' ? '나' : '상대방' } : {}) });
     setStatus(mode === 'ai' ? '지도와 관련 정보를 확인하고 있습니다.' : '통역하고 있습니다.');
     updateVoice();
     if (mode === 'ai') speak(CHECKING);
@@ -340,7 +366,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
           sources: (answer.sources || []).map(safeSource).filter(Boolean) });
       } else {
         const result = await post('/api/translation/translate', {
-          text, userLanguage: 'ko', counterpartLanguage: translationPartner(), automatic: true, sourceLanguage
+          text, userLanguage: 'ko', counterpartLanguage: translationPartner(), automatic: true, sourceLanguage, speaker
         }, signal);
         if (run !== generation || !opened) return;
         if (result.needsCounterpart) {
@@ -349,15 +375,13 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
           updateVoice();
           return;
         }
-        rememberTranslationPartner(result);
-        const userEntry = historyMemory.translation.at(-1);
-        if (userEntry?.role === 'user' && userEntry.text === text) {
+        if (speaker === 'other') rememberTranslationPartner(result);
+        readHistory();
+        const userEntry = historyMemory.translation.find(entry => entry.id === messageId);
+        if (userEntry) {
           userEntry.translation = result.text;
           userEntry.sourceLanguage = result.sourceLanguage;
           userEntry.targetLanguage = result.targetLanguage;
-          if (result.sourceLanguage && result.sourceLanguage.split('-')[0] !== 'ko') {
-            userEntry.role = 'assistant';
-          }
           saved = saveHistory();
         }
         answer = { text: result.text, language: result.targetLanguage };
@@ -366,7 +390,9 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
       busy = false;
       setStatus('');
       updateVoice();
-      speak(answer.text, mode === 'translation' && Boolean(sourceLanguage), answer.language || '');
+      // Each translation turn starts from the chosen person's microphone.
+      // Do not reopen one microphone automatically and guess the next speaker.
+      speak(answer.text, false, answer.language || '');
     } catch (error) {
       if (run !== generation || !opened || error.name === 'AbortError') return;
       busy = false;
@@ -380,7 +406,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     }
   }
 
-  async function startRecording() {
+  async function startRecording(speaker = translationSpeaker) {
     if (busy || speaking || acquiring || recorder?.state === 'recording' || !opened || stopped) return;
     const mimeType = mode === 'translation' ? translationRecordingType() : 'audio/webm;codecs=opus';
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder
@@ -393,6 +419,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     const run = generation;
     const request = ++microphoneRequest;
     acquiring = true;
+    updateVoice();
     try {
       const acquired = await navigator.mediaDevices.getUserMedia({ audio: true });
       if (!opened || stopped || busy || request !== microphoneRequest || run !== generation) { acquired.getTracks().forEach(t => t.stop()); return; }
@@ -427,7 +454,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
             updateVoice();
             return;
           }
-          await submit(result.text, mode === 'translation' ? result.language : '');
+          await submit(result.text, mode === 'translation' ? result.language : '', speaker);
         } catch (error) {
           if (run !== generation || !opened || error.name === 'AbortError') return;
           busy = false;
@@ -601,14 +628,21 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     if (autoListen) { cancelVoice(); setStatus('음성을 껐습니다. 기록은 유지됩니다.'); }
     else { autoListen = true; updateVoice(); if (!busy && !speaking) void startRecording(); }
   });
-  mic.addEventListener('click', () => {
+  const activateMicrophone = (speaker = translationSpeaker) => {
     if (recorder?.state === 'recording') { recorder.stop(); return; }
-    if (busy) return;
+    if (busy || acquiring) return;
+    if (mode === 'translation') translationSpeaker = speaker;
     speechRequest++;
     stopSpeech();
     speaking = false;
     autoListen = true;
-    void startRecording();
+    void startRecording(speaker);
+  };
+  mic.addEventListener('click', () => activateMicrophone());
+  for (const button of speakerButtons) button.addEventListener('click', () => activateMicrophone(button.dataset.guideSpeaker));
+  speakerSelect.addEventListener('change', () => {
+    translationSpeaker = speakerSelect.value === 'other' ? 'other' : 'self';
+    updateVoice();
   });
   panel.querySelector('form').addEventListener('submit', event => { event.preventDefault(); void submit(input.value); });
   panel.querySelector('[data-guide-action="swap"]').addEventListener('click', () => {

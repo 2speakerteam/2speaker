@@ -98,3 +98,128 @@
 
 
 .roadview-guide-controls button[hidden] { display: none !important; }
+
+/* Shared conversation finish; the surrounding street view keeps its existing layout. */
+.walk-panorama .roadview-guide-panel:is([data-mode="ai"], [data-mode="translation"]) {
+  --conversation-panel-height: clamp(340px, 48dvh, 460px);
+  flex: 0 0 var(--conversation-panel-height);
+  height: var(--conversation-panel-height);
+  padding: 10px 14px 12px;
+  gap: 10px;
+  border-color: #62e7e8;
+  border-radius: 24px;
+  background: linear-gradient(145deg, #2b2f34, #202327 70%);
+}
+.guide-content[data-guide-view="panorama"][data-roadview-below="true"] .roadview-guide-panel:is([data-mode="ai"], [data-mode="translation"]) {
+  flex: 0 0 var(--conversation-panel-height);
+  height: var(--conversation-panel-height);
+  min-height: var(--conversation-panel-height);
+  max-height: none;
+}
+.roadview-guide-panel:is([data-mode="ai"], [data-mode="translation"])::before {
+  content: '';
+  flex: 0 0 4px;
+  width: 46px;
+  align-self: center;
+  border-radius: 4px;
+  background: #686c71;
+}
+.roadview-guide-panel:is([data-mode="ai"], [data-mode="translation"]) .roadview-guide-heading strong {
+  color: #f5f6f7;
+  font-size: 18px;
+  font-weight: 600;
+}
+.roadview-guide-panel[data-listening="true"] .roadview-guide-title::after {
+  content: '';
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-left: 8px;
+  border-radius: 50%;
+  background: #67ebcc;
+}
+.walk-panorama .roadview-guide-heading > .roadview-guide-controls button {
+  border-color: #50545a;
+  background: #34383d;
+  color: #b5b8bd;
+}
+.walk-panorama .roadview-guide-heading > .roadview-guide-controls [data-panorama-action="playback"] { color: #68e9cb; }
+.roadview-guide-panel:is([data-mode="ai"], [data-mode="translation"]) .roadview-guide-message {
+  max-width: 92%;
+  gap: 5px;
+}
+.roadview-guide-panel:is([data-mode="ai"], [data-mode="translation"]) .roadview-guide-message > span {
+  color: #77e7df;
+  font-size: 12px;
+  font-weight: 500;
+}
+.roadview-guide-panel:is([data-mode="ai"], [data-mode="translation"]) .roadview-guide-message.assistant > span { color: #b8bbc0; }
+.roadview-guide-panel:is([data-mode="ai"], [data-mode="translation"]) .roadview-guide-message-content {
+  padding: 10px 13px;
+  border-color: transparent;
+  border-radius: 19px;
+  background: #c5eafa;
+}
+.roadview-guide-panel:is([data-mode="ai"], [data-mode="translation"]) .roadview-guide-message.assistant .roadview-guide-message-content { background: #e6e6e8; }
+.roadview-guide-panel:is([data-mode="ai"], [data-mode="translation"]) .roadview-guide-message p {
+  color: #1d252d;
+  font-size: 15px;
+  line-height: 1.45;
+}
+.roadview-guide-panel:is([data-mode="ai"], [data-mode="translation"]) .roadview-guide-message .roadview-guide-translation { color: #344e5c; }
+.roadview-guide-panel:is([data-mode="ai"], [data-mode="translation"]) .roadview-guide-sources a { color: #235569; }
+.roadview-guide-panel:is([data-mode="ai"], [data-mode="translation"]) .roadview-guide-form {
+  width: 100%;
+  background: #23292e;
+  border-color: #59646b;
+}
+.roadview-guide-panel:is([data-mode="ai"], [data-mode="translation"]) .roadview-guide-form button {
+  background: #323d43;
+  color: #e9f8fb;
+}
+.roadview-guide-panel:is([data-mode="ai"], [data-mode="translation"]) .roadview-guide-form input::placeholder { color: #b0bac1; }
+.roadview-guide-voice[hidden], .roadview-guide-speakers[hidden], .roadview-guide-speaker-select[hidden] { display: none !important; }
+.roadview-guide-speaker-select {
+  flex: 0 0 68px;
+  min-width: 0;
+  height: 32px;
+  border: 1px solid #5e9f9d;
+  border-radius: 10px;
+  color: #7cebe0;
+  background: #24373a;
+  font: inherit;
+  font-size: 12px;
+}
+.roadview-guide-speakers {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.roadview-guide-speakers button {
+  min-width: 0;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 12px;
+  border: 1px solid #54595f;
+  border-radius: 25px;
+  background: #2a2d32;
+  color: #f0f1f3;
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+}
+.roadview-guide-speakers svg { width: 25px; height: 25px; }
+.roadview-guide-speakers [aria-pressed="true"] {
+  border-color: #50e7e7;
+  background: #193a40;
+  color: #6cecd4;
+}
+.roadview-guide-speakers [data-listening="true"] { border-width: 2px; background: #174b50; }
+.roadview-guide-speakers button:disabled { opacity: .55; cursor: default; }
+@media (max-height: 580px) {
+  .walk-panorama .roadview-guide-panel:is([data-mode="ai"], [data-mode="translation"]) { --conversation-panel-height: 320px; }
+}
