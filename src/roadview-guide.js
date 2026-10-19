@@ -41,7 +41,7 @@ function currentPosition() {
     if (!navigator.geolocation) return resolve(null);
     navigator.geolocation.getCurrentPosition(p => resolve({ lat: p.coords.latitude,
       lng: p.coords.longitude, accuracy: p.coords.accuracy, timestamp: p.timestamp }),
-    () => resolve(null), { enableHighAccuracy: true, maximumAge: 15000, timeout: 5500 });
+    () => resolve(null), { enableHighAccuracy: true, maximumAge: 30000, timeout: 15000 });
   });
 }
 
