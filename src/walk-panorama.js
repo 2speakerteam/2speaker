@@ -1,5 +1,5 @@
 import { createPanoramaProbe } from './panorama-probe.js?v=20261017-panorama-isolation-2';
-import { createWalkPanoramaBuffer } from './walk-panorama-buffer.js?v=20261019-walk-flow-10';
+import { createWalkPanoramaBuffer } from './walk-panorama-buffer.js?v=20261020-single-reveal-1';
 import { walkingViewPov, walkingPlaybackTiming } from './walk-panorama-motion.js?v=20261019-walk-flow-10';
 import { createWalkMiniMap } from './walk-mini-map.js?v=20261016-route-arrow-sync-1';
 import { bindBoardingPanoramaGestures } from './boarding-panorama-gestures.js?v=20261019-boarding-direction-hold-1';
@@ -270,6 +270,7 @@ export function createWalkPanorama(maps, section) {
   let destinationPinTitle = '';
   let startStationLocation = null;
   let startStationTitle = '';
+  let departureView = null;
   let selected = -1;
   let playing = false;
   let busy = false;
@@ -394,9 +395,9 @@ export function createWalkPanorama(maps, section) {
       }
     }, 70);
   };
-  const showDeparture = (frame) => {
+  const showDeparture = (frame, focus = false) => {
     const startPoint = startStationLocation || routeEdges[0]?.start;
-    if (frame.phase !== 'departure' || !startPoint || !panorama
+    if (frame.phase === 'arrival' || frame.progress > 50 || !startPoint || !panorama
       || distanceMeters(frame.camera, startPoint) > 50) {
       startStationMarker?.setMap(null);
       return;
@@ -416,6 +417,17 @@ export function createWalkPanorama(maps, section) {
     startStationMarker.setPosition(position);
     startStationMarker.setMap(null);
     startStationMarker.setMap(panorama);
+    if (focus) {
+      const pinPov = panorama.getProjection()?.fromCoordToPov(position);
+      const pan = Number.isFinite(pinPov?.pan)
+        ? pinPov.pan : headingDegrees(frame.camera, startPoint);
+      if (Number.isFinite(pan)) {
+        const routePov = panorama.getPov();
+        panorama.setPov({ ...routePov, pan,
+          tilt: Number.isFinite(pinPov?.tilt) ? pinPov.tilt : 0 });
+        departureView = { routePov, focusedPov: panorama.getPov() };
+      }
+    }
   };
   const showDestination = (frame, focus = false) => {
     if (frame.phase !== 'arrival' || !destinationPinLocation || !panorama
@@ -623,7 +635,16 @@ export function createWalkPanorama(maps, section) {
     const run = generation;
     const frame = frames[index];
     const previousFrame = Math.abs(index - selected) === 1 ? frames[selected] : null;
-    const viewPov = walkingViewPov(previousFrame, frame, walkBuffer?.viewPov() || panorama.getPov());
+    let currentPov = walkBuffer?.viewPov() || panorama.getPov();
+    if (departureView && selected === 0 && index !== selected) {
+      // Showing the departure pin must not make the whole route play backwards.
+      if (angleDifference(currentPov.pan, departureView.focusedPov.pan) < .1
+        && Math.abs(currentPov.tilt - departureView.focusedPov.tilt) < .1) {
+        currentPov = { ...currentPov, pan: departureView.routePov.pan, tilt: departureView.routePov.tilt };
+      }
+      departureView = null;
+    }
+    const viewPov = walkingViewPov(previousFrame, frame, currentPov);
     const displayFrame = { ...frame, pov: viewPov };
     const timing = walkingPlaybackTiming(previousFrame, frame, !playing);
     let buffered = false;
@@ -722,7 +743,7 @@ export function createWalkPanorama(maps, section) {
     canvas.hidden = false;
     turn.textContent = '';
     turn.hidden = true;
-    showDeparture(frame);
+    showDeparture(frame, index === 0);
     showDestination(frame, true);
     applied = panorama.getPov();
     setStatus('경로보기');
@@ -813,6 +834,7 @@ export function createWalkPanorama(maps, section) {
     destinationPinTitle = '';
     startStationLocation = null;
     startStationTitle = '';
+    departureView = null;
     selected = -1;
     busy = false;
   };

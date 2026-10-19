@@ -1,4 +1,4 @@
-import { interpolateWalkingPov } from './walk-panorama-motion.js?v=20261019-walk-flow-10';
+import { interpolateWalkingPov } from './walk-panorama-motion.js?v=20261020-single-reveal-1';
 
 // Two actual SDK panoramas, prepared before revealing. Keep photo geometry intact.
 export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { transitionMs = 1200 } = {}) {
@@ -93,9 +93,8 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { tr
   async function show(frame, { durationMs = transitionMs, fromPov = null, onPov = null, reload = false } = {}) {
     try {
       const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-      const smooth = durationMs > 0 && !reduced && typeof front.host.animate === 'function';
       const startPov = fromPov || front.viewer.getPov();
-      const preparedFrame = { ...frame, pov: smooth ? { ...startPov } : frame.pov };
+      const preparedFrame = frame;
       const needsTurn = Math.abs(((frame.pov.pan - startPov.pan + 540) % 360) - 180) > .01
         || Math.abs(frame.pov.tilt - startPov.tilt) > .01 || Math.abs(frame.pov.fov - startPov.fov) > .01;
       const target = await prepare(preparedFrame, reload);
@@ -110,11 +109,10 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { tr
         previous.host.style.pointerEvents = 'none';
         previous.host.inert = true;
         previous.host.setAttribute('aria-hidden', 'true');
-        // Hold the loaded original until the midpoint, then switch in one paint.
-        // Discrete visibility never blends or distorts the two photographs.
+        // Load the next photo at its final view before revealing it once.
+        // Turning it after the reveal can trigger a second SDK tile repaint.
         const animation = target.host.animate([
           { visibility: 'hidden', offset: 0, easing: 'steps(1, end)' },
-          { visibility: 'inherit', offset: .5 },
           { visibility: 'inherit', offset: 1 }
         ], {
           duration: durationMs, easing: 'linear'
@@ -129,7 +127,6 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { tr
           cancelAnimationFrame(run.raf);
           for (const name of ['pointerdown', 'wheel', 'keydown']) target.host.removeEventListener(name, steer, true);
           if (!stopped && !cancelled) {
-            if (!run.steering && needsTurn) target.viewer.setPov(frame.pov);
             layer(previous, false);
           }
           transition = null;
@@ -141,9 +138,8 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { tr
         const turn = now => {
           if (stopped || transition !== run) return;
           if (!run.steering && now - lastPaint >= 30) {
-            const pov = interpolateWalkingPov(preparedFrame.pov, frame.pov, (now - started) / durationMs);
+            const pov = interpolateWalkingPov(startPov, frame.pov, (now - started) / durationMs);
             previous.viewer.setPov({ ...pov, fov: startPov.fov });
-            target.viewer.setPov(pov);
             onPov?.(pov);
             lastPaint = now;
           }
@@ -156,7 +152,6 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { tr
         if (stopped) return null;
         return viewer;
       } else {
-        target.viewer.setPov(frame.pov);
         layer(previous, false);
         return front.viewer;
       }
