@@ -34,7 +34,6 @@ export function createWalkRouteArrowLayer(canvas, view) {
   let scene = null;
   let headingOffset = null;
   let stopped = false;
-  let held = false;
 
   const renderedCamera = () => {
     const cube = [...(renderer?.querySelectorAll('.cube') || [])]
@@ -50,17 +49,16 @@ export function createWalkRouteArrowLayer(canvas, view) {
     };
   };
   const paint = () => {
-    if (stopped || held || !Number.isFinite(bearing) || !pov) return;
+    if (stopped || !Number.isFinite(bearing) || !pov) return;
     const width = view.clientWidth, height = view.clientHeight;
     const camera = renderedCamera();
-    const followRenderedCamera = camera && headingOffset !== null;
-    const cameraPan = followRenderedCamera ? camera.pan + headingOffset : pov.pan;
+    const cameraPan = camera && headingOffset !== null ? camera.pan + headingOffset : pov.pan;
     const relative = ((bearing - cameraPan + 540) % 360) - 180;
-    const pan = relative * RADIANS, tilt = (followRenderedCamera ? camera.tilt : pov.tilt) * RADIANS;
+    const pan = relative * RADIANS, tilt = (camera?.tilt ?? pov.tilt) * RADIANS;
     const forward = Math.cos(pan);
     const depth = forward * Math.cos(tilt) - GROUND_DROP * Math.sin(tilt);
     const up = -GROUND_DROP * Math.cos(tilt) - forward * Math.sin(tilt);
-    const focal = followRenderedCamera ? camera.focal : height / (2 * Math.tan(pov.fov * RADIANS / 2));
+    const focal = camera?.focal ?? height / (2 * Math.tan(pov.fov * RADIANS / 2));
     const x = width / 2 + focal * Math.sin(pan) / depth;
     const y = height / 2 - focal * up / depth;
     if (width <= 0 || height <= 0 || depth <= .01 || !Number.isFinite(x + y)
@@ -90,9 +88,7 @@ export function createWalkRouteArrowLayer(canvas, view) {
   };
   canvas.addEventListener('pointerdown', anchorCamera, { capture: true, passive: true });
 
-  const hold = () => { held = true; };
   const clear = () => {
-    held = false;
     cameraObserver.disconnect();
     root.hidden = true;
     bearing = null;
@@ -114,7 +110,6 @@ export function createWalkRouteArrowLayer(canvas, view) {
       if (renderer) cameraObserver.observe(renderer, { subtree: true, childList: true,
         attributes: true, attributeFilter: ['style'] });
     }
-    held = false;
     bearing = cameraPov.pan + targetAngle;
     setPov(cameraPov);
   };
@@ -126,5 +121,5 @@ export function createWalkRouteArrowLayer(canvas, view) {
     root.remove();
     style.remove();
   };
-  return { show, setPov, hold, clear, stop };
+  return { show, setPov, clear, stop };
 }

@@ -1,4 +1,4 @@
-import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261020-steady-frames-1';
+import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261019-walk-flow-12';
 import { createGuideConversation } from './guide-conversation.js?v=20261019-route-speaker-panel-1';
 import { createRoadviewGuide } from './roadview-guide.js?v=20261019-access-research-1';
 import { ACCOUNT_EVENT, currentAccount, initializeAccount, signIn, signUp, signOut } from './account-session.js?v=20261018-cloud-history-1';
@@ -263,8 +263,7 @@ function panoramaSection(kind) {
             </button>
           </div>` : ''}
         </div>
-        <div class="walk-panorama-controls${kind === 'walk' ? ' has-restart' : ''}">
-          ${kind === 'walk' ? '<button type="button" data-panorama-action="restart" aria-label="로드뷰 처음부터 다시 시작" title="처음부터 다시 시작">처음부터</button>' : ''}
+        <div class="walk-panorama-controls">
           <button type="button" data-panorama-action="previous">이전</button>
           <button type="button" data-panorama-action="playback">재생</button>
           <button type="button" data-panorama-action="next">다음</button>

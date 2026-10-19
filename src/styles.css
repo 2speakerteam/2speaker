@@ -254,8 +254,6 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .walk-panorama-anchor { display: block; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .walk-panorama-pin { display: block; width: 34px; height: 44px; filter: drop-shadow(0 2px 5px rgba(0,0,0,.65)); pointer-events: none; }
 .walk-panorama-pin svg { display: block; width: 34px; height: 44px; }
-.walk-panorama-departure-pin { display: block; width: 44px; height: 54px; filter: drop-shadow(0 2px 5px rgba(0,0,0,.4)); pointer-events: none; }
-.walk-panorama-departure-pin svg { display: block; width: 44px; height: 54px; }
 .walk-panorama-station { display: block; min-width: 96px; padding: 5px 8px; border: 1px solid #d9f8ff; border-radius: 10px; background: rgba(4, 55, 82, .9); color: #fff; font-size: 12px; font-weight: 700; line-height: 1.2; text-align: center; white-space: nowrap; box-shadow: 0 2px 5px rgba(0, 0, 0, .4); pointer-events: none; }
 .walk-panorama-turn { position: absolute; right: 10px; bottom: 10px; padding: 5px 9px; border: 1px solid rgba(40, 220, 239, .62); border-radius: 10px; background: rgba(2, 28, 45, .83); color: #ecfdff; font-size: 13px; font-weight: 700; pointer-events: none; }
 .walk-panorama-turn[hidden] { display: none; }
@@ -263,7 +261,6 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .walk-panorama.is-switching .walk-panorama-canvas { visibility: hidden; opacity: 0; transition: none; }
 .walk-panorama-arrival { margin: 9px 0 0; color: #a7c8d6; font-size: 12px; line-height: 1.4; }
 .walk-panorama-controls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
-.walk-panorama-controls.has-restart { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .walk-panorama-controls button { min-height: 42px; border: 1px solid rgba(72, 198, 226, .38); border-radius: 12px; background: #0b354c; color: #e9f8ff; font: inherit; font-size: 14px; cursor: pointer; }
 .walk-panorama-controls button.is-replay:not(:disabled) { border-color: #27eef0; background: #086b82; color: #fff; box-shadow: 0 0 12px rgba(39, 238, 240, .22); }
 .walk-panorama-controls button:disabled { opacity: .45; cursor: default; }

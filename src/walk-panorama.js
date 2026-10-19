@@ -1,10 +1,10 @@
 import { createPanoramaProbe } from './panorama-probe.js?v=20261017-panorama-isolation-2';
-import { createWalkPanoramaBuffer } from './walk-panorama-buffer.js?v=20261020-steady-frames-1';
+import { createWalkPanoramaBuffer } from './walk-panorama-buffer.js?v=20261019-walk-flow-10';
 import { walkingViewPov, walkingPlaybackTiming } from './walk-panorama-motion.js?v=20261019-walk-flow-10';
 import { createWalkMiniMap } from './walk-mini-map.js?v=20261016-route-arrow-sync-1';
 import { bindBoardingPanoramaGestures } from './boarding-panorama-gestures.js?v=20261019-boarding-direction-hold-1';
 import { createBoardingPanoramaTravel } from './boarding-panorama-travel.js?v=20261019-boarding-direction-hold-1';
-import { createWalkRouteArrowLayer } from './walk-route-arrow-layer.js?v=20261020-arrow-hold-1';
+import { createWalkRouteArrowLayer } from './walk-route-arrow-layer.js?v=20261019-arrow-center-2';
 
 const CAMERA_TO_ROUTE_LIMIT_METERS = 15;
 const CAMERA_TO_REQUEST_LIMIT_METERS = 25;
@@ -246,7 +246,6 @@ export function createWalkPanorama(maps, section) {
   const turn = section?.querySelector('.walk-panorama-turn');
   const status = section?.querySelector('.walk-panorama-status');
   const arrival = section?.querySelector('.walk-panorama-arrival');
-  const restart = section?.querySelector('[data-panorama-action="restart"]');
   const previous = section?.querySelector('[data-panorama-action="previous"]');
   const playback = section?.querySelector('[data-panorama-action="playback"]');
   const next = section?.querySelector('[data-panorama-action="next"]');
@@ -271,7 +270,6 @@ export function createWalkPanorama(maps, section) {
   let destinationPinTitle = '';
   let startStationLocation = null;
   let startStationTitle = '';
-  let departureView = null;
   let selected = -1;
   let playing = false;
   let busy = false;
@@ -396,39 +394,25 @@ export function createWalkPanorama(maps, section) {
       }
     }, 70);
   };
-  const showDeparture = (frame, focus = false) => {
-    const startPoint = startStationLocation || routeEdges[0]?.start;
-    if (frame.phase === 'arrival' || frame.progress > 50 || !startPoint || !panorama
-      || distanceMeters(frame.camera, startPoint) > 50) {
+  const showStartStation = (frame) => {
+    if (frame.phase !== 'departure' || !startStationLocation || !panorama
+      || distanceMeters(frame.camera, startStationLocation) > 50) {
       startStationMarker?.setMap(null);
       return;
     }
-    const position = new maps.LatLng(startPoint.lat, startPoint.lng);
     if (!startStationMarker) {
       startStationMarker = new maps.Marker({
-        position,
-        title: startStationTitle || '출발지',
+        position: new maps.LatLng(startStationLocation.lat, startStationLocation.lng),
+        title: startStationTitle,
         icon: {
-          content: '<span class="walk-panorama-departure-pin" role="img" aria-label="출발"><svg viewBox="0 0 44 54" aria-hidden="true"><path d="M22 52C16 44 2 30 2 22a20 20 0 0 1 40 0c0 8-14 22-20 30Z" fill="#10bda8" stroke="#fff" stroke-width="2"/><text x="22" y="26" fill="#fff" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="700">출발</text></svg></span>',
-          size: new maps.Size(44, 54), anchor: new maps.Point(22, 52)
+          content: `<span class="walk-panorama-station" role="img" aria-label="출발역 출구">${startStationTitle.replace(/[<>&"']/g, '')} 출발</span>`,
+          size: new maps.Size(112, 34), anchor: new maps.Point(56, 34)
         },
         zIndex: 490
       });
     }
-    startStationMarker.setPosition(position);
     startStationMarker.setMap(null);
     startStationMarker.setMap(panorama);
-    if (focus) {
-      const pinPov = panorama.getProjection()?.fromCoordToPov(position);
-      const pan = Number.isFinite(pinPov?.pan)
-        ? pinPov.pan : headingDegrees(frame.camera, startPoint);
-      if (Number.isFinite(pan)) {
-        const routePov = panorama.getPov();
-        panorama.setPov({ ...routePov, pan,
-          tilt: Number.isFinite(pinPov?.tilt) ? pinPov.tilt : 0 });
-        departureView = { routePov, focusedPov: panorama.getPov() };
-      }
-    }
   };
   const showDestination = (frame, focus = false) => {
     if (frame.phase !== 'arrival' || !destinationPinLocation || !panorama
@@ -466,10 +450,6 @@ export function createWalkPanorama(maps, section) {
   const setStatus = (message) => { status.textContent = message; };
   const updateControls = () => {
     const atEnd = preparationDone && selected >= 0 && selected >= frames.length - 1;
-    if (restart) {
-      restart.disabled = busy || selected < 0;
-      restart.classList.toggle('is-scene-loading', busy && selected >= 0);
-    }
     previous.disabled = busy || selected <= 0;
     next.disabled = busy || selected < 0 || selected >= frames.length - 1;
     // Keep controls visually steady during scene preparation; retain the click guard.
@@ -640,16 +620,7 @@ export function createWalkPanorama(maps, section) {
     const run = generation;
     const frame = frames[index];
     const previousFrame = Math.abs(index - selected) === 1 ? frames[selected] : null;
-    let currentPov = walkBuffer?.viewPov() || panorama.getPov();
-    if (departureView && selected === 0 && index !== selected) {
-      // Showing the departure pin must not make the whole route play backwards.
-      if (angleDifference(currentPov.pan, departureView.focusedPov.pan) < .1
-        && Math.abs(currentPov.tilt - departureView.focusedPov.tilt) < .1) {
-        currentPov = { ...currentPov, pan: departureView.routePov.pan, tilt: departureView.routePov.tilt };
-      }
-      departureView = null;
-    }
-    const viewPov = walkingViewPov(previousFrame, frame, currentPov);
+    const viewPov = walkingViewPov(previousFrame, frame, walkBuffer?.viewPov() || panorama.getPov());
     const displayFrame = { ...frame, pov: viewPov };
     const timing = walkingPlaybackTiming(previousFrame, frame, !playing);
     let buffered = false;
@@ -659,13 +630,13 @@ export function createWalkPanorama(maps, section) {
     arrowPoseRefreshUntil = 0;
     switchingFrame = frame;
     if (!walkBuffer || selected < 0) miniMap.suspend();
-    routeArrowLayer?.hold();
     clearNativeArrow(true);
     updateControls();
     const currentCoord = panorama.getLocation()?.coord;
     if (walkBuffer && selected >= 0 && panorama.getPanoId() !== frame.panoId) {
       let preparedViewer = await walkBuffer.show(displayFrame, {
-        durationMs: timing.transitionMs
+        durationMs: timing.transitionMs, fromPov: panorama.getPov(),
+        onPov: pov => routeArrowLayer?.setPov(pov)
       });
       if (run !== generation) return;
       if (!preparedViewer && playing) {
@@ -675,7 +646,8 @@ export function createWalkPanorama(maps, section) {
         if (run !== generation) return;
         if (playing) {
           preparedViewer = await walkBuffer.show(displayFrame, {
-            durationMs: timing.transitionMs, reload: true
+            durationMs: timing.transitionMs, fromPov: panorama.getPov(),
+            onPov: pov => routeArrowLayer?.setPov(pov), reload: true
           });
           if (run !== generation) return;
         } else {
@@ -747,7 +719,7 @@ export function createWalkPanorama(maps, section) {
     canvas.hidden = false;
     turn.textContent = '';
     turn.hidden = true;
-    showDeparture(frame, index === 0);
+    showStartStation(frame);
     showDestination(frame, true);
     applied = panorama.getPov();
     setStatus('경로보기');
@@ -838,7 +810,6 @@ export function createWalkPanorama(maps, section) {
     destinationPinTitle = '';
     startStationLocation = null;
     startStationTitle = '';
-    departureView = null;
     selected = -1;
     busy = false;
   };
@@ -961,7 +932,7 @@ export function createWalkPanorama(maps, section) {
         destinationPinTitle = options.destinationTitle || '목적지';
       }
       if (selected >= 0) {
-        showDeparture(frames[selected]);
+        showStartStation(frames[selected]);
         showDestination(frames[selected], true);
       }
     });
@@ -1147,16 +1118,6 @@ export function createWalkPanorama(maps, section) {
     allowNativeClick: () => boardingTravel.isDispatchingLink()
   });
 
-  const restartPlayback = async () => {
-    const run = generation;
-    pause();
-    await showFrame(0);
-    if (run !== generation || selected !== 0 || busy) return;
-    playing = true;
-    updateControls();
-    scheduleNext();
-  };
-  restart?.addEventListener('click', restartPlayback);
   previous.addEventListener('click', () => { pause(); void showFrame(selected - 1); });
   next.addEventListener('click', () => { pause(); void showFrame(selected + 1); });
   playback.addEventListener('click', async () => {
