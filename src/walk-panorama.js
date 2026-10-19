@@ -414,7 +414,7 @@ export function createWalkPanorama(maps, section) {
     startStationMarker.setMap(null);
     startStationMarker.setMap(panorama);
   };
-  const showDestination = (frame) => {
+  const showDestination = (frame, focus = false) => {
     if (frame.phase !== 'arrival' || !destinationPinLocation || !panorama
       || distanceMeters(frame.camera, destinationPinLocation) > 120) {
       destinationMarker?.setMap(null);
@@ -431,8 +431,20 @@ export function createWalkPanorama(maps, section) {
         zIndex: 500
       });
     }
+    const pinPosition = new maps.LatLng(destinationPinLocation.lat, destinationPinLocation.lng);
+    destinationMarker.setPosition(pinPosition);
     destinationMarker.setMap(null);
     destinationMarker.setMap(panorama);
+    if (focus) {
+      const pinPov = panorama.getProjection()?.fromCoordToPov(pinPosition);
+      const pan = Number.isFinite(pinPov?.pan)
+        ? pinPov.pan : headingDegrees(frame.camera, destinationPinLocation);
+      if (Number.isFinite(pan)) {
+        panorama.setPov({ ...panorama.getPov(), pan,
+          tilt: Number.isFinite(pinPov?.tilt) ? pinPov.tilt : 0 });
+        section.dataset.headingDegrees = pan.toFixed(1);
+      }
+    }
   };
 
   const setStatus = (message) => { status.textContent = message; };
@@ -708,7 +720,8 @@ export function createWalkPanorama(maps, section) {
     turn.textContent = '';
     turn.hidden = true;
     showStartStation(frame);
-    showDestination(frame);
+    showDestination(frame, true);
+    applied = panorama.getPov();
     setStatus('경로보기');
     section.dataset.panoramaId = frame.panoId;
     section.dataset.cameraLat = frame.camera.lat.toFixed(7);
@@ -920,7 +933,7 @@ export function createWalkPanorama(maps, section) {
       }
       if (selected >= 0) {
         showStartStation(frames[selected]);
-        showDestination(frames[selected]);
+        showDestination(frames[selected], true);
       }
     });
     if (window.ResizeObserver) {
@@ -1015,7 +1028,7 @@ export function createWalkPanorama(maps, section) {
           if (edges.at(-1).to - frames.at(-1).progress <= endpointZone) frames.at(-1).phase = 'arrival';
           if (selected === frames.length - 1 && !busy) {
             pause();
-            showDestination(frames[selected]);
+            showDestination(frames[selected], true);
             showNativeArrow(frames[selected]);
             if (frames[selected].phase === 'arrival') verifyArrival(run);
             else arrival.textContent = '확인된 로드뷰 구간의 끝입니다. 남은 도보 경로는 지도에서 확인하세요.';
