@@ -1,0 +1,71 @@
+/* Background colors only; keep existing text, borders, sizing and spacing. */
+:root {
+  --bg-top: #454c57;
+  --bg: #424954;
+  --bg-deep: #464d58;
+  background: #454c57;
+}
+
+body {
+  background: linear-gradient(145deg, #454c57, #424954 48%, #464d58);
+}
+
+.screen::before {
+  background: radial-gradient(circle at 75% 30%, rgba(255, 255, 255, .025), transparent 30%);
+}
+
+.destination-search,
+.feature-card {
+  background: rgba(47, 53, 62, .18);
+}
+
+.bottom-nav {
+  background: rgba(47, 53, 62, .95);
+}
+
+/* Keep More in its existing right-hand slot after removing Home. */
+.bottom-nav > [data-page="more"] {
+  grid-column: 2;
+}
+
+/* The original two-color mark has no added cyan halo in the reference. */
+.brand-mark {
+  filter: none;
+}
+
+.menu-scrim {
+  background: rgba(27, 31, 37, .62);
+}
+
+.menu-panel {
+  background: linear-gradient(145deg, #484f5a, #424954 55%, #3d444f);
+}
+
+.account-card {
+  background: rgba(47, 53, 62, .18);
+}
+
+.social-grid button {
+  background: rgba(47, 53, 62, .18);
+}
+
+.transport-option,
+.transport-option[aria-pressed="true"] {
+  background: rgba(47, 53, 62, .18);
+}
+
+.transport-option:active:not(:disabled) {
+  background: rgba(58, 65, 76, .5);
+}
+
+.subway-route-panel {
+  background: rgba(47, 53, 62, .18);
+}
+
+.guide-chat-tabs button {
+  background: rgba(47, 53, 62, .5);
+}
+
+.guide-chat-tabs button[aria-pressed="true"] {
+  background: linear-gradient(145deg, #0787a0, #075270);
+}

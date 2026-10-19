@@ -6,8 +6,8 @@
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#001c34",
-  "theme_color": "#001c34",
+  "background_color": "#454c57",
+  "theme_color": "#454c57",
   "icons": [
     {
       "src": "/public/icons/2speaker-192.png",
