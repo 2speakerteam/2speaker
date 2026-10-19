@@ -1,4 +1,4 @@
-import { interpolateWalkingPov } from './walk-panorama-motion.js?v=20261019-walk-flow-7';
+import { interpolateWalkingPov } from './walk-panorama-motion.js?v=20261019-walk-flow-8';
 
 // Two actual SDK panoramas, prepared before revealing. Keep photo geometry intact.
 export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { transitionMs = 1200 } = {}) {
@@ -12,7 +12,8 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { tr
   function layer(channel, visible) {
     channel.host.style.setProperty('position', 'absolute', 'important');
     channel.host.style.setProperty('inset', '0');
-    channel.host.style.visibility = visible ? 'visible' : 'hidden';
+    // Inherit the section's hidden preload state until the user opens roadview.
+    channel.host.style.visibility = visible ? 'inherit' : 'hidden';
     channel.host.style.zIndex = visible ? '2' : '1';
     channel.host.style.pointerEvents = visible ? '' : 'none';
     channel.host.setAttribute('aria-hidden', String(!visible));
@@ -108,8 +109,8 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { tr
         // Discrete visibility never blends or distorts the two photographs.
         const animation = target.host.animate([
           { visibility: 'hidden', offset: 0, easing: 'steps(1, end)' },
-          { visibility: 'visible', offset: .5 },
-          { visibility: 'visible', offset: 1 }
+          { visibility: 'inherit', offset: .5 },
+          { visibility: 'inherit', offset: 1 }
         ], {
           duration: durationMs, easing: 'linear'
         });

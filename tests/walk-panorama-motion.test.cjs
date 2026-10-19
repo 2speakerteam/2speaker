@@ -104,7 +104,7 @@ test('keeps the current photo until ready, then switches opaque scenes and turns
   let resolved = false;
   const task = f.buffer.show(frame('b', 5, -179), { durationMs: 1200 }).then(value => { resolved = true; return value; });
   await until(() => f.viewers.length === 2);
-  assert.equal(f.initial.host.style.visibility, 'visible');
+  assert.equal(f.initial.host.style.visibility, 'inherit');
   assert.equal(f.animations.length, 0);
   f.setReady(true);
   await until(() => f.animations.length === 1);
@@ -115,7 +115,7 @@ test('keeps the current photo until ready, then switches opaque scenes and turns
   const keys = f.animations[0].keys;
   assert.equal(keys[0].easing, 'steps(1, end)');
   assert.equal(keys[0].visibility, 'hidden');
-  assert.equal(keys[1].visibility, 'visible');
+  assert.equal(keys[1].visibility, 'inherit');
   f.animations[0].finish();
   assert.equal(await task, f.viewers[1]);
   assert.equal(f.initial.host.style.visibility, 'hidden');
