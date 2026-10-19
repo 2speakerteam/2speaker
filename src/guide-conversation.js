@@ -115,18 +115,18 @@ export function createGuideConversation(section, { getContext }) {
     historySaved = persistAiHistory(messages.ai);
   };
 
-  section.innerHTML = `<div class="guide-chat-messages" role="log" aria-live="polite"></div>
+  section.innerHTML = `<div class="guide-chat-tabs" role="group" aria-label="대화 방식">
+      <button type="button" data-chat-mode="ai" aria-pressed="true"><span>AI대화</span></button>
+      <button type="button" data-chat-mode="translation" aria-pressed="false"><span>실시간 통역</span></button>
+    </div>
     <form class="guide-chat-form" aria-label="대화 입력">
       <input type="text" maxlength="2000" autocomplete="off" aria-label="대화 메시지" placeholder="질문을 입력하세요">
       <button type="button" class="guide-chat-mic" aria-label="음성 입력"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6"/></svg></button>
       <button type="submit" class="guide-chat-send" aria-label="메시지 보내기"><svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="m4 4 16 8-16 8 3-8Z"/><path d="M7 12h13"/></svg></button>
       <button type="button" class="guide-chat-trash" aria-label="AI 대화 전체 삭제" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M6.5 7l.8 13h9.4l.8-13M10 11v6M14 11v6"/></svg></button>
     </form>
-    <p class="guide-chat-status" role="status" aria-live="polite"></p>
-    <div class="guide-chat-tabs" role="group" aria-label="대화 방식">
-      <button type="button" data-chat-mode="ai" aria-pressed="true"><span>AI대화</span></button>
-      <button type="button" data-chat-mode="translation" aria-pressed="false"><span>실시간 통역</span></button>
-    </div>`;
+    <div class="guide-chat-messages" role="log" aria-live="polite"></div>
+    <p class="guide-chat-status" role="status" aria-live="polite"></p>`;
   const log = section.querySelector('.guide-chat-messages');
   const form = section.querySelector('.guide-chat-form');
   const input = form.querySelector('input');
