@@ -164,6 +164,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .guide-chat-bubble.assistant > div, .guide-chat-bubble.other > div { background: #173c56; }
 .guide-content[data-guide-view="route"] .guide-conversation[data-mode="ai"] .guide-chat-bubble.user > span { color: #77e7df; }
 .guide-content[data-guide-view="route"] .guide-conversation[data-mode="ai"] .guide-chat-bubble.user > div { border-color: transparent; background: #c5eafa; color: #1d252d; }
+.guide-content[data-guide-view="route"] .guide-conversation[data-mode="ai"] .guide-chat-bubble.assistant > div { border-color: transparent; background: #e6e6e8; color: #1d252d; }
 .guide-chat-bubble p { margin: 0; line-height: 1.45; }
 .guide-chat-bubble small { display: block; margin-top: 5px; color: #b7e8fa; font-size: 11px; line-height: 1.4; }
 .guide-chat-speak { flex: 0 0 auto; border: 0; background: transparent; cursor: pointer; }
