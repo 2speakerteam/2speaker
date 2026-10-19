@@ -1,5 +1,6 @@
 import { createPanoramaProbe } from './panorama-probe.js?v=20261017-panorama-isolation-2';
-import { createWalkPanoramaBuffer } from './walk-panorama-buffer.js?v=20261017-walk-gentle-1';
+import { createWalkPanoramaBuffer } from './walk-panorama-buffer.js?v=20261019-walk-flow-1';
+import { walkingViewPov, walkingPlaybackTiming } from './walk-panorama-motion.js?v=20261019-walk-flow-1';
 import { createWalkMiniMap } from './walk-mini-map.js?v=20261016-route-arrow-sync-1';
 import { bindBoardingPanoramaGestures } from './boarding-panorama-gestures.js?v=20261019-boarding-direction-hold-1';
 import { createBoardingPanoramaTravel } from './boarding-panorama-travel.js?v=20261019-boarding-direction-hold-1';
@@ -8,7 +9,7 @@ import { createWalkRouteArrowLayer } from './walk-route-arrow-layer.js?v=2026101
 const CAMERA_TO_ROUTE_LIMIT_METERS = 15;
 const CAMERA_TO_REQUEST_LIMIT_METERS = 25;
 const ROUTE_PROGRESS_LIMIT_METERS = 25;
-const PROBE_SPACING_METERS = 10;
+const PROBE_SPACING_METERS = 5;
 const PANORAMA_TIMEOUT_MS = 6000;
 const ARRIVAL_RADIUS_METERS = 30;
 const ARRIVAL_MAX_ACCURACY_METERS = 20;
@@ -439,7 +440,7 @@ export function createWalkPanorama(maps, section) {
     const atEnd = preparationDone && selected >= 0 && selected >= frames.length - 1;
     previous.disabled = busy || selected <= 0;
     next.disabled = busy || selected < 0 || selected >= frames.length - 1;
-    playback.disabled = busy || selected < 0 || (atEnd && frames.length < 2);
+    playback.disabled = (busy && !playing) || selected < 0 || (atEnd && frames.length < 2);
     playback.classList.toggle('is-replay', atEnd && frames.length >= 2);
     playback.textContent = playing ? '일시정지' : atEnd ? '다시 재생' : '재생';
     playback.setAttribute('aria-label', playing ? '로드뷰 일시정지' : atEnd ? '로드뷰 다시 재생' : '로드뷰 재생');
@@ -471,6 +472,7 @@ export function createWalkPanorama(maps, section) {
   const attachListeners = () => {
     listeners = [
       maps.Event.addListener(panorama, 'pov_changed', () => {
+        if (busy && switchingFrame) return;
         scheduleMarkerRefresh();
         if (routeArrowLayer && !busy && !switchingFrame) routeArrowLayer.setPov(panorama.getPov());
         if (routeArrowLayer && !busy && !switchingFrame) arrowPoseRefreshUntil = performance.now() + 80;
@@ -539,6 +541,7 @@ export function createWalkPanorama(maps, section) {
   });
   const pause = () => {
     playing = false;
+    walkBuffer?.stopGlide();
     clearTimer();
     updateControls();
   };
@@ -551,12 +554,12 @@ export function createWalkPanorama(maps, section) {
     }
     const current = frames[selected];
     const upcoming = frames[selected + 1];
-    const gap = upcoming.progress - current.progress;
-    const previewDelay = Math.max(180, Math.min(1600, Math.round(gap * 52.5)));
+    const timing = walkingPlaybackTiming(current, upcoming);
     const nearJunction = routeJunctions.some((progress) =>
       upcoming.progress >= progress - 18 && current.progress <= progress + 8);
+    walkBuffer?.glide(timing.holdMs + (nearJunction ? 300 : 0), pov => routeArrowLayer?.setPov(pov));
     timer = window.setTimeout(() => { timer = null; void showFrame(selected + 1); },
-      Math.round((nearJunction ? Math.min(1550, Math.round(previewDelay * 1.35)) : previewDelay) * 1.7303));
+      timing.holdMs + (nearJunction ? 300 : 0));
   };
   const fallback = (message) => {
     pause();
@@ -603,17 +606,25 @@ export function createWalkPanorama(maps, section) {
     if (busy || index < 0 || index >= frames.length || !panorama) return;
     const run = generation;
     const frame = frames[index];
+    const previousFrame = Math.abs(index - selected) === 1 ? frames[selected] : null;
+    const viewPov = walkingViewPov(previousFrame, frame, walkBuffer?.viewPov() || panorama.getPov());
+    const displayFrame = { ...frame, pov: viewPov };
+    const timing = walkingPlaybackTiming(previousFrame, frame, !playing);
+    let buffered = false;
     const matchesFrame = (found, expected) => found.status === 'OK'
       && found.panoId === expected.panoId;
     busy = true;
     arrowPoseRefreshUntil = 0;
     switchingFrame = frame;
-    miniMap.suspend();
+    if (!walkBuffer || selected < 0) miniMap.suspend();
     clearNativeArrow(true);
     updateControls();
     const currentCoord = panorama.getLocation()?.coord;
     if (walkBuffer && selected >= 0 && panorama.getPanoId() !== frame.panoId) {
-      const preparedViewer = await walkBuffer.show(frame);
+      const preparedViewer = await walkBuffer.show(displayFrame, {
+        durationMs: timing.transitionMs, fromPov: panorama.getPov(),
+        onPov: pov => routeArrowLayer?.setPov(pov)
+      });
       if (run !== generation) return;
       if (!preparedViewer) {
         busy = false;
@@ -625,15 +636,16 @@ export function createWalkPanorama(maps, section) {
       }
       listeners.forEach(listener => maps.Event.removeListener(listener));
       panorama = preparedViewer;
+      buffered = true;
       attachListeners();
     }
     const displayedCoord = panorama.getLocation()?.coord || currentCoord;
     let found = panorama.getPanoId() === frame.panoId && displayedCoord
       ? { status: 'OK', panoId: frame.panoId, camera: { lat: displayedCoord.lat(), lng: displayedCoord.lng() } }
-      : await query(() => panorama.setPanoIdWithPov(frame.panoId, frame.pov));
+      : await query(() => panorama.setPanoIdWithPov(frame.panoId, viewPov));
     if (run !== generation) return;
     if (!matchesFrame(found, frame)) {
-      found = await query(() => panorama.setPanoIdWithPov(frame.panoId, frame.pov));
+      found = await query(() => panorama.setPanoIdWithPov(frame.panoId, viewPov));
       if (run !== generation) return;
     }
     if (!matchesFrame(found, frame) && selected >= 0) {
@@ -662,11 +674,11 @@ export function createWalkPanorama(maps, section) {
       return;
     }
     let applied = panorama.getPov();
-    if (!Number.isFinite(applied?.pan) || angleDifference(applied.pan, frame.pov.pan) > 5) {
-      panorama.setPov(frame.pov);
+    if (!Number.isFinite(applied?.pan) || (!buffered && angleDifference(applied.pan, viewPov.pan) > 5)) {
+      panorama.setPov(viewPov);
       applied = panorama.getPov();
     }
-    if (!Number.isFinite(applied?.pan) || angleDifference(applied.pan, frame.pov.pan) > 5) {
+    if (!Number.isFinite(applied?.pan)) {
       fallback('실제 도보 진행 방향으로 로드뷰 시야를 맞출 수 없습니다.');
       return;
     }
@@ -697,7 +709,8 @@ export function createWalkPanorama(maps, section) {
     section.classList.remove('is-switching');
     updateControls();
     scheduleNext();
-    walkBuffer?.prefetch(frames[selected + 1]);
+    if (frames[selected + 1]) walkBuffer?.prefetch({ ...frames[selected + 1],
+      pov: walkingViewPov(frame, frames[selected + 1], walkBuffer?.viewPov() || panorama.getPov()) });
     void prepareAhead();
   }
 
@@ -967,7 +980,8 @@ export function createWalkPanorama(maps, section) {
           if (run !== generation) return;
           if (frame) {
             frames.push(frame);
-            if (!busy && frames.length === selected + 2) walkBuffer?.prefetch(frame);
+            if (!busy && frames.length === selected + 2) walkBuffer?.prefetch({ ...frame,
+              pov: walkingViewPov(frames[selected], frame, walkBuffer?.viewPov() || panorama?.getPov()) });
             updateControls();
             if (playing && !busy && timer === null) scheduleNext();
           }
@@ -1014,9 +1028,8 @@ export function createWalkPanorama(maps, section) {
     });
     section.classList.remove('is-loading');
     setStatus('경로보기');
-    const transitionMs = startStationName === '면목역' && destinationStationName === '사가정역' ? 180 : 0;
     routeArrowLayer = createWalkRouteArrowLayer(canvas, view);
-    walkBuffer = createWalkPanoramaBuffer(maps, canvas, view, panorama, { transitionMs });
+    walkBuffer = createWalkPanoramaBuffer(maps, canvas, view, panorama);
     await showFrame(0);
     if (run !== generation) return false;
     // Let the SDK paint the first scene before the page reveals this viewer.

@@ -1,11 +1,57 @@
-// Walking playback only: keep the current photo visible until the next actual
-// SDK panorama and its image tiles are ready. No transformed/synthetic frames.
-export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { transitionMs = 0 } = {}) {
+import { interpolateWalkingPov } from './walk-panorama-motion.js?v=20261019-walk-flow-1';
+
+// Two actual SDK panoramas, prepared before revealing. Keep photo geometry intact.
+export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { transitionMs = 1200 } = {}) {
   let stopped = false;
   let front = { viewer: initialViewer, host: initialViewer.getElement() };
   let back = null;
   let loading = null;
   let transition = null;
+  let glide = null;
+
+  const viewPov = () => {
+    const pov = front.viewer.getPov();
+    // The slow preview zoom is not a user zoom and must not accumulate per photo.
+    return front.autoFov && Math.abs(pov.fov - front.lastAutoFov) < .05
+      ? { ...pov, fov: front.autoFov } : pov;
+  };
+  const stopGlide = () => {
+    if (!glide) return;
+    cancelAnimationFrame(glide.raf);
+    for (const name of ['pointerdown', 'wheel', 'keydown']) glide.channel.host.removeEventListener(name, glide.steer, true);
+    glide = null;
+  };
+  const startGlide = (durationMs, onPov) => {
+    stopGlide();
+    if (stopped || transition || window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return;
+    const channel = front;
+    const base = viewPov();
+    const initial = channel.viewer.getPov();
+    const endingFov = Math.max(20, base.fov - 2.2);
+    channel.autoFov = base.fov;
+    channel.lastAutoFov = initial.fov;
+    const run = { channel, raf: null, steer: null };
+    run.steer = () => { channel.autoFov = null; stopGlide(); };
+    for (const name of ['pointerdown', 'wheel', 'keydown']) channel.host.addEventListener(name, run.steer, true);
+    const started = performance.now();
+    let lastPaint = -Infinity;
+    const paint = now => {
+      if (stopped || glide !== run || channel !== front) return;
+      const fraction = Math.min(1, (now - started) / Math.max(300, durationMs));
+      if (now - lastPaint >= 30) {
+        const current = channel.viewer.getPov();
+        const pov = { ...current, fov: initial.fov + (endingFov - initial.fov) * fraction };
+        channel.lastAutoFov = pov.fov;
+        channel.viewer.setPov(pov);
+        onPov?.(pov);
+        lastPaint = now;
+      }
+      if (fraction < 1) run.raf = requestAnimationFrame(paint);
+      else stopGlide();
+    };
+    glide = run;
+    run.raf = requestAnimationFrame(paint);
+  };
 
   function layer(channel, visible) {
     channel.host.style.setProperty('position', 'absolute', 'important');
@@ -79,38 +125,78 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { tr
     finally { if (loading === task) loading = null; }
   }
 
-  async function show(frame) {
+  async function show(frame, { durationMs = transitionMs, fromPov = null, onPov = null } = {}) {
     try {
-      const target = await prepare(frame);
-      if (stopped || !target || target !== back || !ready(target, frame)) return null;
+      stopGlide();
+      const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      const smooth = durationMs > 0 && !reduced && typeof front.host.animate === 'function';
+      const startPov = fromPov || front.viewer.getPov();
+      const preparedFrame = { ...frame, pov: smooth ? { ...startPov, fov: frame.pov.fov } : frame.pov };
+      const target = await prepare(preparedFrame);
+      if (stopped || !target || target !== back || !ready(target, preparedFrame)) return null;
       const previous = front;
+      target.autoFov = null;
       layer(target, true);
-      const animate = transitionMs > 0 && typeof target.host.animate === 'function'
-        && !window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      const animate = durationMs > 0 && typeof target.host.animate === 'function' && !reduced;
+      back = previous;
+      front = target;
       if (animate) {
         previous.host.style.zIndex = '1';
         previous.host.style.pointerEvents = 'none';
         previous.host.inert = true;
         previous.host.setAttribute('aria-hidden', 'true');
         const animation = target.host.animate([{ opacity: 0 }, { opacity: 1 }], {
-          duration: transitionMs, easing: 'cubic-bezier(0.25, 0, 0.25, 1)'
+          duration: durationMs, easing: 'linear'
         });
-        const run = { animation, done: null };
-        run.done = animation.finished.catch(() => {}).then(() => {
+        const run = { animation, done: null, raf: null, steering: false, cancel: null };
+        const steer = () => { run.steering = true; animation.finish(); };
+        for (const name of ['pointerdown', 'wheel', 'keydown']) target.host.addEventListener(name, steer, true);
+        let settle;
+        run.done = new Promise(resolve => { settle = resolve; });
+        const finish = cancelled => {
           if (transition !== run) return;
-          if (!stopped) layer(previous, false);
+          cancelAnimationFrame(run.raf);
+          for (const name of ['pointerdown', 'wheel', 'keydown']) target.host.removeEventListener(name, steer, true);
+          if (!stopped && !cancelled) {
+            if (!run.steering) target.viewer.setPov(frame.pov);
+            layer(previous, false);
+          }
           transition = null;
-        });
+          settle(cancelled ? null : target.viewer);
+        };
+        run.cancel = () => { animation.cancel(); finish(true); };
+        const started = performance.now();
+        let lastPaint = -Infinity;
+        const turn = now => {
+          if (stopped || transition !== run) return;
+          if (!run.steering && now - lastPaint >= 30) {
+            const pov = interpolateWalkingPov(preparedFrame.pov, frame.pov, (now - started) / durationMs);
+            previous.viewer.setPov({ ...pov, fov: startPov.fov });
+            target.viewer.setPov(pov);
+            onPov?.(pov);
+            lastPaint = now;
+          }
+          run.raf = requestAnimationFrame(turn);
+        };
         transition = run;
-      } else layer(previous, false);
-      back = previous;
-      front = target;
-      return front.viewer;
+        run.raf = requestAnimationFrame(turn);
+        animation.finished.then(() => finish(false), () => finish(true));
+        const viewer = await run.done;
+        if (stopped) return null;
+        return viewer;
+      } else {
+        target.viewer.setPov(frame.pov);
+        layer(previous, false);
+        return front.viewer;
+      }
     } catch { return null; }
   }
 
   return {
     show,
+    viewPov,
+    glide: startGlide,
+    stopGlide,
     prefetch(frame) { void prepare(frame).catch(() => {}); },
     resize(width, height) {
       if (stopped || width <= 0 || height <= 0) return;
@@ -120,9 +206,9 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { tr
     },
     stop() {
       stopped = true;
+      stopGlide();
       const active = transition;
-      transition = null;
-      active?.animation.cancel();
+      active?.cancel();
       for (const channel of [front, back]) {
         if (!channel) continue;
         channel.viewer.setVisible(false);
