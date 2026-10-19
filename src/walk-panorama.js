@@ -440,6 +440,9 @@ export function createWalkPanorama(maps, section) {
     const atEnd = preparationDone && selected >= 0 && selected >= frames.length - 1;
     previous.disabled = busy || selected <= 0;
     next.disabled = busy || selected < 0 || selected >= frames.length - 1;
+    // Keep controls visually steady during scene preparation; retain the click guard.
+    previous.classList.toggle('is-scene-loading', busy && selected > 0);
+    next.classList.toggle('is-scene-loading', busy && selected >= 0 && selected < frames.length - 1);
     playback.disabled = (busy && !playing) || selected < 0 || (atEnd && frames.length < 2);
     playback.classList.toggle('is-replay', atEnd && frames.length >= 2);
     playback.textContent = playing ? '일시정지' : atEnd ? '다시 재생' : '재생';
