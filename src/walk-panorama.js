@@ -1,10 +1,10 @@
 import { createPanoramaProbe } from './panorama-probe.js?v=20261017-panorama-isolation-2';
-import { createWalkPanoramaBuffer } from './walk-panorama-buffer.js?v=20261019-walk-flow-2';
-import { walkingViewPov, walkingPlaybackTiming } from './walk-panorama-motion.js?v=20261019-walk-flow-2';
+import { createWalkPanoramaBuffer } from './walk-panorama-buffer.js?v=20261019-walk-flow-3';
+import { walkingViewPov, walkingPlaybackTiming } from './walk-panorama-motion.js?v=20261019-walk-flow-3';
 import { createWalkMiniMap } from './walk-mini-map.js?v=20261016-route-arrow-sync-1';
 import { bindBoardingPanoramaGestures } from './boarding-panorama-gestures.js?v=20261019-boarding-direction-hold-1';
 import { createBoardingPanoramaTravel } from './boarding-panorama-travel.js?v=20261019-boarding-direction-hold-1';
-import { createWalkRouteArrowLayer } from './walk-route-arrow-layer.js?v=20261018-arrow-rendered-ground-2';
+import { createWalkRouteArrowLayer } from './walk-route-arrow-layer.js?v=20261019-arrow-center-1';
 
 const CAMERA_TO_ROUTE_LIMIT_METERS = 15;
 const CAMERA_TO_REQUEST_LIMIT_METERS = 25;
@@ -541,7 +541,6 @@ export function createWalkPanorama(maps, section) {
   });
   const pause = () => {
     playing = false;
-    walkBuffer?.stopGlide();
     clearTimer();
     updateControls();
   };
@@ -557,7 +556,6 @@ export function createWalkPanorama(maps, section) {
     const timing = walkingPlaybackTiming(current, upcoming);
     const nearJunction = routeJunctions.some((progress) =>
       upcoming.progress >= progress - 18 && current.progress <= progress + 8);
-    walkBuffer?.glide(timing.holdMs + (nearJunction ? 300 : 0), pov => routeArrowLayer?.setPov(pov));
     timer = window.setTimeout(() => { timer = null; void showFrame(selected + 1); },
       timing.holdMs + (nearJunction ? 300 : 0));
   };

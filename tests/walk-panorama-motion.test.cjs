@@ -164,46 +164,35 @@ test('reduced motion reveals only a loaded photo and creates no transition', asy
   f.buffer.stop();
 });
 
-test('gentle preview zoom freezes on pause and never becomes cumulative user zoom', async () => {
+test('straight playback preserves scale and does not keep repainting the camera', async () => {
   const f = fixture();
-  f.buffer.glide(1500);
-  f.tick(750);
-  assert.ok(f.initial.pov.fov < 95 && f.initial.pov.fov > 92);
-  assert.equal(f.buffer.viewPov().fov, 95);
-  f.buffer.stopGlide();
-  const frozen = f.initial.pov.fov;
-  f.tick(1000);
-  assert.equal(f.initial.pov.fov, frozen);
-  f.buffer.glide(1500);
-  f.tick(1500);
-  assert.ok(f.initial.pov.fov >= 92.8);
-  assert.equal(f.buffer.viewPov().fov, 95);
-  f.buffer.stop();
-});
-
-test('manual zoom interrupts preview motion and is preserved for following photos', async () => {
-  const f = fixture();
-  f.buffer.glide(1500);
-  f.tick(500);
-  f.initial.host.events.get('wheel')();
-  f.initial.setPov({ pan: 100, tilt: 5, fov: 70 });
-  f.tick(1500);
-  assert.equal(f.buffer.viewPov().fov, 70);
-  assert.equal(f.buffer.viewPov().pan, 100);
-  assert.equal(f.rafs.size, 0);
-  f.buffer.stop();
-});
-
-test('changing photo stops the idle glide before starting the transition', async () => {
-  const f = fixture();
-  f.buffer.glide(1500);
-  f.tick(750);
-  const task = f.buffer.show(frame('b', 5, -179), { durationMs: 420 });
+  const task = f.buffer.show(frame('b', 5, 179), { durationMs: 420 });
   await until(() => f.animations.length === 1);
-  assert.equal(f.rafs.size, 1);
-  f.animations[0].finish();
-  const viewer = await task;
-  assert.equal(viewer.pov.fov, 95);
+  f.tick(250);
+  assert.equal(f.rafs.size, 0);
+  assert.equal(f.initial.poses.length, 0);
+  assert.equal(f.viewers[1].poses.length, 0);
   assert.equal(f.buffer.viewPov().fov, 95);
+  f.animations[0].finish();
+  await task;
+  assert.equal(f.buffer.viewPov().fov, 95);
+  f.buffer.stop();
+});
+
+test('prefetched photo gets current user zoom and tilt before becoming visible', async () => {
+  const f = fixture();
+  f.buffer.prefetch(frame('b', 5, 179));
+  await until(() => f.viewers.length === 2);
+  assert.equal(f.viewers[1].host.style.opacity, '0');
+  f.initial.setPov({ pan: 179, tilt: 8, fov: 70 });
+  const next = { ...frame('b', 5, 179), pov: { pan: 179, tilt: 8, fov: 70 } };
+  const task = f.buffer.show(next, { durationMs: 420 });
+  await until(() => f.animations.length === 1);
+  assert.equal(f.viewers[1].pov.fov, 70);
+  assert.equal(f.viewers[1].pov.tilt, 8);
+  f.animations[0].finish();
+  await task;
+  assert.equal(f.buffer.viewPov().fov, 70);
+  assert.equal(f.buffer.viewPov().tilt, 8);
   f.buffer.stop();
 });
