@@ -1625,7 +1625,7 @@ function loginScreen() {
         <button class="primary-button" data-account-action="로그인">로그인</button>
       </article>
       <article class="account-card"><h2>회원가입</h2><p>간편 회원가입</p>
-        <div class="social-grid"><button data-account-action="Google"><b class="google-mark">G</b>Google</button><button data-account-action="Apple"><b>●</b>Apple</button><button data-account-action="Naver"><b class="naver-mark">N</b>Naver</button></div>
+        <div class="social-grid"><button data-account-action="Google"><img class="social-provider-logo" src="/public/icons/google-signin.svg" alt="" aria-hidden="true">Google</button><button data-account-action="Apple"><img class="social-provider-logo apple-mark" src="/public/icons/apple-signin.svg" alt="" aria-hidden="true">Apple</button><button data-account-action="Naver"><b class="naver-mark">N</b>Naver</button></div>
         <button class="email-signup" data-account-action="이메일 회원가입">이메일로 회원가입 ${icon('chevron', 22)}</button>
       </article>`}
       <p class="account-notice" role="status" aria-live="polite">${escapeHtml(accountNotice || conversationAccountStatus())}</p>
