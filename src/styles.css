@@ -203,7 +203,7 @@ input::placeholder { color: var(--muted); opacity: 1; }
 .guide-conversation[data-mode="translation"] .guide-chat-panel::before { content: ''; height: 4px; flex: 0 0 4px; }
 .guide-content[data-chat-expanded="false"] .guide-conversation[data-mode="translation"] .guide-chat-panel { display: none; }
 .guide-translation-heading { min-height: 32px; display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.guide-translation-heading strong { font-size: 18px; font-weight: 600; color: #f5f6f7; }
+.guide-translation-heading strong { visibility: hidden; font-size: 18px; font-weight: 600; color: #f5f6f7; }
 .guide-translation-playback { display: flex; flex: 0 0 auto; gap: 8px; }
 .guide-translation-playback button { width: 32px; height: 32px; display: grid; place-items: center; padding: 0; border: 1px solid #59636c; border-radius: 50%; background: rgba(255, 255, 255, .04); color: #e0e4e8; cursor: pointer; }
 .guide-translation-playback svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
