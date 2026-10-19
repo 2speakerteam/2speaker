@@ -1,6 +1,6 @@
 import { createPanoramaProbe } from './panorama-probe.js?v=20261017-panorama-isolation-2';
-import { createWalkPanoramaBuffer } from './walk-panorama-buffer.js?v=20261019-walk-flow-9';
-import { walkingViewPov, walkingPlaybackTiming } from './walk-panorama-motion.js?v=20261019-walk-flow-9';
+import { createWalkPanoramaBuffer } from './walk-panorama-buffer.js?v=20261019-walk-flow-10';
+import { walkingViewPov, walkingPlaybackTiming } from './walk-panorama-motion.js?v=20261019-walk-flow-10';
 import { createWalkMiniMap } from './walk-mini-map.js?v=20261016-route-arrow-sync-1';
 import { bindBoardingPanoramaGestures } from './boarding-panorama-gestures.js?v=20261019-boarding-direction-hold-1';
 import { createBoardingPanoramaTravel } from './boarding-panorama-travel.js?v=20261019-boarding-direction-hold-1';
@@ -619,11 +619,31 @@ export function createWalkPanorama(maps, section) {
     updateControls();
     const currentCoord = panorama.getLocation()?.coord;
     if (walkBuffer && selected >= 0 && panorama.getPanoId() !== frame.panoId) {
-      const preparedViewer = await walkBuffer.show(displayFrame, {
+      let preparedViewer = await walkBuffer.show(displayFrame, {
         durationMs: timing.transitionMs, fromPov: panorama.getPov(),
         onPov: pov => routeArrowLayer?.setPov(pov)
       });
       if (run !== generation) return;
+      if (!preparedViewer && playing) {
+        // Keep the current photo and retry a transient failure once, without skipping scenes.
+        arrival.textContent = '다음 거리뷰 장면을 다시 준비하고 있습니다.';
+        await new Promise(resolve => window.setTimeout(resolve, 1000));
+        if (run !== generation) return;
+        if (playing) {
+          preparedViewer = await walkBuffer.show(displayFrame, {
+            durationMs: timing.transitionMs, fromPov: panorama.getPov(),
+            onPov: pov => routeArrowLayer?.setPov(pov), reload: true
+          });
+          if (run !== generation) return;
+        } else {
+          busy = false;
+          switchingFrame = null;
+          showNativeArrow(frames[selected]);
+          arrival.textContent = '거리뷰 재생을 일시정지했습니다.';
+          updateControls();
+          return;
+        }
+      }
       if (!preparedViewer) {
         busy = false;
         switchingFrame = null;

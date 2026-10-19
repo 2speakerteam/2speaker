@@ -1,4 +1,4 @@
-import { interpolateWalkingPov } from './walk-panorama-motion.js?v=20261019-walk-flow-9';
+import { interpolateWalkingPov } from './walk-panorama-motion.js?v=20261019-walk-flow-10';
 
 // Two actual SDK panoramas, prepared before revealing. Keep photo geometry intact.
 export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { transitionMs = 1200 } = {}) {
@@ -56,7 +56,7 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { tr
     return tiles.length >= 4 && tiles.every(image => image.complete && image.naturalWidth > 0);
   }
 
-  async function prepare(frame) {
+  async function prepare(frame, reload = false) {
     if (!frame || stopped) return null;
     // The outgoing SDK viewer must remain unchanged until its short reveal ends.
     while (transition) await transition.done;
@@ -66,12 +66,12 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { tr
     if (stopped) return null;
     const created = ensureBack(frame);
     const target = back;
-    if (ready(target, frame)) return target;
+    if (!reload && ready(target, frame)) return target;
     const task = (async () => {
       if (!created) {
         // Reuse the prefetched photo when only the viewing direction changed.
         // Reopening the same panorama can restart its SDK scene preparation.
-        if (target.viewer.getPanoId() === frame.panoId) target.viewer.setPov(frame.pov);
+        if (!reload && target.viewer.getPanoId() === frame.panoId) target.viewer.setPov(frame.pov);
         else target.viewer.setPanoIdWithPov(frame.panoId, frame.pov);
       }
       const started = performance.now();
@@ -90,7 +90,7 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { tr
     finally { if (loading === task) loading = null; }
   }
 
-  async function show(frame, { durationMs = transitionMs, fromPov = null, onPov = null } = {}) {
+  async function show(frame, { durationMs = transitionMs, fromPov = null, onPov = null, reload = false } = {}) {
     try {
       const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
       const smooth = durationMs > 0 && !reduced && typeof front.host.animate === 'function';
@@ -98,7 +98,7 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { tr
       const preparedFrame = { ...frame, pov: smooth ? { ...startPov } : frame.pov };
       const needsTurn = Math.abs(((frame.pov.pan - startPov.pan + 540) % 360) - 180) > .01
         || Math.abs(frame.pov.tilt - startPov.tilt) > .01 || Math.abs(frame.pov.fov - startPov.fov) > .01;
-      const target = await prepare(preparedFrame);
+      const target = await prepare(preparedFrame, reload);
       if (stopped || !target || target !== back || !ready(target, preparedFrame)) return null;
       const previous = front;
       layer(target, true);
