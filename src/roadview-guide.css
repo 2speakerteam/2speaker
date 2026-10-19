@@ -108,7 +108,7 @@
   gap: 10px;
   border-color: #62e7e8;
   border-radius: 24px;
-  background: linear-gradient(145deg, #2b2f34, #202327 70%);
+  background: linear-gradient(145deg, #454c57, #3d454e 70%);
 }
 .guide-content[data-guide-view="panorama"][data-roadview-below="true"] .roadview-guide-panel:is([data-mode="ai"], [data-mode="translation"]) {
   flex: 0 0 var(--conversation-panel-height);
