@@ -394,23 +394,26 @@ export function createWalkPanorama(maps, section) {
       }
     }, 70);
   };
-  const showStartStation = (frame) => {
-    if (frame.phase !== 'departure' || !startStationLocation || !panorama
-      || distanceMeters(frame.camera, startStationLocation) > 50) {
+  const showDeparture = (frame) => {
+    const startPoint = startStationLocation || routeEdges[0]?.start;
+    if (frame.phase !== 'departure' || !startPoint || !panorama
+      || distanceMeters(frame.camera, startPoint) > 50) {
       startStationMarker?.setMap(null);
       return;
     }
+    const position = new maps.LatLng(startPoint.lat, startPoint.lng);
     if (!startStationMarker) {
       startStationMarker = new maps.Marker({
-        position: new maps.LatLng(startStationLocation.lat, startStationLocation.lng),
-        title: startStationTitle,
+        position,
+        title: startStationTitle || '출발지',
         icon: {
-          content: `<span class="walk-panorama-station" role="img" aria-label="출발역 출구">${startStationTitle.replace(/[<>&"']/g, '')} 출발</span>`,
-          size: new maps.Size(112, 34), anchor: new maps.Point(56, 34)
+          content: '<span class="walk-panorama-departure-pin" role="img" aria-label="출발"><svg viewBox="0 0 44 54" aria-hidden="true"><path d="M22 52C16 44 2 30 2 22a20 20 0 0 1 40 0c0 8-14 22-20 30Z" fill="#10bda8" stroke="#fff" stroke-width="2"/><text x="22" y="26" fill="#fff" text-anchor="middle" font-family="sans-serif" font-size="13" font-weight="700">출발</text></svg></span>',
+          size: new maps.Size(44, 54), anchor: new maps.Point(22, 52)
         },
         zIndex: 490
       });
     }
+    startStationMarker.setPosition(position);
     startStationMarker.setMap(null);
     startStationMarker.setMap(panorama);
   };
@@ -719,7 +722,7 @@ export function createWalkPanorama(maps, section) {
     canvas.hidden = false;
     turn.textContent = '';
     turn.hidden = true;
-    showStartStation(frame);
+    showDeparture(frame);
     showDestination(frame, true);
     applied = panorama.getPov();
     setStatus('경로보기');
@@ -932,7 +935,7 @@ export function createWalkPanorama(maps, section) {
         destinationPinTitle = options.destinationTitle || '목적지';
       }
       if (selected >= 0) {
-        showStartStation(frames[selected]);
+        showDeparture(frames[selected]);
         showDestination(frames[selected], true);
       }
     });
