@@ -1,3 +1,4 @@
+import { currentGuidePosition } from './guide-location.js?v=20261020-gps-evidence-1';
 import { translationPartner, rememberTranslationPartner, translationRecordingType, translationSpeechLocale } from './translation-auto.js?v=20261018-auto-1';
 import { readConversation, saveConversation, deleteConversation, HISTORY_EVENT, HISTORY_STATUS_EVENT, conversationStatus } from './conversation-store.js?v=20261020-explicit-delete-1';
 
@@ -34,15 +35,6 @@ async function post(url, body, signal) {
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || '연결을 확인한 뒤 다시 말씀해 주세요.');
   return result;
-}
-
-function currentPosition() {
-  return new Promise(resolve => {
-    if (!navigator.geolocation) return resolve(null);
-    navigator.geolocation.getCurrentPosition(p => resolve({ lat: p.coords.latitude,
-      lng: p.coords.longitude, accuracy: p.coords.accuracy, timestamp: p.timestamp }),
-    () => resolve(null), { enableHighAccuracy: true, maximumAge: 30000, timeout: 15000 });
-  });
 }
 
 const microphone = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M9 21h6"/></svg>';
@@ -356,8 +348,8 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     try {
       let answer;
       if (mode === 'ai') {
-        const position = await currentPosition();
-        if (run !== generation || !opened) return;
+        const position = await currentGuidePosition(signal);
+        if (run !== generation || !opened || signal.aborted) return;
         answer = await post('/api/assistant/reply', {
           task: 'roadview-guide', message: text, position, context: getContext(),
           history: historyMemory.ai.slice(0, -1).slice(-8).map(({ role, text: content }) => ({ role, text: content }))

@@ -20,6 +20,8 @@ const json = (body, status = 200) => new Response(JSON.stringify(body), { status
 const html = body => new Response(body, { headers: { 'content-type': 'text/html; charset=utf-8' } });
 
 function harness(options = {}) {
+  const subject = options.subject || topic;
+  const fixtureReport = { ...report, title: report.title.replace(topic, subject), description: report.description.replace(topic, subject) };
   const requests = [], models = [], routes = [], logs = [];
   const cache = new Map();
   const fakeFetch = async (value, init = {}) => {
@@ -30,29 +32,29 @@ function harness(options = {}) {
       const data = JSON.parse(request.contents[0].parts[0].text);
       models.push({ request, data });
       const text = request.generationConfig.responseMimeType
-        ? JSON.stringify(options.plan || routePlan) : '방문기에 나온 접근 코스입니다. 근처 입구 이름을 알려 주세요.';
+        ? JSON.stringify(options.plan || routePlan) : options.answer || '방문기에 나온 접근 코스입니다. 근처 입구 이름을 알려 주세요.';
       return json({ candidates: [{ content: { parts: [{ text }] } }] });
     }
     if (url.hostname === 'naverapihub.apigw.ntruss.com') {
       const channel = url.pathname.split('/').pop();
       if (channel === 'webkr') {
         const fallback = /site:(?:blog|cafe)/.test(url.searchParams.get('query'));
-        return json({ items: options.noSources ? [] : fallback ? [report] : options.official ? [{
-          title: `${topic} 공식 찾아가기`, link: 'https://fixture.go.kr/trail', description: '공식 접근 안내'
+        return json({ items: options.noSources ? [] : fallback ? [fixtureReport] : options.official ? [{
+          title: `${subject} 공식 찾아가기`, link: 'https://fixture.go.kr/trail', description: '공식 접근 안내'
         }] : [] });
       }
       if (options.searchFailure) return json({}, 403);
       return json({ items: options.noSources ? [] : channel === 'blog'
-        ? [report, { ...report, link: 'https://m.blog.naver.com/walker/123457' },
+        ? [fixtureReport, { ...fixtureReport, link: 'https://m.blog.naver.com/walker/123457' },
           { ...report, title: '다른산 스카이워크 코스', description: '다른 산', link: 'https://blog.naver.com/other/999' }]
-        : [{ ...report, link: 'https://cafe.naver.com/walkers/222', cafename: 'Fixture cafe' }] });
+        : [{ ...fixtureReport, link: 'https://cafe.naver.com/walkers/222', cafename: 'Fixture cafe' }] });
     }
-    if (url.hostname === 'fixture.go.kr') return html(`<main>${topic} 공식 안내. 시험공원 입구.</main>`);
+    if (url.hostname === 'fixture.go.kr') return html(`<main>${subject} 공식 안내. 시험공원 입구.</main>`);
     if (['m.blog.naver.com', 'm.cafe.naver.com'].includes(url.hostname)) {
       if (options.pageError) throw new Error('page unavailable');
       if (options.redirect) return new Response(null, { status: 302, headers: { location: options.redirect } });
       if (options.privatePage) return html('<main>로그인 후 볼 수 있습니다.</main>');
-      return html(article);
+      return html(article.replaceAll(topic, subject));
     }
     throw new Error(`Unexpected network request: ${url.hostname}`);
   };
@@ -67,11 +69,12 @@ function harness(options = {}) {
           contentType: response.headers.get('content-type') || '', html: await response.text() };
       } };
       if (name.endsWith('/google-cloud')) return { cloudLocation: () => 'global', cloudProjectId: () => 'fixture', getAccessToken: async () => 'fixture-token' };
-      if (name.endsWith('/map/place')) return async (req, res) => res.json({ places: options.placeError ? [] : [{
-        title: req.body.query, lat: 37.5, lng: 127, category: '여행>등산'
+      if (name.endsWith('/map/place')) return async (req, res) => res.json({ places: options.placeError || options.failOrigin === req.body.query ? [] : [{
+        title: options.unrelatedPlace || req.body.query, lat: 37.5, lng: 127, category: '여행>등산'
       }] });
       if (/\/transit\//.test(name)) return async (req, res) => {
         routes.push(req.body);
+        if (options.routeError) return res.status(422).json({ error: 'TMAP에서 이 출발지와 목적지 사이의 도보 경로를 찾지 못했습니다.' });
         return res.json({ route: { totalSeconds: 600, distanceMeters: 500, directions: ['시험 입구로 이동'] } });
       };
       return load(path.relative(root, path.resolve(path.dirname(filename), name + '.js')));
@@ -193,4 +196,121 @@ test('foreign-language and fork follow-ups preserve user history for planning', 
   assert.match(instruction, /UNTRUSTED DATA/);
   assert.match(instruction, /never splice/i);
   assert.match(instruction, /only the snippet was read/);
+});
+
+// These are controlled fixtures for the reported questions, NOT real trail data.
+const fieldQuestions = [
+  { message: '여기서 용마산 스카이워크 어떻게 가?', destination: '용마산 스카이워크' },
+  { message: '여기서 망우역사문화공원 어떻게 가?', destination: '망우역사문화공원' },
+  { message: '면목동 아토피 체험의 숲에서 용마산 스카이워크 어떻게 가?',
+    destination: '용마산 스카이워크', origin: '면목동 아토피 체험의 숲' }
+];
+for (const question of fieldQuestions) {
+  for (const state of ['precise', 'approximate', 'unavailable', 'stale']) {
+    test(`field GPS matrix / ${state} / ${question.message}`, async () => {
+      const position = state === 'unavailable' ? null : {
+        lat: 37.6, lng: 127.1, accuracy: state === 'approximate' ? 95 : 12,
+        timestamp: Date.now() - (state === 'stale' ? 180000 : 0),
+        areas: ['서울특별시 중랑구 면목동']
+      };
+      const h = harness({ official: true, subject: question.destination,
+        plan: { ...routePlan, destinationQuery: question.destination, searchSubject: question.destination,
+          startQuery: question.origin || '' } });
+      const result = await h.guide.answerRoadviewQuestion({ body: { position } }, question.message);
+      const evidence = h.models.at(-1).data.evidence;
+      assert.equal(evidence.locationStatus, state);
+      assert.equal(evidence.requestedStart, question.origin || '');
+      assert.equal(h.routes.length, Number(Boolean(question.origin) || state === 'precise'));
+      if (question.origin) assert.equal(h.routes[0].start.title, question.origin);
+      assert.ok(evidence.sources.length > 0);
+      assert.ok(result.usage.communitySearchCalls > 0);
+      assert.equal(result.usage.destinationLookupSucceeded, 1);
+      if (!question.origin && ['precise', 'approximate'].includes(state)) {
+        assert.ok(h.requests.some(url => decodeURIComponent(url.replace(/\+/g, ' ')).includes('면목동')));
+      } else {
+        assert.deepEqual(Array.from(evidence.areaHints), []);
+      }
+      const logged = JSON.stringify(h.logs);
+      for (const privateValue of ['37.6', '127.1', '면목동', question.destination, question.message]) {
+        assert.equal(logged.includes(privateValue), false, `logs leaked ${privateValue}`);
+      }
+    });
+  }
+}
+
+test('named origin beats a planner omission; failed named origin cannot use precise GPS', async () => {
+  const q = fieldQuestions[2];
+  const h = harness({ subject: q.destination, failOrigin: q.origin,
+    plan: { ...routePlan, startQuery: '', destinationQuery: q.destination } });
+  await h.guide.answerRoadviewQuestion({ body: {
+    position: { lat: 37.6, lng: 127.1, accuracy: 10, timestamp: Date.now() }
+  } }, q.message);
+  assert.equal(h.routes.length, 0);
+  const evidence = h.models.at(-1).data.evidence;
+  assert.equal(evidence.originStatus, 'unresolved');
+  assert.equal(evidence.requestedStart, q.origin);
+  assert.ok(evidence.sources.length);
+});
+
+test('here cannot inherit an old start from the planner/history', async () => {
+  const h = harness({ plan: { ...routePlan, startQuery: '이전 출발지' } });
+  await h.guide.answerRoadviewQuestion({ body: {} }, `여기서 ${topic} 어떻게 가?`);
+  assert.equal(h.routes.length, 0);
+  assert.equal(h.models.at(-1).data.evidence.requestedStart, '');
+});
+
+test('a lone unrelated convenience store is not accepted as the requested landmark', async () => {
+  const h = harness({ unrelatedPlace: 'CU 시험점' });
+  const result = await h.guide.answerRoadviewQuestion({ body: {
+    position: { lat: 37.6, lng: 127.1, accuracy: 10, timestamp: Date.now() }
+  } }, `여기서 ${topic} 어떻게 가?`);
+  assert.equal(h.routes.length, 0);
+  assert.equal(result.usage.destinationLookupSucceeded, 0);
+  assert.equal(h.models.at(-1).data.evidence.placeStatus, 'unresolved');
+});
+
+test('route failure still researches access and blocks unsupported distance/time/turns', async () => {
+  const h = harness({ routeError: true, official: true,
+    answer: '현재 위치에서 5.5km, 70분입니다. 왼쪽으로 가세요.' });
+  const result = await h.guide.answerRoadviewQuestion({ body: {
+    position: { lat: 37.6, lng: 127.1, accuracy: 10, timestamp: Date.now() },
+    history: [{ role: 'assistant', text: '5.5km, 70분입니다.' }]
+  } }, `여기서 ${topic} 어떻게 가?`);
+  assert.equal(result.usage.routeLookupFailed, 1);
+  assert.equal(result.usage.unverifiedAnswerBlocked, 1);
+  assert.equal(h.models.at(-1).data.evidence.routeStatus, 'failed');
+  assert.ok(result.sources.length);
+  assert.doesNotMatch(result.text, /5\.5|70분|왼쪽으로/);
+});
+
+test('accuracy boundary: 50m can route; 51m is regional research only; huge/stale fixes supply no area', async () => {
+  for (const [accuracy, age, routeCount, areaCount] of [[50, 0, 1, 1], [51, 0, 0, 1],
+    [2001, 0, 0, 0], [10, 180000, 0, 0], [-1, 0, 0, 0]]) {
+    const h = harness();
+    await h.guide.answerRoadviewQuestion({ body: { position: {
+      lat: 37.6, lng: 127.1, accuracy, timestamp: Date.now() - age,
+      areas: ['서울특별시 중랑구 면목동']
+    } } }, `여기서 ${topic} 어떻게 가?`);
+    assert.equal(h.routes.length, routeCount);
+    assert.equal(h.models.at(-1).data.evidence.areaHints.length, areaCount);
+  }
+});
+
+test('subway indoor GPS never establishes a floor/platform or outdoor walking route', async () => {
+  const h = harness({ noSources: true, plan: { task: 'information', environment: 'subway_inside',
+    query: '사가정역 출구 안내', searchSubject: '사가정역' } });
+  await h.guide.answerRoadviewQuestion({ body: { position: {
+    lat: 37.6, lng: 127.1, accuracy: 10, timestamp: Date.now(),
+    areas: ['서울특별시 중랑구 면목동']
+  } } }, '사가정역 안인데 출구로 어떻게 가?');
+  assert.equal(h.routes.length, 0);
+});
+
+test('a clear mountain destination still gets researched when the planner asks only for GPS', async () => {
+  const h = harness({ subject: '용마산 스카이워크',
+    plan: { task: 'clarify', clarification: '현재 위치를 알려 주세요.', replyLanguage: 'ko' } });
+  const result = await h.guide.answerRoadviewQuestion({ body: {} }, '여기서 용마산 스카이워크 어떻게 가?');
+  assert.ok(result.sources.length > 0);
+  assert.equal(h.routes.length, 0);
+  assert.ok(result.usage.webSearchCalls > 0);
 });
