@@ -152,6 +152,15 @@ test('a user-mentioned missing connection triggers a bounded focused search with
   assert.equal(h.routes.length, 0);
 });
 
+test('a literal through-landmark survives a planner omission and remains separate from the physical start', async () => {
+  const h = harness({ official: true, plan: { ...routePlan, viaQuery: '', accessResearch: true } });
+  const result = await h.guide.answerFieldQuestion({ body: {} }, '시험대학교 뒤에 있는 시험후문을 통한 루트가 있는 걸로 알고 있어');
+  assert.equal(result.usage.originUserNamed, 0);
+  assert.match(result.text, /시험후문/);
+  assert.ok(h.requests.some(value => new URL(value).searchParams.get('query')?.includes('시험후문')));
+  assert.equal(h.routes.length, 0);
+});
+
 test('route source images reach the extraction model as historical visual context', async () => {
   const quote = '시험입구에서 시험전망대로 이어지는 탐방로입니다.';
   const h = harness({ official: true, subject: '시험전망대', officialBody: `${quote}<img src="/route.png" alt="탐방로 안내도">`,
@@ -404,11 +413,11 @@ test('a clear mountain destination still gets researched when the planner asks o
   assert.ok(result.usage.webSearchCalls > 0);
 });
 
-test('unverified article turns are removed while named access overviews remain', async () => {
+test('unvalidated mountain sequences cannot be rebuilt by the answer model', async () => {
   const h = harness({ answer: '방문기에는 시험공원에서 데크길을 잇는 코스가 소개됩니다. 오른쪽 길로 이동하면 됩니다. 표지판 이름을 알려 주세요.' });
   const result = await h.guide.answerRoadviewQuestion({ body: {} }, `여기서 ${topic} 어떻게 가?`);
-  assert.match(result.text, /자료에 소개된 접근 경로/);
-  assert.match(result.text, /시험공원에서 데크길/);
+  assert.match(result.text, /접근 순서를 검증하지 못했습니다/);
+  assert.doesNotMatch(result.text, /시험공원에서 데크길/);
   assert.doesNotMatch(result.text, /오른쪽/);
 });
 

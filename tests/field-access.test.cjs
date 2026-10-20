@@ -72,6 +72,8 @@ test('agreements and conflicts stay separate; same author cannot corroborate the
 test('user via is only a search preference and must occur in user turns', () => {
   assert.equal(focusFromUser({ viaQuery: '솔바람데크' }, '그 길로 알려줘', [{ role: 'assistant', text: '솔바람데크' }]), '');
   assert.equal(focusFromUser({ viaQuery: '솔바람데크' }, '그 길로 알려줘', [{ role: 'user', text: '솔바람데크로 가고 싶어' }]), '솔바람데크');
+  assert.equal(focusFromUser({}, '시험대학교 뒤에 있는 솔바람 공원을 통한 루트가 있는 걸로 알고 있어', []), '솔바람 공원');
+  assert.equal(focusFromUser({}, 'Is there a route through Windy Park to the lookout?', []), 'Windy Park');
 });
 
 test('provider distance ratio is a research signal, never proof of a shorter connection', () => {
@@ -105,6 +107,8 @@ test('missing or conflicting source connections never fall back to an unrelated 
   assert.doesNotMatch(retainPublishedSequence('5.1km', missing, 'ko'), /5\.1/);
   const conflicts = { accessResearch: { comparison: { conflicts: [{}] } } };
   assert.match(retainPublishedSequence('우회 경로입니다', conflicts, 'ko'), /연결 순서가 달라/);
+  assert.doesNotMatch(retainPublishedSequence('확인 안 된 입구에서 능선을 따라 전망대에 도착합니다.',
+    { environment: 'mountain', accessResearch: { paths: [], selectedPathId: '' } }, 'ko'), /능선을 따라/);
 });
 
 test('published guidance renders only the checked sequence even when prose inserts an extra landmark', () => {
@@ -114,6 +118,15 @@ test('published guidance renders only the checked sequence even when prose inser
   assert.match(actual, /시험입구 → 명상쉼터 → 시험전망대/);
   assert.doesNotMatch(actual, /순환삼거리/);
   assert.match(actual, /말씀하신 출발 지점 기준/);
+});
+
+test('a different published entrance does not become connected to an unresolved user-named origin', () => {
+  const evidence = { requestedStart: '시험후문', accessResearch: { selectedPathId: 'P1', alignment: {
+    remainingNodes: ['시험입구', '시험전망대'], approach: 'not_verified', namedStartOnPublishedSequence: false } } };
+  const actual = retainPublishedSequence('현재 위치에서 바로 연결됩니다.', evidence, 'ko');
+  assert.match(actual, /시험입구 → 시험전망대/);
+  assert.match(actual, /시험후문에서 시험입구까지의 연결은 확인되지 않았습니다/);
+  assert.doesNotMatch(actual, /바로 연결/);
 });
 
 test('public source images restrict hosts, relevant captions and valid binary content', async () => {
