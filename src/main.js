@@ -27,6 +27,7 @@ let routeMapAuthFailureInstalled = false;
 let activeWalkPanorama = null;
 let activeBoardingPanorama = null;
 let activeGuideConversation = null;
+let activeNearbyNavigation = null;
 let activeTransitArrivals = null;
 let activeRoadviewGuides = [];
 let activeRouteRecognition = null;
@@ -532,6 +533,8 @@ function initializeNaverRouteMap() {
     activeBoardingPanorama = boardingPanorama;
     let currentLocation = null;
     let nearbyOrigin = null;
+    let nearbyResultSnapshot = null;
+    let nearbySelectedPlace = null;
     let startTitle = '';
     let startIsStation = false;
     let destinationLocation = null;
@@ -657,6 +660,13 @@ function initializeNaverRouteMap() {
         button.addEventListener('click', () => {
           const place = places[Number(button.dataset.placeIndex)];
           if (!place) return;
+          if (routeNearbyQuery && role === '목적지') {
+            const content = document.querySelector('.guide-content');
+            nearbyResultSnapshot = {
+              places: [...places], scrollTop: content?.scrollTop || 0,
+              windowY: window.scrollY, center: map.getCenter(), zoom: map.getZoom()
+            };
+          }
           clearDestinationChoices();
           onSelect(place);
         });
@@ -1428,8 +1438,66 @@ function initializeNaverRouteMap() {
       searchNaverPlace(routeDestinationQuery, '목적지', markSelectedDestination);
     };
     const markSelectedDestination = (place) => {
+      if (routeNearbyQuery && nearbyResultSnapshot) {
+        nearbySelectedPlace = place;
+        if (guideHistoryStep() === 'nearby-results') pushGuideHistory('route');
+      }
       markDestination(place.lat, place.lng, place.title || routeDestinationQuery);
     };
+    if (routeNearbyQuery) {
+      activeNearbyNavigation = {
+        hasSelection: () => session === routeMapSession && Boolean(destinationLocation && nearbyResultSnapshot),
+        showSelection: () => {
+          if (session !== routeMapSession || destinationLocation || !nearbySelectedPlace) return;
+          markDestination(nearbySelectedPlace.lat, nearbySelectedPlace.lng, nearbySelectedPlace.title);
+        },
+        showResults: () => {
+          if (session !== routeMapSession || !nearbyResultSnapshot) return false;
+          setGuideView('route', { fromHistory: true });
+          // Invalidate pending route/scene work before restoring the original list.
+          // Otherwise a late route response could replace the restored candidates.
+          routeController?.abort();
+          routeController = null;
+          routeRequestKey = null;
+          routeRequestId += 1;
+          walkRouteController?.abort();
+          walkRouteController = null;
+          walkRouteRequestKey = null;
+          walkRouteRequestId += 1;
+          walkPreparationId += 1;
+          walkPanoramaPreparing = false;
+          walkRouteReady = null;
+          transitArrivals.stop();
+          walkPanorama.stop();
+          boardingPanorama.stop();
+          boardingTarget = null;
+          subwayRequested = busRequested = walkRequested = taxiRequested = false;
+          activeTransportMode = 'preview';
+          keepMapUntilTransportReady = false;
+          routeTransportMode = '';
+          document.querySelectorAll('.transport-option').forEach(button => button.setAttribute('aria-pressed', 'false'));
+          changeMapType('normal');
+          removeRouteLines();
+          destinationMarker?.setMap(null);
+          destinationMarker = null;
+          destinationLocation = null;
+          destinationTitle = '';
+          destinationState = 'info';
+          destinationStatus = `목적지 검색 결과 ${nearbyResultSnapshot.places.length}곳 · 선택해 주세요`;
+          renderPlaceChoices(nearbyResultSnapshot.places, '목적지', markSelectedDestination);
+          map.setCenter(nearbyResultSnapshot.center);
+          map.setZoom(nearbyResultSnapshot.zoom);
+          updateStatus();
+          window.requestAnimationFrame(() => {
+            if (session !== routeMapSession || currentPage !== 'guide' || destinationLocation) return;
+            const content = document.querySelector('.guide-content');
+            if (content) content.scrollTop = nearbyResultSnapshot.scrollTop;
+            window.scrollTo({ top: nearbyResultSnapshot.windowY, behavior: 'instant' });
+          });
+          return true;
+        }
+      };
+    }
     const searchNaverPlace = (query, role, onSelect) => {
       if (role === '목적지') {
         destinationStatus = '목적지를 검색하고 있습니다.';
@@ -1769,6 +1837,7 @@ function legalScreen(title, sections) {
 }
 
 function render({ preserveSearch = false } = {}) {
+  activeNearbyNavigation = null;
   stopRouteRecognition();
   window.clearTimeout(routePlacePreparationTimer);
   finishMapEntry();
@@ -2505,7 +2574,7 @@ function navigate(page) {
   if (page === 'guide') {
     guideView = 'route';
     routeTransportMode = '';
-    pushGuideHistory('route');
+    pushGuideHistory(routeNearbyQuery ? 'nearby-results' : 'route');
   }
   if (page === 'voice') {
     voicePaused = false;
@@ -2523,6 +2592,11 @@ function goBack() {
     setGuideView('route');
     return;
   }
+  if (currentPage === 'guide' && activeNearbyNavigation?.hasSelection()
+    && guideHistoryStep() === 'route') {
+    window.history.back();
+    return;
+  }
   if (currentPage === 'voice') stopVoiceConversation();
   currentPage = pageHistory.pop() || 'home';
   render();
@@ -2537,13 +2611,16 @@ window.history.replaceState({
 
 window.addEventListener('popstate', (event) => {
   const step = event.state?.[guideHistoryStateKey];
-  if (step === 'panorama' || step === 'route') {
+  if (step === 'nearby-results' && currentPage === 'guide'
+    && activeNearbyNavigation?.showResults()) return;
+  if (step === 'panorama' || step === 'route' || step === 'nearby-results') {
     if (currentPage !== 'guide') {
       currentPage = 'guide';
-      guideView = step;
+      guideView = step === 'panorama' ? 'panorama' : 'route';
       render();
     } else {
-      setGuideView(step, { fromHistory: true });
+      if (step === 'route' || step === 'panorama') activeNearbyNavigation?.showSelection();
+      setGuideView(step === 'panorama' ? 'panorama' : 'route', { fromHistory: true });
     }
     window.requestAnimationFrame(() => window.scrollTo(0, 0));
     return;
