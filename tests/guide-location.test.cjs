@@ -5,7 +5,7 @@ const path = require('node:path');
 const vm = require('node:vm');
 const source = fs.readFileSync(path.join(__dirname, '../src/guide-location.js'), 'utf8');
 
-function client({ accuracy = 95, age = 0, denied = false, missingMaps = false, failRegion = false } = {}) {
+function client({ accuracy = 95, age = 0, denied = false, missingMaps = false, failRegion = false, countryCode = 'kr' } = {}) {
   const calls = [];
   const context = {
     Date, setTimeout, clearTimeout, AbortController, navigator: { geolocation: {
@@ -20,7 +20,7 @@ function client({ accuracy = 95, age = 0, denied = false, missingMaps = false, f
       Service: { Status: { OK: 200 }, reverseGeocode(request, callback) {
         calls.push({ kind: 'region', request });
         callback(failRegion ? 500 : 200, { v2: { results: [{ region: {
-          area1: { name: '서울특별시' }, area2: { name: '중랑구' }, area3: { name: '면목동' }
+          area0: { name: countryCode }, area1: { name: '서울특별시' }, area2: { name: '중랑구' }, area3: { name: '면목동' }
         } }] } });
       } }
     } } }
@@ -44,8 +44,14 @@ test('GPS coordinates, reported accuracy and timestamp are kept; reverse region 
   assert.equal(result.lng, 127.1);
   assert.ok(Math.abs(Date.now() - result.timestamp) < 1000);
   assert.deepEqual(Array.from(result.areas), ['서울특별시 중랑구 면목동']);
+  assert.equal(result.countryCode, 'KR');
   assert.equal(h.calls[0].options.enableHighAccuracy, true);
   assert.equal(h.calls[0].options.maximumAge, 10000);
+});
+
+test('reverse lookup country is a validated provider hint, never an invented GPS position', async () => {
+  assert.equal((await client({ countryCode: 'jp' }).get()).countryCode, 'JP');
+  assert.equal((await client({ countryCode: 'malformed country' }).get()).countryCode, undefined);
 });
 test('GPS permission failure returns no position and never reverse-geocodes a preview position', async () => {
   const h = client({ denied: true });
@@ -75,9 +81,9 @@ test('aborted conversation never starts another GPS request', async () => {
   assert.equal(await h.get(controller.signal), null);
   assert.equal(h.calls.length, 0);
 });
-test('roadview submission awaits the physical fix and sends it with the question', () => {
-  const clientSource = fs.readFileSync(path.join(__dirname, '../src/roadview-guide.js'), 'utf8');
+test('shared field submission awaits the physical fix and sends it with the question', () => {
+  const clientSource = fs.readFileSync(path.join(__dirname, '../src/field-guide.js'), 'utf8');
   assert.match(clientSource, /await currentGuidePosition\(signal\)/);
-  assert.match(clientSource, /task: 'roadview-guide', message: text, position, context: getContext\(\)/);
+  assert.match(clientSource, /task: 'field-guide', message, position/);
   assert.doesNotMatch(clientSource, /position:\s*(?:getContext|context\.|panorama)/);
 });

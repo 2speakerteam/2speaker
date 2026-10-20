@@ -1,6 +1,6 @@
 import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261020-arrow-bounds-1';
-import { createGuideConversation } from './guide-conversation.js?v=20261020-radius-2';
-import { createRoadviewGuide } from './roadview-guide.js?v=20261020-radius-2';
+import { createGuideConversation } from './guide-conversation.js?v=20261020-field-1';
+import { createRoadviewGuide } from './roadview-guide.js?v=20261020-field-1';
 import { ACCOUNT_EVENT, currentAccount, initializeAccount, signIn, signUp, signOut } from './account-session.js?v=20261018-cloud-history-1';
 import { startConversationSync, syncConversations, conversationAccountStatus, HISTORY_STATUS_EVENT } from './conversation-store.js?v=20261020-explicit-delete-1';
 import { createTransitArrivals, arrivalPlaceholder, transitLineLabel } from './transit-arrivals.js?v=20261018-arrival-label-spacing-1';
@@ -1925,14 +1925,15 @@ function render({ preserveSearch = false } = {}) {
   syncGuideChatButtons();
   if (currentPage === 'guide') {
     initializeNaverRouteMap();
-    activeGuideConversation = createGuideConversation(document.querySelector('.guide-conversation'), {
-      getContext: () => ({
+    const getFieldContext = () => ({
         start: routeStartQuery || 'GPS 현재 위치',
         destination: routeDestinationQuery,
         mode: routeTransportMode,
         routeVerified: Boolean(document.querySelector('.guide-dialogue .subway-route-panel[aria-label^="TMAP"]')),
         routeText: document.querySelector('.guide-dialogue')?.innerText?.slice(0, 2600) || ''
-      })
+      });
+    activeGuideConversation = createGuideConversation(document.querySelector('.guide-conversation'), {
+      getContext: getFieldContext
     });
     document.querySelectorAll('.walk-panorama[data-panorama-kind="walk"]').forEach((section) => {
       const viewer = () => section.dataset.panoramaKind === 'boarding'
@@ -1945,7 +1946,7 @@ function render({ preserveSearch = false } = {}) {
         });
       };
       const conversation = createRoadviewGuide(section, {
-        getContext: () => ({ destination: routeDestinationQuery }),
+        getContext: getFieldContext,
         onOpen: () => {
           activeRoadviewGuides.forEach(guide => guide.close());
           viewer()?.pause?.();

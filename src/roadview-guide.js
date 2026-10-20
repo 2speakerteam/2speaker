@@ -1,6 +1,4 @@
-import { currentGuidePosition } from './guide-location.js?v=20261020-radius-2';
-import { nearbyPlaceQuery } from './nearby-place.js?v=20261020-radius-2';
-import { nearbyAnswer } from './nearby-answer.js?v=20261020-radius-2';
+import { askFieldGuide } from './field-guide.js?v=20261020-field-1';
 import { translationPartner, rememberTranslationPartner, translationRecordingType, translationSpeechLocale } from './translation-auto.js?v=20261018-auto-1';
 import { readConversation, saveConversation, deleteConversation, HISTORY_EVENT, HISTORY_STATUS_EVENT, conversationStatus } from './conversation-store.js?v=20261020-explicit-delete-1';
 
@@ -350,18 +348,9 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
     try {
       let answer;
       if (mode === 'ai') {
-        const nearby = nearbyPlaceQuery(text);
-        if (nearby) {
-          answer = { text: await nearbyAnswer(nearby, signal) };
-        } else {
-          const position = await currentGuidePosition(signal);
-          if (run !== generation || !opened || signal.aborted) return;
-          answer = await post('/api/assistant/reply', {
-            task: 'roadview-guide', message: text, position, context: getContext(),
-            history: historyMemory.ai.slice(0, -1).slice(-8).map(({ role, text: content }) => ({ role, text: content }))
-          }, signal);
-        }
-        if (run !== generation || !opened) return;
+        answer = await askFieldGuide(text, { signal, context: getContext(),
+          history: historyMemory.ai.slice(0, -1).slice(-8) });
+        if (!answer || run !== generation || !opened || signal.aborted) return;
         append({ role: 'assistant', text: answer.text,
           sources: (answer.sources || []).map(safeSource).filter(Boolean) });
       } else {

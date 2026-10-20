@@ -1,8 +1,7 @@
 import { readAiHistory, saveAiHistory as persistAiHistory } from './guide-history.js?v=20261020-explicit-delete-1';
 import { readConversation, saveConversation, deleteConversation, HISTORY_EVENT, HISTORY_STATUS_EVENT, conversationStatus } from './conversation-store.js?v=20261020-explicit-delete-1';
 import { translationPartner, rememberTranslationPartner, translationRecordingType, createTranslationSpeech } from './translation-auto.js?v=20261018-auto-1';
-import { nearbyPlaceQuery } from './nearby-place.js?v=20261020-radius-2';
-import { nearbyAnswer } from './nearby-answer.js?v=20261020-radius-2';
+import { askFieldGuide } from './field-guide.js?v=20261020-field-1';
 
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -24,27 +23,6 @@ function plainAssistantReply(value) {
     .trim();
 }
 
-const modeNames = { walk: '도보', subway: '지하철', bus: '버스', taxi: '택시' };
-
-function placeQuery(message, context) {
-  const exit = message.match(/([가-힣A-Za-z0-9]+역)\s*(\d+)번\s*출구/);
-  if (exit) return `${exit[1]} ${exit[2]}번 출구`;
-  const cleaned = message.replace(/[?？!.]/g, '').trim()
-    .replace(/(?:의\s*)?(?:위치|주소|장소|어디|찾아|알려줘|알려주세요|있어|인가요|야|요|은|는|가|이)\s*$/g, '')
-    .replace(/(?:로|으로|에|에서)\s*$/g, '').trim();
-  return /^(?:목적지|거기|그곳)$/.test(cleaned) ? context.destination : cleaned;
-}
-
-function classifyQuestion(message) {
-  // A request to translate route-related text is still a language task.
-  if (/(?:번역|translate)/i.test(message)) return 'ai';
-  if (/(?:왜|만약|추천|괜찮|안전|상황|어떻게 하면|계획|비교|대신|설명)/.test(message)) return 'ai';
-  if (/(?:출구|주소|위치|어디|장소|건물|시설)/.test(message)) return 'place';
-  if (/(?:현재|지금|이\s*경로|선택한)/.test(message)
-    && /(?:경로|길|도보|지하철|버스|택시|환승|시간|거리|얼마나|가는 법|어떻게 가)/.test(message)) return 'route';
-  return 'ai';
-}
-
 async function jsonPost(url, body, signal) {
   const response = await fetch(url, {
     method: 'POST', headers: { 'content-type': 'application/json' },
@@ -53,45 +31,6 @@ async function jsonPost(url, body, signal) {
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(payload.error || '요청 결과를 확인하지 못했습니다.');
   return payload;
-}
-
-function routeAnswer(message, context) {
-  const asksAboutNamedTrip = /(?:에서|부터)\s*[^\s?!,.]+(?:까지|으로|로|은|는)/.test(message);
-  if (asksAboutNamedTrip && (!context.start || !context.destination
-    || !message.includes(context.start) || !message.includes(context.destination))) {
-    return `현재 화면의 경로는 ${context.start || '출발지'}에서 ${context.destination || '목적지'}까지입니다. 다른 구간의 이동 시간은 해당 출발지와 목적지로 검색해 확인해 주세요.`;
-  }
-  const requested = Object.entries(modeNames).find(([, label]) => message.includes(label));
-  const selected = modeNames[context.mode] || '선택한 이동수단';
-  if (requested && requested[0] !== context.mode) {
-    return `${requested[1]} 버튼을 누르면 해당 TMAP 경로 결과를 확인할 수 있습니다.`;
-  }
-  if (!context.routeVerified || !context.routeText) {
-    return `${selected} 경로 결과를 아직 확인하지 못했습니다. 출발지와 목적지를 확정한 뒤 다시 질문해 주세요.`;
-  }
-  return `현재 확인된 TMAP ${selected} 결과입니다. ${context.routeText.replace(/\s+/g, ' ').trim().slice(0, 700)}`;
-}
-
-async function placeAnswer(message, context, signal) {
-  const query = placeQuery(message, context);
-  if (!query || query.length > 80) return '확인할 장소 이름을 말씀해 주세요.';
-  const payload = await jsonPost('/api/map/place', { query }, signal);
-  const places = Array.isArray(payload.places) ? payload.places : [];
-  const normalized = (value) => String(value || '').replace(/\s+/g, '').toLowerCase();
-  const exit = query.match(/^(.+?역)\s*(\d+)번\s*출구$/);
-  const matching = exit
-    ? places.filter((place) => place.category === '교통시설>지하철출구번호'
-      && normalized(place.title).startsWith(normalized(exit[1]))
-      && normalized(place.title).includes(`${exit[2]}번출구`))
-    : places.filter((place) => normalized(place.title) === normalized(query));
-  const valid = matching.filter((place) => Number.isFinite(place.lat) && Number.isFinite(place.lng));
-  if (!valid.length) return `네이버 장소 검색에서 ‘${query}’의 확인된 위치를 찾지 못했습니다.`;
-  if (valid.length !== 1) return `‘${query}’의 검색 결과가 여러 곳입니다. 장소를 더 구체적으로 말씀해 주세요.`;
-  const place = valid[0];
-  const address = place.roadAddress || place.address;
-  return address
-    ? `네이버 장소 정보에서 확인한 ${place.title}의 주소는 ${address}입니다.`
-    : `네이버에서 ${place.title}의 좌표는 확인했지만, 안내할 주소는 제공되지 않았습니다.`;
 }
 
 function makeId() {
@@ -267,19 +206,12 @@ export function createGuideConversation(section, { getContext }) {
     let speechUnavailable = false;
     try {
       if (requestMode === 'ai') {
-        const category = classifyQuestion(text);
-        const nearby = nearbyPlaceQuery(text);
-        const answer = nearby ? await nearbyAnswer(nearby, signal)
-          : category === 'route' ? routeAnswer(text, context)
-          : category === 'place' ? await placeAnswer(text, context, signal)
-            : (await jsonPost('/api/assistant/reply', {
-              task: 'guide-chat',
-              message: text,
-              context,
-              history: messages.ai.slice(0, -1).slice(-8).map(({ role, text: content }) => ({
-                role, text: role === 'assistant' ? plainAssistantReply(content) : content
-              }))
-            }, signal)).text;
+        const result = await askFieldGuide(text, { signal, context,
+          history: messages.ai.slice(0, -1).slice(-8).map(({ role, text: content }) => ({
+            role, text: role === 'assistant' ? plainAssistantReply(content) : content
+          })) });
+        if (!result || signal.aborted) return;
+        const answer = result.text;
         if (!stopped && run === generation) {
           messages.ai = readAiHistory();
           messages.ai.push({ id: makeId(), role: 'assistant', text: plainAssistantReply(answer) });

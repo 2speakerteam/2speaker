@@ -40,7 +40,7 @@ function harness(options = {}) {
       if (channel === 'webkr') {
         const fallback = /site:(?:blog|cafe)/.test(url.searchParams.get('query'));
         return json({ items: options.noSources ? [] : fallback ? [fixtureReport] : options.official ? [{
-          title: `${subject} 공식 찾아가기`, link: 'https://fixture.go.kr/trail', description: '공식 접근 안내'
+          title: `${subject} 공식 찾아가기`, link: options.officialUrl || 'https://fixture.go.kr/trail', description: '공식 접근 안내'
         }] : [] });
       }
       if (options.searchFailure) return json({}, 403);
@@ -49,7 +49,9 @@ function harness(options = {}) {
           { ...report, title: '다른산 스카이워크 코스', description: '다른 산', link: 'https://blog.naver.com/other/999' }]
         : [{ ...fixtureReport, link: 'https://cafe.naver.com/walkers/222', cafename: 'Fixture cafe' }] });
     }
-    if (url.hostname === 'fixture.go.kr') return html(`<main>${subject} 공식 안내. 시험공원 입구.</main>`);
+    if (url.hostname === 'fixture.go.kr' || (options.officialUrl && url.hostname === new URL(options.officialUrl).hostname)) {
+      return html(`<main>${subject} 공식 안내. 시험공원 입구.</main>`);
+    }
     if (['m.blog.naver.com', 'm.cafe.naver.com'].includes(url.hostname)) {
       if (options.pageError) throw new Error('page unavailable');
       if (options.redirect) return new Response(null, { status: 302, headers: { location: options.redirect } });
@@ -321,4 +323,92 @@ test('unverified article turns are removed while named access overviews remain',
   assert.match(result.text, /자료에 소개된 접근 경로/);
   assert.match(result.text, /시험공원에서 데크길/);
   assert.doesNotMatch(result.text, /오른쪽/);
+});
+
+test('generic city destination uses the common planner and web evidence even when TMAP succeeds', async () => {
+  const h = harness({ official: true, subject: '시험도서관', plan: {
+    task: 'route', environment: 'outdoor', startQuery: '', destinationQuery: '시험도서관',
+    mode: 'walk', searchSubject: '시험도서관', replyLanguage: 'ko'
+  } });
+  const result = await h.guide.answerFieldQuestion({ body: { position: {
+    lat: 37.6, lng: 127.1, accuracy: 12, timestamp: Date.now()
+  } } }, '여기서 시험도서관 어떻게 가?');
+  assert.equal(h.routes.length, 1);
+  assert.ok(result.usage.webSearchCalls > 0);
+  assert.ok(h.models.at(-1).data.evidence.sources.length);
+  assert.equal(h.models.length, 2);
+});
+
+test('city-route TMAP failure continues official and permitted visitor searches', async () => {
+  const h = harness({ official: true, routeError: true, subject: '시험도서관', plan: {
+    task: 'route', environment: 'outdoor', destinationQuery: '시험도서관', mode: 'walk'
+  } });
+  const result = await h.guide.answerFieldQuestion({ body: { position: {
+    lat: 37.6, lng: 127.1, accuracy: 12, timestamp: Date.now()
+  } } }, '여기서 시험도서관 어떻게 가?');
+  assert.equal(h.models.at(-1).data.evidence.routeStatus, 'failed');
+  assert.ok(result.sources.length);
+  assert.ok(result.usage.communitySearchCalls > 0);
+});
+
+test('a failed named-place lookup does not terminate internet research', async () => {
+  const h = harness({ official: true, placeError: true, plan: {
+    task: 'place', environment: 'outdoor', destinationQuery: topic, searchSubject: topic
+  } });
+  const result = await h.guide.answerFieldQuestion({ body: {} }, `${topic} 입구 위치를 알려줘`);
+  assert.equal(h.models.at(-1).data.evidence.placeStatus, 'unresolved');
+  assert.ok(result.sources.length);
+});
+
+test('selected route preview reaches both model stages but cannot establish the physical start', async () => {
+  const h = harness({ official: true });
+  await h.guide.answerFieldQuestion({ body: { position: null, context: {
+    start: '이전 출발지', destination: topic, routeVerified: true, routeText: '이전 경로는 7분입니다.',
+    panoramaPosition: { lat: 1, lng: 2 }
+  } } }, `여기서 ${topic} 어떻게 가?`);
+  assert.equal(h.routes.length, 0);
+  const evidence = h.models.at(-1).data.evidence;
+  assert.equal(evidence.locationStatus, 'unavailable');
+  assert.equal(evidence.selectedRoute.start, '이전 출발지');
+  assert.equal(evidence.selectedRoute.panoramaPosition, undefined);
+  assert.match(evidence.selectedRoute.basis, /not_physical_location/);
+  assert.equal(h.models[0].data.selectedRoute.routeText, '이전 경로는 7분입니다.');
+});
+
+test('overseas station uses approved local official material without claiming TMAP coverage or indoor floor', async () => {
+  const h = harness({ official: true, subject: '試験駅', officialUrl: 'https://www.tokyometro.jp/fixture', plan: {
+    task: 'information', environment: 'subway_inside', searchSubject: '試験駅',
+    query: '試験駅 案内', countryCode: 'JP', searchLanguage: 'ja', replyLanguage: 'ja'
+  } });
+  const result = await h.guide.answerFieldQuestion({ body: { position: {
+    lat: 35.6, lng: 139.7, accuracy: 120, timestamp: Date.now(),
+    areas: ['東京都 千代田区'], countryCode: 'JP'
+  } } }, '試験駅の中です。出口はどこですか');
+  const evidence = h.models.at(-1).data.evidence;
+  assert.equal(evidence.providers.countryCode, 'JP');
+  assert.equal(evidence.routeStatus, 'unsupported_region');
+  assert.equal(evidence.placeStatus, 'unsupported_region');
+  assert.equal(evidence.locationStatus, 'approximate');
+  assert.deepEqual(Array.from(evidence.areaHints), ['東京都 千代田区']);
+  assert.equal(h.routes.length, 0);
+  assert.ok(result.sources.some(source => source.url.includes('tokyometro.jp')));
+  assert.match(h.models.at(-1).request.systemInstruction.parts[0].text, /GPS does not prove which floor/);
+  assert.ok(!JSON.stringify(h.logs).includes('139.7'));
+});
+
+test('general discussion and translation preserve conversation behavior without internet lookup', async () => {
+  for (const message of ['오늘 고생했다', '시험공원으로 가세요를 영어로 번역해줘']) {
+    const h = harness({ plan: { task: 'conversation', environment: 'general', replyLanguage: 'ko' },
+      answer: '대화 또는 번역 답변' });
+    const result = await h.guide.answerFieldQuestion({ body: {} }, message);
+    assert.equal(result.text, '대화 또는 번역 답변');
+    assert.equal(h.routes.length, 0);
+    assert.equal(result.usage.webSearchCalls, 0);
+    assert.equal(h.requests.some(url => url.includes('naverapihub')), false);
+  }
+});
+
+test('the old and new exported engine names are the same function', () => {
+  const h = harness();
+  assert.equal(h.guide.answerFieldQuestion, h.guide.answerRoadviewQuestion);
 });

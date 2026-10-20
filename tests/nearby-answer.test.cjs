@@ -44,8 +44,10 @@ test('cancelled requests and translation text do not perform nearby lookup', asy
 test('both AI surfaces dispatch nearby requests to the shared retrieval answer', () => {
   for (const file of ['src/guide-conversation.js', 'src/roadview-guide.js']) {
     const text = fs.readFileSync(file, 'utf8');
-    assert.match(text, /const nearby = nearbyPlaceQuery\(text\)/);
-    assert.match(text, /await nearbyAnswer\(nearby, signal\)/);
+    assert.match(text, /await askFieldGuide\(text,/);
     assert.match(text, /\/api\/translation\/translate/);
   }
+  const shared = fs.readFileSync('src/field-guide.js', 'utf8');
+  assert.match(shared, /const nearby = nearbyPlaceQuery\(message\)/);
+  assert.match(shared, /await nearbyAnswer\(nearby, signal\)/);
 });

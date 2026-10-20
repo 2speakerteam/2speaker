@@ -23,7 +23,10 @@ export function regionFor(position, signal) {
         const areas = regions.map(region => ['area1', 'area2', 'area3', 'area4']
           .map(key => String(region?.[key]?.name || '').trim()).filter(Boolean).join(' '))
           .filter(Boolean);
-        finish([...new Set(areas)].slice(0, 2));
+        const countries = [...new Set(regions.map(region => String(region?.area0?.name || '').toUpperCase())
+          .filter(code => /^[A-Z]{2}$/.test(code)))];
+        finish({ areas: [...new Set(areas)].slice(0, 2),
+          ...(countries.length === 1 ? { countryCode: countries[0] } : {}) });
       });
     } catch { finish(null); }
   });
@@ -51,6 +54,7 @@ export async function currentGuidePosition(signal, { resolveRegion = true } = {}
   // A very broad or expired fix must not label a particular district as current.
   if (!Number.isFinite(position.accuracy) || position.accuracy < 0 || position.accuracy > 2000
     || Math.abs(Date.now() - position.timestamp) > 120000) return position;
-  const areas = await regionFor(position, signal);
-  return { ...position, ...(areas?.length ? { areas } : {}) };
+  const region = await regionFor(position, signal);
+  return { ...position, ...(region?.areas?.length ? { areas: region.areas } : {}),
+    ...(region?.countryCode ? { countryCode: region.countryCode } : {}) };
 }
