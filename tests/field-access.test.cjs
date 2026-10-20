@@ -125,7 +125,7 @@ test('a different published entrance does not become connected to an unresolved 
     remainingNodes: ['시험입구', '시험전망대'], approach: 'not_verified', namedStartOnPublishedSequence: false } } };
   const actual = retainPublishedSequence('현재 위치에서 바로 연결됩니다.', evidence, 'ko');
   assert.match(actual, /시험입구 → 시험전망대/);
-  assert.match(actual, /시험후문에서 시험입구까지의 연결은 확인되지 않았습니다/);
+  assert.match(actual, /시험후문과 이 접근로가 만나는 지점은 확인되지 않았습니다/);
   assert.doesNotMatch(actual, /바로 연결/);
 });
 
@@ -133,8 +133,11 @@ test('public source images restrict hosts, relevant captions and valid binary co
   assert.equal(imageUrl('http://fixture.go.kr/map.jpg', source.url), null);
   assert.equal(imageUrl('https://127.0.0.1/map.jpg', source.url), null);
   assert.equal(imageUrl('https://fixture.go.kr.evil.test/map.jpg', source.url), null);
+  assert.equal(imageUrl('https://fixture.go.kr/ImagePrint.do?id=1&amp;size=large', source.url),
+    'https://fixture.go.kr/ImagePrint.do?id=1&size=large');
   const images = articleImages('<img src="/map.jpg" alt="탐방로 안내도"><img src="/ad.jpg" alt="advertisement">', source.url);
   assert.equal(images.length, 1); assert.equal(images[0].url, 'https://fixture.go.kr/map.jpg');
+  assert.equal(articleImages('<img src="/images/common/bg_search.png" alt="지도 검색">', source.url).length, 0);
   const before = global.fetch;
   try {
     global.fetch = async () => new Response('<html>not image</html>', { headers: { 'content-type': 'image/png' } });
