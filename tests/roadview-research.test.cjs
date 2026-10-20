@@ -314,3 +314,11 @@ test('a clear mountain destination still gets researched when the planner asks o
   assert.equal(h.routes.length, 0);
   assert.ok(result.usage.webSearchCalls > 0);
 });
+
+test('unverified article turns are removed while named access overviews remain', async () => {
+  const h = harness({ answer: '방문기에는 시험공원에서 데크길을 잇는 코스가 소개됩니다. 오른쪽 길로 이동하면 됩니다. 표지판 이름을 알려 주세요.' });
+  const result = await h.guide.answerRoadviewQuestion({ body: {} }, `여기서 ${topic} 어떻게 가?`);
+  assert.match(result.text, /자료에 소개된 접근 경로/);
+  assert.match(result.text, /시험공원에서 데크길/);
+  assert.doesNotMatch(result.text, /오른쪽/);
+});
