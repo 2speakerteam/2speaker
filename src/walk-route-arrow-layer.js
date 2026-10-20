@@ -33,6 +33,7 @@ export function createWalkRouteArrowLayer(canvas, view) {
   let renderer = null;
   let scene = null;
   let headingOffset = null;
+  let displayedRotation = null;
   let transitioning = false;
   let stopped = false;
 
@@ -52,7 +53,9 @@ export function createWalkRouteArrowLayer(canvas, view) {
   const paint = () => {
     if (stopped || !Number.isFinite(bearing) || !pov) return;
     const width = view.clientWidth, height = view.clientHeight;
-    const camera = transitioning ? null : renderedCamera();
+    // Only mix in the rendered matrix after a touch has calibrated its heading.
+    // During scene setup it may still describe the outgoing photograph.
+    const camera = transitioning || headingOffset === null ? null : renderedCamera();
     const cameraPan = camera && headingOffset !== null ? camera.pan + headingOffset : pov.pan;
     const relative = ((bearing - cameraPan + 540) % 360) - 180;
     const pan = relative * RADIANS, tilt = (camera?.tilt ?? pov.tilt) * RADIANS;
@@ -60,16 +63,33 @@ export function createWalkRouteArrowLayer(canvas, view) {
     const depth = forward * Math.cos(tilt) - GROUND_DROP * Math.sin(tilt);
     const up = -GROUND_DROP * Math.cos(tilt) - forward * Math.sin(tilt);
     const focal = camera?.focal ?? height / (2 * Math.tan(pov.fov * RADIANS / 2));
-    const x = width / 2 + focal * Math.sin(pan) / depth;
-    const y = height / 2 - focal * up / depth;
-    if (width <= 0 || height <= 0 || depth <= .01 || !Number.isFinite(x + y)
-      || x < 0 || x > width || y < 0 || y > height) {
+    if (width <= 0 || height <= 0 || !Number.isFinite(focal + depth + up + relative)) {
       root.hidden = true;
       return;
     }
+    // A turn can point outside the photograph before the camera turns.
+    // Keep the direction indicator within the screen instead of hiding it or
+    // letting perspective division near 90 degrees send it far off screen.
+    const projectionDepth = Math.max(.35, depth);
+    const projectedX = width / 2 + focal * Math.sin(pan) / projectionDepth;
+    const projectedY = height / 2 - focal * up / projectionDepth;
+    // Measure the graphic even on the first frame after clear(); all placement
+    // writes below finish synchronously before the browser can paint.
+    root.hidden = false;
+    const graphicWidth = graphic.offsetWidth * WALK_ROUTE_ARROW_SCALE;
+    const graphicHeight = (graphic.offsetHeight || graphic.offsetWidth) * WALK_ROUTE_ARROW_SCALE;
+    const halfWidth = (graphicWidth * Math.abs(Math.cos(pan)) + graphicHeight * Math.abs(Math.sin(pan))) / 2;
+    const halfHeight = (graphicHeight * Math.abs(Math.cos(pan)) + graphicWidth * Math.abs(Math.sin(pan))) / 2;
+    const marginX = Math.min(width / 2, Math.max(width * .2, halfWidth + 8));
+    const marginY = Math.min(height / 2, halfHeight + 8);
+    const x = Math.max(marginX, Math.min(width - marginX, projectedX));
+    const y = Math.max(marginY, Math.min(height - marginY, Math.max(height * .56, Math.min(height * .72, projectedY))));
+    // Preserve the short rotation across -180/180 degrees.
+    displayedRotation = displayedRotation === null ? relative
+      : displayedRotation + ((relative - displayedRotation + 540) % 360 + 360) % 360 - 180;
     graphic.style.left = `${x}px`;
     graphic.style.top = `${y}px`;
-    graphic.style.transform = `translate(-50%,-50%) rotate(${relative}deg) scale(${WALK_ROUTE_ARROW_SCALE})`;
+    graphic.style.transform = `translate(-50%,-50%) rotate(${displayedRotation}deg) scale(${WALK_ROUTE_ARROW_SCALE})`;
     canvas.classList.add('has-retained-route-arrow');
     root.hidden = false;
   };
@@ -97,6 +117,7 @@ export function createWalkRouteArrowLayer(canvas, view) {
     renderer = null;
     scene = null;
     headingOffset = null;
+    displayedRotation = null;
     transitioning = false;
     canvas.classList.remove('has-retained-route-arrow');
   };

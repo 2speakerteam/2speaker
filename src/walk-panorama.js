@@ -4,7 +4,7 @@ import { walkingViewPov, walkingPlaybackTiming } from './walk-panorama-motion.js
 import { createWalkMiniMap } from './walk-mini-map.js?v=20261016-route-arrow-sync-1';
 import { bindBoardingPanoramaGestures } from './boarding-panorama-gestures.js?v=20261019-boarding-direction-hold-1';
 import { createBoardingPanoramaTravel } from './boarding-panorama-travel.js?v=20261019-boarding-direction-hold-1';
-import { createWalkRouteArrowLayer } from './walk-route-arrow-layer.js?v=20261020-scene-recovery-1';
+import { createWalkRouteArrowLayer } from './walk-route-arrow-layer.js?v=20261020-arrow-bounds-1';
 
 const CAMERA_TO_ROUTE_LIMIT_METERS = 15;
 const CAMERA_TO_REQUEST_LIMIT_METERS = 25;

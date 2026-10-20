@@ -1,4 +1,4 @@
-import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261020-scene-readiness-2';
+import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261020-arrow-bounds-1';
 import { createGuideConversation } from './guide-conversation.js?v=20261020-radius-2';
 import { createRoadviewGuide } from './roadview-guide.js?v=20261020-radius-2';
 import { ACCOUNT_EVENT, currentAccount, initializeAccount, signIn, signUp, signOut } from './account-session.js?v=20261018-cloud-history-1';
@@ -535,6 +535,7 @@ function initializeNaverRouteMap() {
     let nearbyOrigin = null;
     let nearbyResultSnapshot = null;
     let nearbySelectedPlace = null;
+    let nearbySelectionNoticePending = false;
     let startTitle = '';
     let startIsStation = false;
     let destinationLocation = null;
@@ -1136,10 +1137,28 @@ function initializeNaverRouteMap() {
         if (button.isConnected) button.disabled = false;
       }
     });
+    const revealNearbySelectionNotice = () => {
+      if (!nearbySelectionNoticePending) return;
+      const selectedPlace = nearbySelectedPlace;
+      window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+        if (!nearbySelectionNoticePending || selectedPlace !== nearbySelectedPlace
+          || session !== routeMapSession || currentPage !== 'guide'
+          || guideView !== 'route' || activeTransportMode !== 'preview' || !destinationLocation) return;
+        const content = document.querySelector('.guide-content[data-guide-view="route"]');
+        const panel = destinationChoicesElement?.querySelector('.subway-route-panel');
+        if (!content || !panel) return;
+        nearbySelectionNoticePending = false;
+        const bottom = content.getBoundingClientRect().top + content.clientHeight;
+        const anchor = content.querySelector('.guide-chat-tabs') || panel;
+        const overflow = anchor.getBoundingClientRect().bottom - bottom + 8;
+        if (overflow > 0) content.scrollTo({ top: content.scrollTop + overflow, behavior: 'smooth' });
+      }));
+    };
     const showWalkMessage = (message, isError = false) => {
       if ((!walkRequested && activeTransportMode !== 'preview')
         || !destinationChoicesElement || destinationState !== 'success') return;
       destinationChoicesElement.innerHTML = `<div class="subway-route-panel${isError ? ' is-error' : ''}" role="status">${escapeHtml(message)}</div>`;
+      revealNearbySelectionNotice();
     };
     const showWalkRoute = (route) => {
       if (!destinationChoicesElement) return;
@@ -1149,6 +1168,7 @@ function initializeNaverRouteMap() {
         <strong>도보 약 ${Math.ceil(route.totalSeconds / 60)}분 · ${Math.round(route.distanceMeters).toLocaleString('ko-KR')}m</strong>
         ${directions.length ? `<details><summary>TMAP 도보 안내 ${directions.length}개 보기</summary><ol>${directions.map((direction) => `<li>${escapeHtml(direction)}</li>`).join('')}</ol></details>` : ''}
       </div>`;
+      revealNearbySelectionNotice();
     };
     const updateWalkMapView = () => {
       const points = [currentLocation, destinationLocation, ...routeCoordinates].filter(Boolean);
@@ -1440,6 +1460,7 @@ function initializeNaverRouteMap() {
     const markSelectedDestination = (place) => {
       if (routeNearbyQuery && nearbyResultSnapshot) {
         nearbySelectedPlace = place;
+        nearbySelectionNoticePending = true;
         if (guideHistoryStep() === 'nearby-results') pushGuideHistory('route');
       }
       markDestination(place.lat, place.lng, place.title || routeDestinationQuery);
@@ -1453,6 +1474,7 @@ function initializeNaverRouteMap() {
         },
         showResults: () => {
           if (session !== routeMapSession || !nearbyResultSnapshot) return false;
+          nearbySelectionNoticePending = false;
           setGuideView('route', { fromHistory: true });
           // Invalidate pending route/scene work before restoring the original list.
           // Otherwise a late route response could replace the restored candidates.
