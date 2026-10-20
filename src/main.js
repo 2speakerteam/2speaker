@@ -235,7 +235,7 @@ function routeScreen() {
       <form class="route-form" id="route-form"><div class="large-input"><label class="sr-only" for="route-destination">목적지</label>
         <input id="route-destination" name="destination-query" type="search" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="어디로 가세요?" inputmode="search">
         ${routeEntryMode === 'dual' ? `<button class="route-voice-button" type="button" aria-label="음성으로 목적지 말하기" aria-pressed="false">${icon('mic', 27)}</button>` : ''}
-        ${routeEntryMode === 'dual' ? `<button class="route-text-button" type="button" data-action="route-text" aria-label="문자로 목적지 입력">${icon('message', 27)}</button>` : `<button class="route-submit" type="submit" aria-label="목적지 검색" hidden>${icon('arrow', 25)}</button>`}
+        ${routeEntryMode === 'dual' ? `<button class="route-text-button" type="button" data-action="route-text" aria-label="문자로 목적지 입력">${icon('message', 30)}</button>` : `<button class="route-submit" type="submit" aria-label="목적지 검색" hidden>${icon('arrow', 25)}</button>`}
       </div><p class="route-search-feedback" role="status" aria-live="polite"></p></form>
     </section>
     ${bottomNav()}
@@ -1544,7 +1544,7 @@ function translationScreen() {
         <span class="mode-copy"><strong>음성으로 대화</strong><small>서로 말하면 실시간 통역</small></span>${icon('chevron', 30)}
       </button>
       <button class="mode-card" data-page="text">
-        <span class="mode-icon">${icon('message', 42)}</span>
+        <span class="mode-icon">${icon('message', 46)}</span>
         <span class="mode-copy"><strong>문자로 대화</strong><small>입력한 내용을 바로 번역</small></span>${icon('chevron', 30)}
       </button>
     </section>
