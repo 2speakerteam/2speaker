@@ -38,6 +38,18 @@ test('adjacent paragraph references are grounded in bounded contiguous source sp
   assert.equal(validatePaths(overlapping, [{ ...source, content: '시험입구에서 시험전망대로 이어집니다.' }], '시험전망대').length, 1);
 });
 
+test('numbered source blocks generate the actual quotation server-side and reject invented or blocked references', () => {
+  const raw = { paths: [{ sourceId: 'S1', nodes: ['시험입구', '시험전망대'], entryIndex: 0,
+    edges: [{ from: '시험입구', to: '시험전망대', fromBlock: 'B1', toBlock: 'B1', connectionBlock: 'B1' }] }] };
+  const body = '시험입구에서 숲길을 따라 시험전망대로 이어집니다.';
+  const [actual] = validatePaths(raw, [{ ...source, content: body }], '시험전망대');
+  assert.equal(actual.edges[0].quote, body);
+  assert.equal(actual.edges[0].grounding, 'numbered_contiguous_source_blocks');
+  const invalid = structuredClone(raw); invalid.paths[0].edges[0].toBlock = 'B99';
+  assert.equal(validatePaths(invalid, [{ ...source, content: body }], '시험전망대').length, 0);
+  assert.equal(validatePaths(raw, [{ ...source, content: body + ' 현재 출입 금지입니다.' }], '시험전망대').length, 0);
+});
+
 test('agreements and conflicts stay separate; same author cannot corroborate themselves', () => {
   const [a] = validatePaths({ paths: [path] }, [source], '시험전망대');
   const b = { ...a, id: 'P2', sourceId: 'S2', sourceUrl: 'https://m.blog.naver.com/other/100', sourceKind: 'community' };
