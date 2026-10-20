@@ -1,3 +1,5 @@
+const { nearbyInput, nearbyPlaces } = require('../../lib/nearby-places');
+
 function plainText(value, fallback) {
   if (typeof value !== 'string') return fallback;
   const text = value.replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').trim();
@@ -26,6 +28,11 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: '목적지 이름을 확인해 주세요.' });
   }
 
+  const origin = req.body?.nearby ? nearbyInput(req.body.nearby) : null;
+  if (req.body?.nearby && !origin) {
+    return res.status(400).json({ error: '주변 검색을 위한 현재 GPS와 지역 정보를 확인해 주세요.' });
+  }
+
   const clientId = process.env.NAVER_API_HUB_CLIENT_ID?.trim();
   const clientSecret = process.env.NAVER_API_HUB_API_KEY?.trim();
   if (!clientId || !clientSecret) {
@@ -41,6 +48,7 @@ module.exports = async function handler(req, res) {
       endpoint.searchParams.set('sort', 'random'); // NAVER documents this value as accuracy order.
       endpoint.searchParams.set('format', 'json');
       const response = await fetch(endpoint, {
+        ...(origin ? { signal: AbortSignal.timeout(10000) } : {}),
         headers: {
           'X-NCP-APIGW-API-KEY-ID': clientId,
           'X-NCP-APIGW-API-KEY': clientSecret,
@@ -78,6 +86,11 @@ module.exports = async function handler(req, res) {
       }
       return places;
     };
+
+    if (origin) {
+      const result = await nearbyPlaces(query, origin, search);
+      return res.status(200).json(result);
+    }
 
     const normalized = (value) => String(value || '').toLowerCase().replace(/\s+/g, '');
     let places = await search(query);

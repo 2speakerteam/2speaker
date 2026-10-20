@@ -1,5 +1,5 @@
 // Physical location is collected for this question; a route preview is never a GPS fix.
-function regionFor(position, signal) {
+export function regionFor(position, signal) {
   return new Promise(resolve => {
     let timer;
     const finish = value => {

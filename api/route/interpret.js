@@ -23,7 +23,8 @@ module.exports = async function handler(req, res) {
     return destination ? [{ start, destination, mode }] : [];
   });
 
-  const systemInstruction = `You extract the user's route request into JSON. Return exactly one JSON object with these keys: start, destination, mode, useCurrentLocation, needsClarification, clarification.
+  const systemInstruction = `You extract the user's route request into JSON. Return exactly one JSON object with these keys: start, destination, mode, useCurrentLocation, needsClarification, clarification, searchMode.
+searchMode is nearby for a current-location nearby business/category request, otherwise destination. For '이 근처 미용실 찾아줘', '근처 편의점', '근처 약국', use searchMode nearby, start empty, destination the category alone (미용실, 편의점, 약국). Never reuse a previous destination for these requests. A nearby category is a valid request and does not require a business name.
 start and destination are place-name strings only, never coordinates. start is an empty string when the user does not name a start place. mode is exactly walk, subway, bus, taxi, or unspecified. Use unspecified when no transport is requested. useCurrentLocation is true only when start is empty. needsClarification is true only when the requested destination cannot be identified from the latest request or a genuinely necessary place name is missing. clarification is a short Korean question when clarification is needed, otherwise an empty string.
 Understand Korean natural route wording such as 에서, 까지, 으로, 가자, 지금 여기서 and mode suffixes. "지금 여기서" and "여기서" mean GPS, so start must be empty. Strip commands and transport wording from place names. For example, "면목역에서 강남역까지" has start "면목역" and destination "강남역" with mode unspecified; "사가정역에서 서울역까지 지하철로" has mode subway; "강남역까지 버스로 가자" has empty start and mode bus. A named start always overrides GPS. Use the short previous-route context only to resolve a follow-up that omits a place; do not replace explicitly named places. Never invent place coordinates, addresses, lines, travel time, fares, or route data. Those come from NAVER and TMAP after this step.`;
 
@@ -52,7 +53,7 @@ Understand Korean natural route wording such as 에서, 까지, 으로, 가자, 
     if (intent.needsClarification || !destination) {
       return res.status(422).json({ error: intent.clarification.trim() || '목적지를 알려 주세요.', clarification: true });
     }
-    return res.status(200).json({ start, destination, mode: intent.mode, useCurrentLocation: intent.useCurrentLocation, provider: generated.provider });
+    return res.status(200).json({ start, destination, mode: intent.mode, useCurrentLocation: intent.useCurrentLocation, provider: generated.provider, searchMode: intent.searchMode === 'nearby' && !start ? 'nearby' : 'destination' });
   } catch (error) {
     return res.status(error.statusCode || 502).json({ error: error.message || 'Gemini 길찾기 해석에 실패했습니다.' });
   }

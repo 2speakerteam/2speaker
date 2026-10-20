@@ -6,12 +6,15 @@ import { startConversationSync, syncConversations, conversationAccountStatus, HI
 import { createTransitArrivals, arrivalPlaceholder, transitLineLabel } from './transit-arrivals.js?v=20261018-arrival-label-spacing-1';
 import { hasTransitStationExits, showTransitStationExits } from './transit-station-exits.js?v=20261018-exits-3';
 
+import { nearbyPlaceQuery, fetchNearbyPlaces, nearbyDistanceLabel } from './nearby-place.js?v=20261020-nearby-1';
+
 const root = document.querySelector('#root');
 let currentPage = 'home';
 let accountNotice = '';
 let routeEntryMode = 'dual';
 let routeStartQuery = '';
 let routeDestinationQuery = '';
+let routeNearbyQuery = '';
 let routeTransportMode = '';
 let guideView = 'route';
 const routeIntentHistory = [];
@@ -64,6 +67,8 @@ const guideHistoryStateKey = '__2speakerGuideStep';
 let faqOpenIndex = 3;
 
 function directRouteIntent(query, entryMode) {
+  const nearby = nearbyPlaceQuery(query);
+  if (nearby) return { start: '', destination: nearby, mode: 'unspecified', useCurrentLocation: true, provider: 'direct', searchMode: 'nearby' };
   const text = query.trim().replace(/[.!?。]+$/, '').trim();
   const explicitRoute = text.match(/^(.+?)에서\s*(.+?)까지$/);
   const stationRoute = text.match(/^(\S+역)\s*에서\s*(\S+역)$/);
@@ -390,6 +395,7 @@ function fetchNaverPlaces(query) {
 }
 function prepareRoutePlaces(query, entryMode) {
   const intent = directRouteIntent(query, entryMode);
+  if (intent?.searchMode === 'nearby') return;
   const terms = new Set([intent?.start, intent?.destination, query.match(/^(.+?)에서/)?.[1]?.trim()]);
   for (const term of terms) {
     if (!term || term.length < 2 || term.length > 100) continue;
@@ -415,7 +421,7 @@ function initializeNaverRouteMap() {
     && currentPage === 'guide' && guideView === 'route' && routeTransportMode === mode });
   activeTransitArrivals = transitArrivals;
   if (routeStartQuery) void fetchNaverPlaces(routeStartQuery);
-  if (routeDestinationQuery) void fetchNaverPlaces(routeDestinationQuery);
+  if (routeDestinationQuery && !routeNearbyQuery) void fetchNaverPlaces(routeDestinationQuery);
   const preparedTransportRequests = new Map();
   let transportPreparationKey = '';
   const loadTransportRoute = (mode, start, end, startIsStation = false) => {
@@ -525,6 +531,7 @@ function initializeNaverRouteMap() {
     const boardingPanorama = createWalkPanorama(maps, document.querySelector('.walk-panorama[data-panorama-kind="boarding"]'));
     activeBoardingPanorama = boardingPanorama;
     let currentLocation = null;
+    let nearbyOrigin = null;
     let startTitle = '';
     let startIsStation = false;
     let destinationLocation = null;
@@ -638,9 +645,9 @@ function initializeNaverRouteMap() {
       mapChoiceLocations = places.map((place) => new maps.LatLng(place.lat, place.lng));
       updateMapView();
       destinationChoicesElement.innerHTML = `<div class="place-choice-list" role="group" aria-label="네이버 장소 검색 결과">
-        <p class="place-choice-heading">검색 결과 ${places.length}곳 · ${role}를 선택해 주세요</p>
+        <p class="place-choice-heading">${routeNearbyQuery && role === '목적지' ? '조회된 주변 후보 · 직선거리순 · ' : ''}검색 결과 ${places.length}곳 · ${role}를 선택해 주세요</p>
         ${places.map((place, index) => {
-          const detail = [place.roadAddress, place.address, place.category].filter(Boolean).join(' · ');
+          const detail = [nearbyDistanceLabel(place, nearbyOrigin?.accuracy), place.roadAddress, place.address, place.category].filter(Boolean).join(' · ');
           return `<button class="place-choice" type="button" data-place-index="${index}" aria-label="${escapeHtml(place.title)}${detail ? `, ${escapeHtml(detail)}` : ''}">
             <strong>${escapeHtml(place.title)}</strong>${detail ? `<small>${escapeHtml(detail)}</small>` : ''}
           </button>`;
@@ -1429,12 +1436,17 @@ function initializeNaverRouteMap() {
         destinationState = 'pending';
         updateStatus();
       }
-      fetchNaverPlaces(query).then((places) => {
+      const nearbySearch = role === '목적지' && Boolean(routeNearbyQuery);
+      const request = nearbySearch
+        ? fetchNearbyPlaces(routeNearbyQuery, nearbyOrigin, () => session === routeMapSession && currentPage === 'guide')
+        : fetchNaverPlaces(query);
+      request.then((places) => {
         if (session !== routeMapSession || currentPage !== 'guide') return;
         const validPlaces = Array.isArray(places) ? places.filter((place) => (
           place && Number.isFinite(Number(place.lat)) && Number.isFinite(Number(place.lng))
         )).map((place) => ({ ...place, lat: Number(place.lat), lng: Number(place.lng) })) : [];
-        const result = resolveNaverPlace(query, validPlaces, role === '목적지' ? startTitle : '');
+        const result = nearbySearch ? { choices: validPlaces }
+          : resolveNaverPlace(query, validPlaces, role === '목적지' ? startTitle : '');
         if (result.selected) {
           onSelect(result.selected);
         } else if (result.choices.length) {
@@ -1452,7 +1464,8 @@ function initializeNaverRouteMap() {
             locationStatus = '네이버에서 일치하는 출발지를 확인하지 못했습니다.';
             locationState = 'error';
           } else {
-            destinationStatus = '네이버에서 일치하는 목적지를 확인하지 못했습니다.';
+            destinationStatus = nearbySearch ? '조회된 후보 중 GPS 기준 3km 이내 장소가 없습니다. 주변 업체가 전혀 없다는 뜻은 아닙니다.'
+              : '네이버에서 일치하는 목적지를 확인하지 못했습니다.';
             destinationState = 'error';
           }
           updateStatus();
@@ -1478,6 +1491,7 @@ function initializeNaverRouteMap() {
       currentPositionOnce().then((position) => {
         if (session !== routeMapSession || currentPage !== 'guide') return;
         const { latitude, longitude, accuracy } = position.coords;
+        nearbyOrigin = { lat: latitude, lng: longitude, accuracy, timestamp: position.timestamp };
         currentLocation = new maps.LatLng(latitude, longitude);
         new maps.Marker({
           map,
@@ -1500,6 +1514,12 @@ function initializeNaverRouteMap() {
         }
         locationStatus = 'GPS 확인됨';
         locationState = 'success';
+        if (routeNearbyQuery && (!Number.isFinite(accuracy) || accuracy < 0 || accuracy > 50
+          || !Number.isFinite(position.timestamp) || Math.abs(Date.now() - position.timestamp) > 120000)) {
+          locationStatus = '대략적인 GPS · 정확한 출발 위치 재확인 필요';
+          locationState = 'error';
+        }
+        if (routeNearbyQuery) searchNaverPlace(routeNearbyQuery, '목적지', markSelectedDestination);
         updateMapView();
         updateStatus();
         requestSubwayRoute();
@@ -1512,6 +1532,10 @@ function initializeNaverRouteMap() {
           ? '위치 권한이 없어 현재 위치를 표시하지 않습니다.'
           : '현재 위치를 확인하지 못했습니다.';
         locationState = 'error';
+        if (routeNearbyQuery) {
+          destinationState = 'error';
+          destinationStatus = '주변 검색은 현재 위치가 필요합니다. 위치 권한을 확인하고 다시 검색해 주세요.';
+        }
         updateMapView();
         updateStatus();
         requestSubwayRoute();
@@ -1520,7 +1544,7 @@ function initializeNaverRouteMap() {
         requestTaxiRoute();
       });
 
-      if (routeDestinationQuery) {
+      if (routeDestinationQuery && !routeNearbyQuery) {
         searchNaverPlace(routeDestinationQuery, '목적지', markSelectedDestination);
       }
     }
@@ -2124,6 +2148,7 @@ if (currentPage === 'user-language-list' && !supportedUserLanguagesLoaded && !su
       if (requestId !== routeIntentRequestId || currentPage !== 'route' || !routeInput.isConnected) return;
       routeStartQuery = intent.start.trim();
       routeDestinationQuery = intent.destination.trim();
+      routeNearbyQuery = !routeStartQuery && intent.searchMode === 'nearby' ? routeDestinationQuery : '';
       routeIntentHistory.push({ start: routeStartQuery, destination: routeDestinationQuery, mode: intent.mode });
       if (routeIntentHistory.length > 4) routeIntentHistory.shift();
       navigate('guide');

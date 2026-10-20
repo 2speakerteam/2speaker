@@ -26,7 +26,7 @@ function client({ accuracy = 95, age = 0, denied = false, missingMaps = false, f
     } } }
   };
   vm.createContext(context);
-  vm.runInContext(source.replace('export async function', 'async function'), context);
+  vm.runInContext(source.replace(/export /g, ''), context);
   return { get: signal => context.currentGuidePosition(signal), calls };
 }
 test('GPS coordinates, reported accuracy and timestamp are kept; reverse region is only a hint', async () => {
