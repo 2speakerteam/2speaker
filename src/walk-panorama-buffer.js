@@ -1,13 +1,60 @@
 import { interpolateWalkingPov } from './walk-panorama-motion.js?v=20261019-walk-flow-10';
 
+// Inspect the SDK's active image surface, not its discarded/hidden cube.
+// Tile count varies with viewport and zoom; it is not a completeness signal.
+export function inspectWalkPanoramaFrame(channel, frame) {
+  const waiting = reason => ({ ready: false, reason });
+  try {
+    if (channel.viewer.getPanoId() !== frame.panoId) return waiting('scene');
+    const coordinate = channel.viewer.getLocation()?.coord;
+    const lat = coordinate?.lat(), lng = coordinate?.lng();
+    if (![lat, lng, frame.camera?.lat, frame.camera?.lng].every(Number.isFinite)
+      || Math.abs(lat - frame.camera.lat) > 0.00002
+      || Math.abs(lng - frame.camera.lng) > 0.00002) return waiting('position');
+    const pov = channel.viewer.getPov();
+    const delta = Math.abs(((pov?.pan - frame.pov.pan + 540) % 360 + 360) % 360 - 180);
+    if (!Number.isFinite(pov?.pan) || delta > 0.1) return waiting('pan');
+    if (!Number.isFinite(pov?.tilt) || Math.abs(pov.tilt - frame.pov.tilt) > 0.1) return waiting('tilt');
+    if (!Number.isFinite(pov?.fov) || Math.abs(pov.fov - frame.pov.fov) > 0.1) return waiting('fov');
+    const cubes = [...channel.host.querySelectorAll('.cube')];
+    const surfaces = cubes.length ? cubes.filter(cube => cube.style.display !== 'none') : [channel.host];
+    if (!surfaces.length) return waiting('surface');
+    const tiles = surfaces.flatMap(surface => [...surface.querySelectorAll('img')])
+      .filter(image => (image.currentSrc || image.src).includes('/image/'));
+    if (!tiles.length) return waiting('images-empty');
+    if (tiles.some(image => !(image.currentSrc || image.src).includes(`/image/${frame.panoId}/`))) {
+      return waiting('scene-images');
+    }
+    const loaded = tiles.filter(image => image.complete && image.naturalWidth > 0).length;
+    const failed = tiles.filter(image => image.complete && !image.naturalWidth).length;
+    return {
+      ready: loaded === tiles.length,
+      reason: failed ? 'images-failed' : loaded < tiles.length ? 'images-loading' : 'ready',
+      tiles: tiles.length, loaded, failed,
+      // Used only to wait for a stable image set; never sent to diagnostics.
+      signature: tiles.map(image => image.currentSrc || image.src).sort().join('\n')
+    };
+  } catch { return waiting('sdk'); }
+}
+
 // Two actual SDK panoramas, prepared before revealing. Keep photo geometry intact.
-export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { transitionMs = 1200 } = {}) {
+export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, {
+  transitionMs = 1200, onPreparationState = null
+} = {}) {
   let stopped = false;
   let front = { viewer: initialViewer, host: initialViewer.getElement() };
   let back = null;
   let loading = null;
   let transition = null;
+  let preparationState = null;
   const viewPov = () => front.viewer.getPov();
+  const report = (state, timedOut = false) => {
+    const { signature, ...safeState } = state;
+    const next = { ...safeState, timedOut };
+    if (JSON.stringify(next) === JSON.stringify(preparationState)) return;
+    preparationState = next;
+    onPreparationState?.({ ...next });
+  };
 
   function layer(channel, visible) {
     channel.host.style.setProperty('position', 'absolute', 'important');
@@ -47,23 +94,7 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { tr
     } catch (error) { host.remove(); throw error; }
   }
 
-  function ready(channel, frame) {
-    const coordinate = channel.viewer.getLocation()?.coord;
-    const pov = channel.viewer.getPov();
-    const pan = pov?.pan;
-    const delta = Math.abs(((pan - frame.pov.pan + 540) % 360) - 180);
-    if (channel.viewer.getPanoId() !== frame.panoId || !coordinate
-      || Math.abs(coordinate.lat() - frame.camera.lat) > 0.00002
-      || Math.abs(coordinate.lng() - frame.camera.lng) > 0.00002
-      || !Number.isFinite(pan) || delta > 0.1
-      || !Number.isFinite(pov?.tilt) || Math.abs(pov.tilt - frame.pov.tilt) > 0.1
-      || !Number.isFinite(pov?.fov) || Math.abs(pov.fov - frame.pov.fov) > 0.1) return false;
-    const tiles = [...channel.host.querySelectorAll('img')]
-      .filter(image => (image.currentSrc || image.src).includes(`/image/${frame.panoId}/`));
-    return tiles.length >= 4 && tiles.every(image => image.complete && image.naturalWidth > 0);
-  }
-
-  async function prepare(frame, reload = false) {
+  async function prepare(frame, reload = false, reporting = false) {
     if (!frame || stopped) return null;
     // The outgoing SDK viewer must remain unchanged until its short reveal ends.
     while (transition) await transition.done;
@@ -80,7 +111,11 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { tr
     }
     const created = ensureBack(frame);
     const target = back;
-    if (!reload && ready(target, frame)) return target;
+    const cached = inspectWalkPanoramaFrame(target, frame);
+    if (!created && !reload && cached.ready && target.readySignature === cached.signature) {
+      if (reporting) report(cached);
+      return target;
+    }
     const task = (async () => {
       if (!created) {
         // Reuse the prefetched photo when only the viewing direction changed.
@@ -90,14 +125,23 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { tr
       }
       const started = performance.now();
       let stable = 0;
+      let signature = null;
+      let state = { ready: false, reason: 'scene' };
       const timeoutMs = reload ? 10000 : 6000;
       while (!stopped && performance.now() - started < timeoutMs) {
         await new Promise(resolve => window.setTimeout(resolve, 30));
         if (stopped) return null;
-        // Two loaded observations allow the SDK to paint before revealing it.
-        stable = ready(target, frame) ? stable + 1 : 0;
-        if (stable >= 2) return target;
+        state = inspectWalkPanoramaFrame(target, frame);
+        if (reporting) report(state);
+        // A newly added tile resets the paint window, even if it is cached.
+        stable = state.ready ? state.signature === signature ? stable + 1 : 1 : 0;
+        signature = state.signature;
+        if (stable >= 3) {
+          target.readySignature = state.signature;
+          return target;
+        }
       }
+      if (reporting && !stopped) report(state, true);
       return null;
     })();
     loading = task;
@@ -113,8 +157,15 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { tr
       const preparedFrame = { ...frame, pov: smooth ? { ...startPov } : frame.pov };
       const needsTurn = Math.abs(((frame.pov.pan - startPov.pan + 540) % 360) - 180) > .01
         || Math.abs(frame.pov.tilt - startPov.tilt) > .01 || Math.abs(frame.pov.fov - startPov.fov) > .01;
-      const target = await prepare(preparedFrame, reload);
-      if (stopped || !target || target !== back || !ready(target, preparedFrame)) return null;
+      const target = await prepare(preparedFrame, reload, true);
+      if (stopped || !target) return null;
+      if (target !== back) {
+        report({ ready: false, reason: 'replaced' });
+        return null;
+      }
+      const confirmed = inspectWalkPanoramaFrame(target, preparedFrame);
+      report(confirmed);
+      if (!confirmed.ready) return null;
       const previous = front;
       layer(target, true);
       const animate = durationMs > 0 && typeof target.host.animate === 'function' && !reduced;
@@ -176,12 +227,16 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { tr
         layer(previous, false);
         return front.viewer;
       }
-    } catch { return null; }
+    } catch {
+      if (!stopped) report({ ready: false, reason: 'sdk' });
+      return null;
+    }
   }
 
   return {
     show,
     viewPov,
+    getPreparationState: () => preparationState && { ...preparationState },
     prefetch(frame) { void prepare(frame).catch(() => {}); },
     resize(width, height) {
       if (stopped || width <= 0 || height <= 0) return;

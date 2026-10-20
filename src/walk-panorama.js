@@ -1,5 +1,5 @@
 import { createPanoramaProbe } from './panorama-probe.js?v=20261017-panorama-isolation-2';
-import { createWalkPanoramaBuffer } from './walk-panorama-buffer.js?v=20261020-scene-recovery-1';
+import { createWalkPanoramaBuffer } from './walk-panorama-buffer.js?v=20261020-scene-readiness-2';
 import { walkingViewPov, walkingPlaybackTiming } from './walk-panorama-motion.js?v=20261019-walk-flow-10';
 import { createWalkMiniMap } from './walk-mini-map.js?v=20261016-route-arrow-sync-1';
 import { bindBoardingPanoramaGestures } from './boarding-panorama-gestures.js?v=20261019-boarding-direction-hold-1';
@@ -635,6 +635,14 @@ export function createWalkPanorama(maps, section) {
     }, { enableHighAccuracy: true, maximumAge: 0, timeout: 8000 });
   };
 
+  const scenePreparationHint = () => {
+    const reason = walkBuffer?.getPreparationState()?.reason;
+    if (reason === 'images-failed') return '사진 로딩 오류';
+    if (['images-empty', 'images-loading', 'surface'].includes(reason)) return '사진 준비 지연';
+    if (['pan', 'tilt', 'fov'].includes(reason)) return '시야 설정 지연';
+    if (reason === 'position') return '장면 위치 확인 지연';
+    return '장면 준비 지연';
+  };
   async function showFrame(index) {
     if (busy || index < 0 || index >= frames.length || !panorama) return;
     const run = generation;
@@ -680,7 +688,7 @@ export function createWalkPanorama(maps, section) {
       if (run !== generation) return;
       if (!preparedViewer && playing) {
         // Keep the current photo and retry a transient failure once, without skipping scenes.
-        arrival.textContent = '다음 거리뷰 장면을 다시 준비하고 있습니다.';
+        arrival.textContent = `다음 거리뷰 장면을 다시 준비하고 있습니다. (${scenePreparationHint()})`;
         await new Promise(resolve => window.setTimeout(resolve, 1000));
         if (run !== generation) return;
         if (playing) {
@@ -703,7 +711,7 @@ export function createWalkPanorama(maps, section) {
         switchingFrame = null;
         pause();
         showNativeArrow(frames[selected]);
-        arrival.textContent = '다음 로드뷰 장면을 불러오지 못했습니다. 다음을 눌러 다시 시도해 주세요.';
+        arrival.textContent = `다음 로드뷰 장면을 불러오지 못했습니다. (${scenePreparationHint()}) 다음을 눌러 다시 시도해 주세요.`;
         return;
       }
       listeners.forEach(listener => maps.Event.removeListener(listener));
@@ -1103,7 +1111,12 @@ export function createWalkPanorama(maps, section) {
     section.classList.remove('is-loading');
     setStatus('경로보기');
     routeArrowLayer = createWalkRouteArrowLayer(canvas, view);
-    walkBuffer = createWalkPanoramaBuffer(maps, canvas, view, panorama);
+    walkBuffer = createWalkPanoramaBuffer(maps, canvas, view, panorama, {
+      onPreparationState: state => {
+        // Local, bounded diagnostic state only: no coordinates, IDs or URLs.
+        section.dataset.scenePreparation = JSON.stringify(state);
+      }
+    });
     await showFrame(0);
     if (run !== generation) return false;
     // Let the SDK paint the first scene before the page reveals this viewer.

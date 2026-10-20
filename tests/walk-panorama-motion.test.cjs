@@ -37,7 +37,7 @@ test('turns use the short arc; movement is slower, bounded and date-aware', () =
   assert.ok(motion.walkingPlaybackTiming(a, { ...b, photodate: '2025-01-01' }).transitionMs <= 1000);
 });
 
-function fixture({ reduced = false } = {}) {
+function fixture({ reduced = false, tileCount = 4, inactiveFailure = false } = {}) {
   let time = 0, nextRaf = 0, ready = true;
   const rafs = new Map(), animations = [], viewers = [], requests = [];
   class Host {
@@ -49,7 +49,15 @@ function fixture({ reduced = false } = {}) {
     remove() { this.removed = true; }
     addEventListener(name, fn) { this.events.set(name, fn); }
     removeEventListener(name) { this.events.delete(name); }
-    querySelectorAll() { return Array.from({ length: 4 }, () => ({ src: `/image/${this.viewer.id}/0`, complete: ready, naturalWidth: ready ? 512 : 0 })); }
+    querySelectorAll(selector) {
+      const tiles = Array.from({ length: tileCount }, (_, i) => ({ src: `/image/${this.viewer.id}/${i}`, complete: ready, naturalWidth: ready ? 512 : 0 }));
+      const unused = [{ src: `/image/${this.viewer.id}/unused`, complete: true, naturalWidth: 0 }];
+      if (selector === '.cube') return inactiveFailure ? [
+        { style: { display: 'block' }, querySelectorAll: () => tiles },
+        { style: { display: 'none' }, querySelectorAll: () => unused }
+      ] : [];
+      return inactiveFailure ? [...tiles, ...unused] : tiles;
+    }
     animate(keys, options) {
       let resolve, reject;
       const animation = { keys, options, finished: new Promise((yes, no) => { resolve = yes; reject = no; }),
@@ -198,5 +206,79 @@ test('prefetched photo gets current user zoom and tilt before becoming visible',
   await task;
   assert.equal(f.buffer.viewPov().fov, 70);
   assert.equal(f.buffer.viewPov().tilt, 8);
+  f.buffer.stop();
+});
+
+
+test('narrow view accepts its complete two-tile scene without a fixed four-tile minimum', async () => {
+  const f = fixture({ reduced: true, tileCount: 2 });
+  const viewer = await f.buffer.show(frame('b', 5, -179));
+  assert.ok(viewer, 'complete active scene must not time out solely because it uses two tiles');
+  assert.equal(viewer.getPanoId(), 'b');
+  f.buffer.stop();
+});
+
+test('failed tiles in an inactive cube cannot block the fully loaded active scene', async () => {
+  const f = fixture({ reduced: true, inactiveFailure: true });
+  const viewer = await f.buffer.show(frame('b', 5, -179));
+  assert.ok(viewer, 'unused SDK cube must not block the visible scene');
+  f.buffer.stop();
+});
+
+
+const inspectFrame = load('walk-panorama-buffer.js').inspectWalkPanoramaFrame;
+function readinessChannel() {
+  const expected = frame('expected', 5, 10);
+  const images = [{ src: '/image/expected/tile', complete: true, naturalWidth: 512 }];
+  const viewer = {
+    getPanoId: () => expected.panoId,
+    getLocation: () => ({ coord: { lat: () => expected.camera.lat, lng: () => expected.camera.lng } }),
+    getPov: () => ({ ...expected.pov })
+  };
+  const host = { querySelectorAll: selector => selector === '.cube' ? [] : images };
+  return { expected, images, viewer, channel: { viewer, host } };
+}
+
+test('readiness still rejects missing, loading, failed and wrong-scene images', () => {
+  const f = readinessChannel();
+  assert.equal(inspectFrame(f.channel, f.expected).reason, 'ready');
+  f.images[0].complete = false;
+  assert.equal(inspectFrame(f.channel, f.expected).reason, 'images-loading');
+  f.images[0].complete = true; f.images[0].naturalWidth = 0;
+  assert.equal(inspectFrame(f.channel, f.expected).reason, 'images-failed');
+  f.images[0].src = '/image/previous/tile';
+  assert.equal(inspectFrame(f.channel, f.expected).reason, 'scene-images');
+  f.images.length = 0;
+  assert.equal(inspectFrame(f.channel, f.expected).reason, 'images-empty');
+});
+
+test('readiness retains scene, coordinate and camera checks with distinct reasons', () => {
+  const f = readinessChannel();
+  f.viewer.getPanoId = () => 'previous';
+  assert.equal(inspectFrame(f.channel, f.expected).reason, 'scene');
+  f.viewer.getPanoId = () => 'expected';
+  f.viewer.getLocation = () => ({ coord: { lat: () => NaN, lng: () => 127 } });
+  assert.equal(inspectFrame(f.channel, f.expected).reason, 'position');
+  f.viewer.getLocation = () => ({ coord: { lat: () => 37.5, lng: () => 127 } });
+  for (const key of ['pan', 'tilt', 'fov']) {
+    f.viewer.getPov = () => ({ ...f.expected.pov, [key]: f.expected.pov[key] + 2 });
+    assert.equal(inspectFrame(f.channel, f.expected).reason, key);
+  }
+});
+
+test('timeout diagnostics exclude location and image IDs; retry rebuilds only hidden viewer', async () => {
+  const f = fixture({ reduced: true });
+  f.setReady(false);
+  assert.equal(await f.buffer.show(frame('b', 5, -179)), null);
+  const state = f.buffer.getPreparationState();
+  assert.equal(state.reason, 'images-loading');
+  assert.equal(state.timedOut, true);
+  assert.deepEqual(Object.keys(state).sort(), ['failed', 'loaded', 'ready', 'reason', 'tiles', 'timedOut']);
+  assert.equal(f.initial.host.style.visibility, 'inherit');
+  f.setReady(true);
+  assert.ok(await f.buffer.show(frame('b', 5, -179), { reload: true }));
+  assert.equal(f.viewers[1].destroyed, true);
+  assert.equal(f.initial.destroyed, undefined);
+  assert.equal(f.buffer.getPreparationState().reason, 'ready');
   f.buffer.stop();
 });
