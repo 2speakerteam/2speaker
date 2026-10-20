@@ -69,7 +69,7 @@ test('agreements and conflicts stay separate; same author cannot corroborate the
   assert.equal(selectPath([a, reversed], { comparison }), null);
 });
 
-test('user via is only a search preference and must occur in user turns', () => {
+test('user waypoint is retained from user turns without becoming a physical start', () => {
   assert.equal(focusFromUser({ viaQuery: '솔바람데크' }, '그 길로 알려줘', [{ role: 'assistant', text: '솔바람데크' }]), '');
   assert.equal(focusFromUser({ viaQuery: '솔바람데크' }, '그 길로 알려줘', [{ role: 'user', text: '솔바람데크로 가고 싶어' }]), '솔바람데크');
   assert.equal(focusFromUser({}, '시험대학교 뒤에 있는 솔바람 공원을 통한 루트가 있는 걸로 알고 있어', []), '솔바람 공원');
@@ -103,7 +103,7 @@ test('access excerpts merge overlapping route paragraphs and prioritize the user
 
 test('missing or conflicting source connections never fall back to an unrelated provider answer', () => {
   const missing = { accessResearch: { via: '시험후문', comparison: { conflicts: [] } } };
-  assert.match(retainPublishedSequence('5.1km를 걸으세요', missing, 'ko'), /연속된 접근 구간을 확인하지 못했습니다/);
+  assert.match(retainPublishedSequence('5.1km를 걸으세요', missing, 'ko'), /시험후문.*구간을 아직 검증하지 못했습니다/);
   assert.doesNotMatch(retainPublishedSequence('5.1km', missing, 'ko'), /5\.1/);
   const conflicts = { accessResearch: { comparison: { conflicts: [{}] } } };
   assert.match(retainPublishedSequence('우회 경로입니다', conflicts, 'ko'), /연결 순서가 달라/);
@@ -111,21 +111,22 @@ test('missing or conflicting source connections never fall back to an unrelated 
     { environment: 'mountain', accessResearch: { paths: [], selectedPathId: '' } }, 'ko'), /능선을 따라/);
 });
 
-test('published guidance renders only the checked sequence even when prose inserts an extra landmark', () => {
+test('guidance asks for the next checked signpost instead of repeating the whole sequence', () => {
   const evidence = { accessResearch: { selectedPathId: 'P1', alignment: {
     remainingNodes: ['시험입구', '명상쉼터', '시험전망대'], namedStartOnPublishedSequence: true } } };
   const actual = retainPublishedSequence('시험입구에서 순환삼거리를 먼저 거쳐 명상쉼터에서 시험전망대로 가세요.', evidence, 'ko');
-  assert.match(actual, /시험입구 → 명상쉼터 → 시험전망대/);
+  assert.match(actual, /다음.*명상쉼터/);
+  assert.doesNotMatch(actual, /→/);
   assert.doesNotMatch(actual, /순환삼거리/);
-  assert.match(actual, /말씀하신 출발 지점 기준/);
+  assert.equal((actual.match(/\?/g) || []).length, 1);
 });
 
 test('a different published entrance does not become connected to an unresolved user-named origin', () => {
   const evidence = { requestedStart: '시험후문', accessResearch: { selectedPathId: 'P1', alignment: {
     remainingNodes: ['시험입구', '시험전망대'], approach: 'not_verified', namedStartOnPublishedSequence: false } } };
   const actual = retainPublishedSequence('현재 위치에서 바로 연결됩니다.', evidence, 'ko');
-  assert.match(actual, /시험입구 → 시험전망대/);
-  assert.match(actual, /시험후문과 이 접근로가 만나는 지점은 확인되지 않았습니다/);
+  assert.doesNotMatch(actual, /시험입구 → 시험전망대/);
+  assert.match(actual, /시험후문.*입구.*아직 확인되지 않았습니다/);
   assert.doesNotMatch(actual, /바로 연결/);
 });
 

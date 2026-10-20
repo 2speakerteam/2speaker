@@ -121,8 +121,10 @@ for (const fixture of [
     assert.equal(evidence.route, null);
     assert.equal(evidence.providerReference.shortestRouteVerified, false);
     assert.equal(evidence.accessResearch.paths.length, 1);
-    assert.ok(result.text.indexOf(entrance) < result.text.indexOf(via));
-    assert.ok(result.text.indexOf(via) < result.text.indexOf(subject));
+    assert.deepEqual(Array.from(result.guidance.nodes), [via, subject]);
+    assert.equal(result.guidance.action.entryName, via);
+    assert.ok(result.text.includes(via));
+    assert.ok(!result.text.includes(entrance), 'a requested waypoint must not send the user to an earlier park');
     assert.doesNotMatch(result.text, /5\.1|70분/);
     if (countryCode === 'US') assert.equal(h.routes.length, 0);
   });
@@ -159,6 +161,68 @@ test('a literal through-landmark survives a planner omission and remains separat
   assert.match(result.text, /시험후문/);
   assert.ok(h.requests.some(value => new URL(value).searchParams.get('query')?.includes('시험후문')));
   assert.equal(h.routes.length, 0);
+});
+
+test('remembered waypoint blocks another park on a fastest follow-up even when the planner omits it', async () => {
+  const quote = `다른공원에서 ${topic}로 이어집니다.`;
+  const h = harness({ official: true, officialBody: quote,
+    plan: { ...routePlan, viaQuery: '', accessResearch: true },
+    accessExtraction: { paths: [{ sourceId: 'S1', nodes: ['다른공원', topic],
+      edges: [{ from: '다른공원', to: topic, quote }] }] } });
+  const result = await h.guide.answerFieldQuestion({ body: {
+    position: { lat: 37.5, lng: 127, accuracy: 12, timestamp: Date.now() },
+    history: [{ role: 'user', text: `여기서 ${topic} 어떻게 가?` },
+      { role: 'user', text: '지정숲입구를 통해 가는 길로 알려줘' },
+      { role: 'assistant', text: `다른공원 → ${topic}` }]
+  } }, `여기서 ${topic} 가는 제일 빠른 길 추천해줘`);
+  assert.equal(result.guidance.requestedVia, '지정숲입구');
+  assert.equal(result.guidance.constraintsMatched, false);
+  assert.equal(result.guidance.selectedPathId, '');
+  assert.equal(result.usage.accessApproachLookups || 0, 0);
+  assert.match(result.text, /지정숲입구/); assert.match(result.text, /가장 빠른 경로는 확정할 수 없습니다/);
+  assert.doesNotMatch(result.text, /다른공원|→|5\.1/);
+});
+
+test('GPS approach targets the requested waypoint itself instead of an earlier park in the source', async () => {
+  const quote1 = '다른공원에서 지정숲입구로 이어집니다.';
+  const quote2 = `지정숲입구에서 ${topic}에 도착합니다.`;
+  const h = harness({ official: true, officialBody: quote1 + quote2, places: { '지정숲입구': { lat: 37.501, lng: 127 } },
+    plan: { ...routePlan, viaQuery: '지정숲입구', accessResearch: true },
+    accessExtraction: { paths: [{ sourceId: 'S1', nodes: ['다른공원', '지정숲입구', topic], entryIndex: 0,
+      edges: [{ from: '다른공원', to: '지정숲입구', quote: quote1 }, { from: '지정숲입구', to: topic, quote: quote2 }] }] } });
+  const result = await h.guide.answerFieldQuestion({ body: { position: {
+    lat: 37.5, lng: 127, accuracy: 12, timestamp: Date.now()
+  } } }, `지정숲입구를 통해 ${topic} 가는 길 알려줘`);
+  assert.equal(h.routes[1].end.title, '지정숲입구');
+  assert.equal(result.guidance.action.kind, 'approach_verified_entrance');
+  assert.match(result.text, /^먼저 ‘지정숲입구’/); assert.match(result.text, /10분, 500m/);
+  assert.doesNotMatch(result.text, /다른공원|→/);
+});
+
+test('a user-named intermediate arrival advances to the next landmark', async () => {
+  const quote1 = '시험입구에서 솔바람데크로 이어집니다.';
+  const quote2 = `솔바람데크에서 ${topic}에 도착합니다.`;
+  const h = harness({ official: true, officialBody: quote1 + quote2,
+    plan: { ...routePlan, startQuery: '솔바람데크', accessResearch: true },
+    accessExtraction: { paths: [{ sourceId: 'S1', nodes: ['시험입구', '솔바람데크', topic],
+      edges: [{ from: '시험입구', to: '솔바람데크', quote: quote1 }, { from: '솔바람데크', to: topic, quote: quote2 }] }] } });
+  const result = await h.guide.answerFieldQuestion({ body: {
+    history: [{ role: 'assistant', text: '시험입구부터 확인해 주세요.' }]
+  } }, `솔바람데크에 도착했어. ${topic}는 다음 어디야?`);
+  assert.equal(result.guidance.action.nextLandmark, topic);
+  assert.match(result.text, /다음으로/); assert.ok(result.text.includes(topic));
+  assert.doesNotMatch(result.text, /시험입구|→/);
+});
+
+for (const mode of ['subway', 'bus', 'taxi']) test(`verified ${mode} itineraries keep their existing answer instead of a walking-entry question`, async () => {
+  const answer = '확인한 교통편을 이용해 시험역에서 도착역까지 이동하는 안내입니다.';
+  const h = harness({ subject: '도착역', category: '교통>지하철역', official: true, answer,
+    plan: { task: 'route', environment: mode === 'subway' ? 'subway_inside' : 'outdoor',
+      startQuery: '시험역', destinationQuery: '도착역', mode, accessResearch: true } });
+  const result = await h.guide.answerFieldQuestion({ body: {} }, `시험역에서 도착역까지 ${mode === 'subway' ? '지하철' : mode === 'bus' ? '버스' : '택시'}로 어떻게 가?`);
+  assert.equal(result.text, answer);
+  assert.equal(result.usage.routeLookupSucceeded, 1);
+  assert.equal(result.usage.accessExtractions || 0, 0);
 });
 
 test('route source images reach the extraction model as historical visual context', async () => {
@@ -247,9 +311,9 @@ test('named origin overrides GPS; failed origin never falls back to physical coo
   await h.guide.answerRoadviewQuestion({ body: { position: { lat: 37.6, lng: 127.1, accuracy: 12, timestamp: Date.now() } } }, `시험공원에서 ${topic} 어떻게 가나요`);
   assert.equal(h.routes[0].start.title, '시험공원');
   const failed = harness({ placeError: true, plan: { ...routePlan, startQuery: '시험공원' } });
-  await failed.guide.answerRoadviewQuestion({ body: { position: { lat: 37.6, lng: 127.1, accuracy: 12, timestamp: Date.now() } } }, `시험공원에서 ${topic} 어떻게 가나요`);
+  const failedResult = await failed.guide.answerRoadviewQuestion({ body: { position: { lat: 37.6, lng: 127.1, accuracy: 12, timestamp: Date.now() } } }, `시험공원에서 ${topic} 어떻게 가나요`);
   assert.equal(failed.routes.length, 0);
-  assert.ok(failed.models.at(-1).data.evidence.sources.length);
+  assert.ok(failedResult.sources.length);
 });
 
 test('unreadable/private articles retain labelled public excerpts, never login or claim full reading', async () => {
@@ -315,7 +379,8 @@ for (const question of fieldQuestions) {
         plan: { ...routePlan, destinationQuery: question.destination, searchSubject: question.destination,
           startQuery: question.origin || '' } });
       const result = await h.guide.answerRoadviewQuestion({ body: { position } }, question.message);
-      const evidence = h.models.at(-1).data.evidence;
+      const evidence = h.models.at(-1).data.evidence || { locationStatus: result.guidance.gpsStatus,
+        requestedStart: result.guidance.requestedOrigin, sources: result.sources, areaHints: [] };
       assert.equal(evidence.locationStatus, state);
       assert.equal(evidence.requestedStart, question.origin || '');
       assert.equal(h.routes.length, Number(Boolean(question.origin) || state === 'precise'));
@@ -340,11 +405,12 @@ test('named origin beats a planner omission; failed named origin cannot use prec
   const q = fieldQuestions[2];
   const h = harness({ subject: q.destination, failOrigin: q.origin,
     plan: { ...routePlan, startQuery: '', destinationQuery: q.destination } });
-  await h.guide.answerRoadviewQuestion({ body: {
+  const result = await h.guide.answerRoadviewQuestion({ body: {
     position: { lat: 37.6, lng: 127.1, accuracy: 10, timestamp: Date.now() }
   } }, q.message);
   assert.equal(h.routes.length, 0);
-  const evidence = h.models.at(-1).data.evidence;
+  const evidence = h.models.at(-1).data.evidence || { originStatus: result.guidance.originStatus,
+    requestedStart: result.guidance.requestedOrigin, sources: result.sources };
   assert.equal(evidence.originStatus, 'unresolved');
   assert.equal(evidence.requestedStart, q.origin);
   assert.ok(evidence.sources.length);
@@ -416,7 +482,7 @@ test('a clear mountain destination still gets researched when the planner asks o
 test('unvalidated mountain sequences cannot be rebuilt by the answer model', async () => {
   const h = harness({ answer: '방문기에는 시험공원에서 데크길을 잇는 코스가 소개됩니다. 오른쪽 길로 이동하면 됩니다. 표지판 이름을 알려 주세요.' });
   const result = await h.guide.answerRoadviewQuestion({ body: {} }, `여기서 ${topic} 어떻게 가?`);
-  assert.match(result.text, /접근 순서를 검증하지 못했습니다/);
+  assert.match(result.text, /이정표에 적힌 지명/);
   assert.doesNotMatch(result.text, /시험공원에서 데크길/);
   assert.doesNotMatch(result.text, /오른쪽/);
 });
