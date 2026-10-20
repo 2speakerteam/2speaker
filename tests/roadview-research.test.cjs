@@ -31,8 +31,10 @@ function harness(options = {}) {
       const request = JSON.parse(init.body);
       const data = JSON.parse(request.contents[0].parts[0].text);
       models.push({ request, data });
+      const extracting = request.systemInstruction.parts[0].text.startsWith('FIELD_ACCESS_EXTRACTION');
       const text = request.generationConfig.responseMimeType
-        ? JSON.stringify(options.plan || routePlan) : options.answer || '방문기에 나온 접근 코스입니다. 근처 입구 이름을 알려 주세요.';
+        ? JSON.stringify(extracting ? options.accessExtraction || { paths: [] } : options.plan || routePlan)
+        : options.answer || '방문기에 나온 접근 코스입니다. 근처 입구 이름을 알려 주세요.';
       return json({ candidates: [{ content: { parts: [{ text }] } }] });
     }
     if (url.hostname === 'naverapihub.apigw.ntruss.com') {
@@ -50,13 +52,15 @@ function harness(options = {}) {
         : [{ ...fixtureReport, link: 'https://cafe.naver.com/walkers/222', cafename: 'Fixture cafe' }] });
     }
     if (url.hostname === 'fixture.go.kr' || (options.officialUrl && url.hostname === new URL(options.officialUrl).hostname)) {
-      return html(`<main>${subject} 공식 안내. 시험공원 입구.</main>`);
+      if (url.pathname === '/route.png') return new Response(Buffer.from('89504e470d0a1a0a00000000', 'hex'), {
+        headers: { 'content-type': 'image/png' } });
+      return html(`<main>${options.officialBody || `${subject} 공식 안내. 시험공원 입구.`}</main>`);
     }
     if (['m.blog.naver.com', 'm.cafe.naver.com'].includes(url.hostname)) {
       if (options.pageError) throw new Error('page unavailable');
       if (options.redirect) return new Response(null, { status: 302, headers: { location: options.redirect } });
       if (options.privatePage) return html('<main>로그인 후 볼 수 있습니다.</main>');
-      return html(article.replaceAll(topic, subject));
+      return html(options.communityBody || article.replaceAll(topic, subject));
     }
     throw new Error(`Unexpected network request: ${url.hostname}`);
   };
@@ -72,12 +76,14 @@ function harness(options = {}) {
       } };
       if (name.endsWith('/google-cloud')) return { cloudLocation: () => 'global', cloudProjectId: () => 'fixture', getAccessToken: async () => 'fixture-token' };
       if (name.endsWith('/map/place')) return async (req, res) => res.json({ places: options.placeError || options.failOrigin === req.body.query ? [] : [{
-        title: options.unrelatedPlace || req.body.query, lat: 37.5, lng: 127, category: '여행>등산'
+        title: options.unrelatedPlace || req.body.query, lat: 37.5, lng: 127, category: options.category || '여행>등산',
+        ...(options.places?.[req.body.query] || {})
       }] });
       if (/\/transit\//.test(name)) return async (req, res) => {
         routes.push(req.body);
         if (options.routeError) return res.status(422).json({ error: 'TMAP에서 이 출발지와 목적지 사이의 도보 경로를 찾지 못했습니다.' });
-        return res.json({ route: { totalSeconds: 600, distanceMeters: 500, directions: ['시험 입구로 이동'] } });
+        return res.json({ route: { totalSeconds: 600, distanceMeters: options.routeDistance || 500,
+          directions: ['시험 입구로 이동'] }, coordinateMatch: true });
       };
       return load(path.relative(root, path.resolve(path.dirname(filename), name + '.js')));
     };
@@ -92,6 +98,88 @@ function harness(options = {}) {
   return { guide: load('lib/roadview-guide.js'), community: load('lib/roadview-community.js'),
     requests, models, routes, logs };
 }
+
+for (const fixture of [
+  { subject: '시험산 전망대', entrance: '시험공원 입구', via: '솔바람데크', countryCode: 'KR' },
+  { subject: 'River Forest Lookout', entrance: 'North Gate', via: 'Cedar Trail', countryCode: 'US' }
+]) {
+  test(`published ordered access is grounded and distinguished from provider totals: ${fixture.subject}`, async () => {
+    const { subject, entrance, via, countryCode } = fixture;
+    const quote1 = `${entrance}에서 ${via}로 이어집니다.`;
+    const quote2 = `${via}를 따라 ${subject}에 도착합니다.`;
+    const h = harness({ subject, official: true, officialBody: quote1 + ' ' + quote2,
+      routeDistance: 5100, plan: { ...routePlan, destinationQuery: subject, searchSubject: subject,
+        viaQuery: via, countryCode, accessResearch: true },
+      accessExtraction: { paths: [{ sourceId: 'S1', nodes: [entrance, via, subject], entryIndex: 0,
+        edges: [{ from: entrance, to: via, quote: quote1 }, { from: via, to: subject, quote: quote2 }] }] },
+      answer: 'TMAP 경로는 5.1km이며 약 70분 걸립니다.' });
+    const result = await h.guide.answerFieldQuestion({ body: { position: {
+      lat: 37.5001, lng: 127, accuracy: 12, timestamp: Date.now()
+    } } }, `${via}를 통하는 ${subject} 가는 길을 알려줘`);
+    const { evidence } = h.models.at(-1).data;
+    assert.equal(evidence.routeStatus, 'published_access_overview');
+    assert.equal(evidence.route, null);
+    assert.equal(evidence.providerReference.shortestRouteVerified, false);
+    assert.equal(evidence.accessResearch.paths.length, 1);
+    assert.ok(result.text.indexOf(entrance) < result.text.indexOf(via));
+    assert.ok(result.text.indexOf(via) < result.text.indexOf(subject));
+    assert.doesNotMatch(result.text, /5\.1|70분/);
+    if (countryCode === 'US') assert.equal(h.routes.length, 0);
+  });
+}
+
+test('coarse GPS never creates an entry connector from mere proximity', async () => {
+  const quote = '시험입구에서 시험전망대로 이어지는 탐방로입니다.';
+  const h = harness({ official: true, subject: '시험전망대', officialBody: quote,
+    plan: { ...routePlan, destinationQuery: '시험전망대', searchSubject: '시험전망대', accessResearch: true },
+    accessExtraction: { paths: [{ sourceId: 'S1', nodes: ['시험입구', '시험전망대'], entryIndex: 0,
+      edges: [{ from: '시험입구', to: '시험전망대', quote }] }] } });
+  await h.guide.answerFieldQuestion({ body: { position: { lat: 37.5, lng: 127, accuracy: 120, timestamp: Date.now() } } }, '여기서 시험전망대 어떻게 가?');
+  const access = h.models.at(-1).data.evidence.accessResearch;
+  assert.equal(h.routes.length, 0);
+  assert.equal(access.alignment.approach, 'not_verified');
+  assert.equal(access.alignment.connector, null);
+  assert.equal(access.alignment.physicalPositionOnTrailVerified, false);
+});
+
+test('a user-mentioned missing connection triggers a bounded focused search without changing their position', async () => {
+  const h = harness({ official: true, plan: { ...routePlan, viaQuery: '시험후문', accessResearch: true } });
+  await h.guide.answerFieldQuestion({ body: {} }, `${topic}는 시험후문을 통해 가는 길이 있어`);
+  const { evidence } = h.models.at(-1).data;
+  assert.equal(evidence.requestedStart, '');
+  assert.equal(evidence.accessResearch.via, '시험후문');
+  assert.equal(evidence.accessResearch.selectedPathId, '');
+  assert.ok(h.requests.some(value => new URL(value).searchParams.get('query')?.includes('시험후문')));
+  assert.equal(h.routes.length, 0);
+});
+
+test('route source images reach the extraction model as historical visual context', async () => {
+  const quote = '시험입구에서 시험전망대로 이어지는 탐방로입니다.';
+  const h = harness({ official: true, subject: '시험전망대', officialBody: `${quote}<img src="/route.png" alt="탐방로 안내도">`,
+    plan: { ...routePlan, destinationQuery: '시험전망대', searchSubject: '시험전망대', accessResearch: true },
+    accessExtraction: { paths: [{ sourceId: 'S1', nodes: ['시험입구', '시험전망대'],
+      edges: [{ from: '시험입구', to: '시험전망대', quote }] }] } });
+  const answer = await h.guide.answerFieldQuestion({ body: {} }, '시험전망대 가는 길 알려줘');
+  const extraction = h.models.find(row => row.request.systemInstruction.parts[0].text.startsWith('FIELD_ACCESS_EXTRACTION'));
+  assert.ok(extraction.request.contents[0].parts.some(part => part.inlineData?.mimeType === 'image/png'));
+  assert.ok(extraction.request.contents[0].parts.some(part => /not the user's live view/.test(part.text || '')));
+  assert.equal(answer.usage.accessPaths, 1);
+  assert.equal(answer.usage.sourceImagesRead, 1);
+});
+
+test('a user-named landmark on a published sequence survives missing GPS and does not request an unrelated approach', async () => {
+  const quote = '시험입구에서 시험전망대로 이어지는 탐방로입니다.';
+  const h = harness({ official: true, subject: '시험전망대', officialBody: quote,
+    plan: { ...routePlan, startQuery: '시험입구', destinationQuery: '시험전망대', searchSubject: '시험전망대', accessResearch: true },
+    accessExtraction: { paths: [{ sourceId: 'S1', nodes: ['시험입구', '시험전망대'],
+      edges: [{ from: '시험입구', to: '시험전망대', quote }] }] } });
+  await h.guide.answerFieldQuestion({ body: {} }, '시험입구에서 시험전망대 어떻게 가?');
+  const access = h.models.at(-1).data.evidence.accessResearch;
+  assert.equal(access.alignment.namedStartOnPublishedSequence, true);
+  assert.equal(access.alignment.approach, 'user_named_start_on_published_sequence');
+  assert.equal(access.alignment.connector, null);
+  assert.equal(h.routes.length, 1); // Original named journey only; no extra approach.
+});
 
 test('public article URLs are normalized; credentials, unrelated hosts and non-articles rejected', () => {
   assert.equal(community.articleUrl('http://blog.naver.com/PostView.naver?blogId=walker&logNo=123'), 'https://m.blog.naver.com/walker/123');
@@ -326,7 +414,7 @@ test('unverified article turns are removed while named access overviews remain',
 });
 
 test('generic city destination uses the common planner and web evidence even when TMAP succeeds', async () => {
-  const h = harness({ official: true, subject: '시험도서관', plan: {
+  const h = harness({ official: true, category: '교육>도서관', subject: '시험도서관', plan: {
     task: 'route', environment: 'outdoor', startQuery: '', destinationQuery: '시험도서관',
     mode: 'walk', searchSubject: '시험도서관', replyLanguage: 'ko'
   } });

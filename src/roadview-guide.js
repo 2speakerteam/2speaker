@@ -1,4 +1,4 @@
-import { askFieldGuide } from './field-guide.js?v=20261020-field-1';
+import { askFieldGuide } from './field-guide.js?v=20261021-access-1';
 import { translationPartner, rememberTranslationPartner, translationRecordingType, translationSpeechLocale } from './translation-auto.js?v=20261018-auto-1';
 import { readConversation, saveConversation, deleteConversation, HISTORY_EVENT, HISTORY_STATUS_EVENT, conversationStatus } from './conversation-store.js?v=20261020-explicit-delete-1';
 
@@ -349,7 +349,7 @@ export function createRoadviewGuide(section, { getContext, onOpen, onLayoutChang
       let answer;
       if (mode === 'ai') {
         answer = await askFieldGuide(text, { signal, context: getContext(),
-          history: historyMemory.ai.slice(0, -1).slice(-8) });
+          history: historyMemory.ai.slice(0, -1).slice(-40) });
         if (!answer || run !== generation || !opened || signal.aborted) return;
         append({ role: 'assistant', text: answer.text,
           sources: (answer.sources || []).map(safeSource).filter(Boolean) });

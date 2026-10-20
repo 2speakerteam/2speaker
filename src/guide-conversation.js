@@ -1,7 +1,7 @@
 import { readAiHistory, saveAiHistory as persistAiHistory } from './guide-history.js?v=20261020-explicit-delete-1';
 import { readConversation, saveConversation, deleteConversation, HISTORY_EVENT, HISTORY_STATUS_EVENT, conversationStatus } from './conversation-store.js?v=20261020-explicit-delete-1';
 import { translationPartner, rememberTranslationPartner, translationRecordingType, createTranslationSpeech } from './translation-auto.js?v=20261018-auto-1';
-import { askFieldGuide } from './field-guide.js?v=20261020-field-1';
+import { askFieldGuide } from './field-guide.js?v=20261021-access-1';
 
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -207,7 +207,7 @@ export function createGuideConversation(section, { getContext }) {
     try {
       if (requestMode === 'ai') {
         const result = await askFieldGuide(text, { signal, context,
-          history: messages.ai.slice(0, -1).slice(-8).map(({ role, text: content }) => ({
+          history: messages.ai.slice(0, -1).slice(-40).map(({ role, text: content }) => ({
             role, text: role === 'assistant' ? plainAssistantReply(content) : content
           })) });
         if (!result || signal.aborted) return;

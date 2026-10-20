@@ -90,6 +90,16 @@ test('missing optional preview and history cannot interrupt GPS research', async
   assert.deepEqual(request.history, []);
 });
 
+test('older user landmarks are bounded separately from the short dialogue window', async () => {
+  const h = fixture();
+  const history = Array.from({ length: 40 }, (_, i) => ({ role: i % 2 ? 'assistant' : 'user', text: `발언${i}` }));
+  await h.askFieldGuide('그 길은?', { history });
+  const request = h.calls.find(call => call.type === 'api').body;
+  assert.equal(request.history.length, 8); assert.equal(request.userContext.length, 16);
+  assert.ok(request.userContext.includes('발언8'));
+  assert.ok(!request.userContext.includes('발언9'));
+});
+
 test('both actual UI entry points await the shared function and keep separate recording/history flows', () => {
   for (const file of ['src/guide-conversation.js', 'src/roadview-guide.js']) {
     const actual = fs.readFileSync(file, 'utf8');

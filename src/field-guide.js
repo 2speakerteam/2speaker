@@ -26,6 +26,8 @@ export async function askFieldGuide(message, { signal, context = {}, history = [
   const response = await fetch('/api/assistant/reply', {
     method: 'POST', headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ task: 'field-guide', message, position,
+      userContext: (Array.isArray(history) ? history : []).filter(turn => turn?.role === 'user'
+        && typeof turn.text === 'string').slice(-16).map(turn => turn.text.slice(0, 300)),
       context: fieldContext(context), history: (Array.isArray(history) ? history : []).slice(-8).flatMap(turn =>
         ['user', 'assistant'].includes(turn?.role) && typeof turn.text === 'string'
           ? [{ role: turn.role, text: turn.text.slice(0, 700) }] : []) }),
