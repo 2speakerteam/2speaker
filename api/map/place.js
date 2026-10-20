@@ -1,4 +1,5 @@
 const { nearbyInput, nearbyPlaces } = require('../../lib/nearby-places');
+const { radiusInput, searchRadiusPlaces } = require('../../lib/nearby-radius');
 
 function plainText(value, fallback) {
   if (typeof value !== 'string') return fallback;
@@ -26,6 +27,19 @@ module.exports = async function handler(req, res) {
   const query = typeof req.body?.query === 'string' ? req.body.query.trim() : '';
   if (!query || query.length > 200) {
     return res.status(400).json({ error: '목적지 이름을 확인해 주세요.' });
+  }
+
+  // Add the coordinate search independently before moving the client to it.
+  if (req.body?.nearby?.version === 'radius-v2') {
+    const point = radiusInput(req.body.nearby);
+    if (!point) return res.status(400).json({ error: '주변 검색을 위한 현재 GPS를 확인해 주세요.' });
+    try {
+      return res.status(200).json(await searchRadiusPlaces(query, point, {
+        appKey: process.env.TMAP_TRANSIT_API_KEY?.trim()
+      }));
+    } catch (error) {
+      return res.status(error.statusCode || 502).json({ error: error.message || '주변 장소를 조회하지 못했습니다.' });
+    }
   }
 
   const origin = req.body?.nearby ? nearbyInput(req.body.nearby) : null;
