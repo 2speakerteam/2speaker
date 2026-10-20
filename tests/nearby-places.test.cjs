@@ -39,22 +39,23 @@ test('named destinations and station routes keep their original parser behavior'
   assert.equal(c.directRouteIntent('사가정역에서 면목역까지', 'dual').destination, '면목역');
   assert.equal(c.directRouteIntent('서울역', 'dual').searchMode, undefined);
 });
-test('GPS goes unchanged to search with reverse-geocoded area; no preview origin', async () => {
+test('GPS goes unchanged directly to radius search; no district or preview origin', async () => {
   const c = client(), p = origin();
   await c.fetchNearbyPlaces('미용실', p);
   assert.equal(c.requests[0].nearby.lat, p.lat);
   assert.equal(c.requests[0].nearby.lng, p.lng);
   assert.equal(c.requests[0].query, '미용실');
+  assert.equal(c.requests[0].nearby.areas, undefined);
 });
-test('missing, stale, very inaccurate GPS or failed reverse lookup never triggers global search', async () => {
+test('missing, stale or very inaccurate GPS never triggers global search; reverse lookup is unnecessary', async () => {
   for (const p of [null, { ...origin(), accuracy: 2001 }, { ...origin(), timestamp: Date.now() - 130000 }]) {
     const c = client();
     await assert.rejects(c.fetchNearbyPlaces('약국', p));
     assert.equal(c.requests.length, 0);
   }
   const c = client({ areas: null });
-  await assert.rejects(c.fetchNearbyPlaces('약국', origin()), /지역명/);
-  assert.equal(c.requests.length, 0);
+  await c.fetchNearbyPlaces('약국', origin());
+  assert.equal(c.requests.length, 1);
 });
 test('approximate GPS remains usable for candidates; labels qualify uncertainty', async () => {
   const c = client();
@@ -63,7 +64,7 @@ test('approximate GPS remains usable for candidates; labels qualify uncertainty'
   assert.match(c.nearbyDistanceLabel({ distanceMeters: 122 }, 95), /직선거리 약 120m.*대략적인 GPS/);
   assert.equal(c.nearbyDistanceLabel({}), '');
 });
-test('leaving the route before reverse lookup finishes prevents search', async () => {
+test('leaving the route prevents search', async () => {
   const c = client();
   assert.equal((await c.fetchNearbyPlaces('미용실', origin(), () => false)).length, 0);
   assert.equal(c.requests.length, 0);
@@ -110,8 +111,15 @@ test('no hits returns empty candidates, never invented names or distances', asyn
 });
 test('place endpoint: nearby bypasses exact title/landmark fallback; named flow retained', async () => {
   const queries = [];
-  const context = { module: { exports: {} }, require: name => require(path.join(__dirname, '../api/map', name)), URL, AbortSignal, process: { env: { NAVER_API_HUB_CLIENT_ID: 'fixture', NAVER_API_HUB_API_KEY: 'fixture' } },
+  const radius = require('../lib/nearby-radius');
+  const context = { module: { exports: {} }, require: name => name.endsWith('nearby-radius') ? {
+    ...radius, searchRadiusPlaces: (query, point, options) => radius.searchRadiusPlaces(query, point, { ...options, fetchImpl: context.fetch })
+  } : require(path.join(__dirname, '../api/map', name)), URL, AbortSignal, process: { env: { TMAP_TRANSIT_API_KEY: 'fixture', NAVER_API_HUB_CLIENT_ID: 'fixture', NAVER_API_HUB_API_KEY: 'fixture' } },
     fetch: async url => {
+      if (url.hostname === 'apis.openapi.sk.com') return { ok: true, json: async () => ({
+        searchPoiInfo: { totalCount: '1', pois: { poi: [{ id: '1', name: '리안헤어', noorLat: '37.581', noorLon: '127.08',
+          upperAddrName: '서울', middleAddrName: '중랑구', lowerAddrName: '면목동' }] } }
+      }) };
       queries.push(url.searchParams.get('query'));
       return { ok: true, json: async () => ({ items: [{ title: '리안헤어', category: '미용>미용실', mapx: '1270800000', mapy: '375810000' }] }) };
     }

@@ -1,12 +1,12 @@
 import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261020-no-opacity-2';
-import { createGuideConversation } from './guide-conversation.js?v=20261020-explicit-delete-1';
-import { createRoadviewGuide } from './roadview-guide.js?v=20261020-gps-evidence-1';
+import { createGuideConversation } from './guide-conversation.js?v=20261020-radius-2';
+import { createRoadviewGuide } from './roadview-guide.js?v=20261020-radius-2';
 import { ACCOUNT_EVENT, currentAccount, initializeAccount, signIn, signUp, signOut } from './account-session.js?v=20261018-cloud-history-1';
 import { startConversationSync, syncConversations, conversationAccountStatus, HISTORY_STATUS_EVENT } from './conversation-store.js?v=20261020-explicit-delete-1';
 import { createTransitArrivals, arrivalPlaceholder, transitLineLabel } from './transit-arrivals.js?v=20261018-arrival-label-spacing-1';
 import { hasTransitStationExits, showTransitStationExits } from './transit-station-exits.js?v=20261018-exits-3';
 
-import { nearbyPlaceQuery, fetchNearbyPlaces, nearbyDistanceLabel } from './nearby-place.js?v=20261020-nearby-1';
+import { nearbyPlaceQuery, fetchNearbyPlaces, nearbyDistanceLabel } from './nearby-place.js?v=20261020-radius-2';
 
 const root = document.querySelector('#root');
 let currentPage = 'home';
@@ -359,7 +359,7 @@ function loadNaverMaps() {
   return routeMapLoaderPromise;
 }
 
-function currentPositionOnce() {
+function currentPositionOnce(fresh = false) {
   return new Promise((resolve, reject) => {
     if (!window.isSecureContext || !navigator.geolocation) {
       reject(new Error('이 환경에서는 현재 위치를 확인할 수 없습니다.'));
@@ -368,7 +368,7 @@ function currentPositionOnce() {
     navigator.geolocation.getCurrentPosition(resolve, reject, {
       enableHighAccuracy: true,
       timeout: 15000,
-      maximumAge: 30000
+      maximumAge: fresh ? 0 : 30000
     });
   });
 }
@@ -1464,7 +1464,7 @@ function initializeNaverRouteMap() {
             locationStatus = '네이버에서 일치하는 출발지를 확인하지 못했습니다.';
             locationState = 'error';
           } else {
-            destinationStatus = nearbySearch ? '조회된 후보 중 GPS 기준 3km 이내 장소가 없습니다. 주변 업체가 전혀 없다는 뜻은 아닙니다.'
+            destinationStatus = nearbySearch ? '현재 위치 주변에서 상호·업종·좌표가 함께 확인된 후보를 찾지 못했습니다. 주변 업체가 없다는 뜻은 아닙니다.'
               : '네이버에서 일치하는 목적지를 확인하지 못했습니다.';
             destinationState = 'error';
           }
@@ -1488,7 +1488,7 @@ function initializeNaverRouteMap() {
     if (routeStartQuery) {
       searchNaverPlace(routeStartQuery, '출발지', markStart);
     } else {
-      currentPositionOnce().then((position) => {
+      currentPositionOnce(Boolean(routeNearbyQuery)).then((position) => {
         if (session !== routeMapSession || currentPage !== 'guide') return;
         const { latitude, longitude, accuracy } = position.coords;
         nearbyOrigin = { lat: latitude, lng: longitude, accuracy, timestamp: position.timestamp };

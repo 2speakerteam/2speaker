@@ -29,7 +29,7 @@ export function regionFor(position, signal) {
   });
 }
 
-export async function currentGuidePosition(signal) {
+export async function currentGuidePosition(signal, { resolveRegion = true } = {}) {
   if (signal?.aborted || !navigator.geolocation) return null;
   const position = await new Promise(resolve => {
     const finish = value => {
@@ -43,10 +43,11 @@ export async function currentGuidePosition(signal) {
         lat: p.coords.latitude, lng: p.coords.longitude,
         accuracy: p.coords.accuracy, timestamp: p.timestamp
       }), () => finish(null),
-      { enableHighAccuracy: true, maximumAge: 10000, timeout: 15000 });
+      { enableHighAccuracy: true, maximumAge: resolveRegion ? 10000 : 0, timeout: 15000 });
     } catch { finish(null); }
   });
   if (!position || signal?.aborted) return null;
+  if (!resolveRegion) return position;
   // A very broad or expired fix must not label a particular district as current.
   if (!Number.isFinite(position.accuracy) || position.accuracy < 0 || position.accuracy > 2000
     || Math.abs(Date.now() - position.timestamp) > 120000) return position;

@@ -1,6 +1,8 @@
 import { readAiHistory, saveAiHistory as persistAiHistory } from './guide-history.js?v=20261020-explicit-delete-1';
 import { readConversation, saveConversation, deleteConversation, HISTORY_EVENT, HISTORY_STATUS_EVENT, conversationStatus } from './conversation-store.js?v=20261020-explicit-delete-1';
 import { translationPartner, rememberTranslationPartner, translationRecordingType, createTranslationSpeech } from './translation-auto.js?v=20261018-auto-1';
+import { nearbyPlaceQuery } from './nearby-place.js?v=20261020-radius-2';
+import { nearbyAnswer } from './nearby-answer.js?v=20261020-radius-2';
 
 const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (character) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -266,7 +268,9 @@ export function createGuideConversation(section, { getContext }) {
     try {
       if (requestMode === 'ai') {
         const category = classifyQuestion(text);
-        const answer = category === 'route' ? routeAnswer(text, context)
+        const nearby = nearbyPlaceQuery(text);
+        const answer = nearby ? await nearbyAnswer(nearby, signal)
+          : category === 'route' ? routeAnswer(text, context)
           : category === 'place' ? await placeAnswer(text, context, signal)
             : (await jsonPost('/api/assistant/reply', {
               task: 'guide-chat',

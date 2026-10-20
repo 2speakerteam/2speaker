@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { radiusInput, poiPlace, searchRadiusPlaces } = require('../lib/nearby-radius');
+const { radiusInput, poiPlace, searchRadiusPlaces, corroboratedPlace, corroborateNearby } = require('../lib/nearby-radius');
 const origin = () => ({ lat: 37.588, lng: 127.096, accuracy: 10, timestamp: Date.now() });
 const row = (id, name, lat = 37.5881, extra = {}) => ({
   id, name, noorLat: String(lat), noorLon: '127.096',
@@ -85,4 +85,52 @@ test('malformed responses and missing authentication are explicit failures', asy
   await assert.rejects(searchRadiusPlaces('약국', origin(), { appKey: 'fixture',
     fetchImpl: async () => ({ ok: true, json: async () => ({}) })
   }), /응답/);
+});
+
+test('cross-check requires the same business, category and nearby coordinates, not an industry word in its name', () => {
+  const candidate = { id: 'a', title: '살롱이유', lat: 37.588, lng: 127.096 };
+  const good = { ...candidate, category: '미용>미용실', roadAddress: '검증된 주소' };
+  assert.equal(corroboratedPlace(candidate, [good], '미용실').roadAddress, '검증된 주소');
+  for (const items of [
+    [], [{ ...good, title: '다른 미용실' }], [{ ...good, category: '교육>학원' }],
+    [{ ...good, lat: 38 }], [{ ...good, lat: null }], [good, { ...good }]
+  ]) assert.equal(corroboratedPlace(candidate, items, '미용실'), null);
+});
+
+test('narrow salon suffix aliases need matching close coordinates', () => {
+  const candidate = { title: '뭉크', lat: 37.588, lng: 127.096 };
+  const other = { ...candidate, title: '뭉크미용실', category: '미용>미용실' };
+  assert.ok(corroboratedPlace(candidate, [other], '미용실'));
+  assert.equal(corroboratedPlace(candidate, [{ ...other, lat: 37.5884 }], '미용실'), null);
+  assert.equal(corroboratedPlace({ ...candidate, title: '봄' }, [{ ...other, title: '봄미용실' }], '미용실'), null);
+});
+
+test('cross-check uses returned coordinates for distance and does not pad unconfirmed candidates', async () => {
+  const p = origin();
+  const candidates = [
+    { id: 'a', title: '살롱이유', address: '서울 중랑구 면목동 1', lat: p.lat + 0.0001, lng: p.lng },
+    { id: 'b', title: '확인안됨', address: '서울 중랑구 면목동 2', lat: p.lat + 0.0002, lng: p.lng }
+  ];
+  const queries = [];
+  const result = await corroborateNearby({ places: candidates, radiusMeters: 1000 }, '미용실', p, async term => {
+    queries.push(term);
+    return term.includes('살롱이유') ? [{ ...candidates[0], lat: p.lat, category: '미용실' }] : [];
+  });
+  assert.equal(result.places.length, 1);
+  assert.equal(result.places[0].distanceMeters, 0);
+  assert.equal(result.coverage, 'corroborated-radius-candidates');
+  assert.deepEqual(queries, ['서울 중랑구 면목동 살롱이유', '서울 중랑구 면목동 확인안됨']);
+});
+
+test('cross-check preserves partial successes; all request failures remain failures', async () => {
+  const p = origin();
+  const candidates = [{ ...p, title: 'A', address: '서울 중랑구 면목동' }, { ...p, title: 'B', address: '서울 중랑구 면목동' }];
+  const data = { places: candidates, radiusMeters: 1000 };
+  const result = await corroborateNearby(data, '약국', p, async term => {
+    if (term.endsWith('B')) throw Error('provider failed');
+    return [{ ...candidates[0], category: '약국' }];
+  });
+  assert.equal(result.partial, true);
+  assert.equal(result.places.length, 1);
+  await assert.rejects(corroborateNearby(data, '약국', p, async () => { throw Error('provider failed'); }), /provider failed/);
 });

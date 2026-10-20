@@ -27,8 +27,15 @@ function client({ accuracy = 95, age = 0, denied = false, missingMaps = false, f
   };
   vm.createContext(context);
   vm.runInContext(source.replace(/export /g, ''), context);
-  return { get: signal => context.currentGuidePosition(signal), calls };
+  return { get: (signal, options) => context.currentGuidePosition(signal, options), calls };
 }
+test('nearby questions request fresh GPS directly without reverse-geocoding', async () => {
+  const h = client({ missingMaps: true });
+  const result = await h.get(undefined, { resolveRegion: false });
+  assert.equal(result.lat, 37.6);
+  assert.equal(h.calls.length, 1);
+  assert.equal(h.calls[0].options.maximumAge, 0);
+});
 test('GPS coordinates, reported accuracy and timestamp are kept; reverse region is only a hint', async () => {
   const h = client();
   const result = await h.get();

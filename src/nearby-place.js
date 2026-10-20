@@ -1,8 +1,7 @@
-import { regionFor } from './guide-location.js?v=20261020-nearby-1';
-
 // Recognize current-location requests before the route parser can lose "nearby".
 export function nearbyPlaceQuery(message) {
   const text = String(message || '').trim().replace(/[.!?？。]+$/, '').trim();
+  if (/(?:번역|통역|translate)/i.test(text)) return '';
   if (/(?:에서.+까지|지하철로|버스로|택시로|도보로)/.test(text)) return '';
   const match = text.match(/^(?:(?:지금|여기서|여기|현재\s*위치에서)\s*)*(?:(?:이\s*)?(?:근처|주변)(?:에|의)?|(?:제일|가장)\s*가까운)\s*(.+)$/);
   if (!match) return '';
@@ -12,23 +11,24 @@ export function nearbyPlaceQuery(message) {
   return query.length > 0 && query.length <= 80 ? query : '';
 }
 
-export async function fetchNearbyPlaces(query, origin, isActive = () => true) {
+export async function fetchNearbyPlaces(query, origin, isActive = () => true, signal) {
   if (!origin || !Number.isFinite(origin.lat) || !Number.isFinite(origin.lng)
+    || Math.abs(origin.lat) > 90 || Math.abs(origin.lng) > 180
     || !Number.isFinite(origin.accuracy) || origin.accuracy < 0 || origin.accuracy > 2000
     || !Number.isFinite(origin.timestamp) || Math.abs(Date.now() - origin.timestamp) > 120000) {
     throw new Error('주변 검색에 사용할 현재 위치를 확인하지 못했습니다. 위치 권한을 확인하고 다시 검색해 주세요.');
   }
-  const areas = await regionFor(origin);
-  if (!isActive()) return [];
-  if (!areas?.length) {
-    throw new Error('GPS는 확인했지만 주변 지역명을 조회하지 못했습니다. 잠시 후 다시 검색해 주세요.');
-  }
+  if (!isActive() || signal?.aborted) return [];
+  const timeout = AbortSignal.timeout(30000);
   const response = await fetch('/api/map/place', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query, nearby: { ...origin, areas } }),
-    signal: AbortSignal.timeout(15000)
+    body: JSON.stringify({ query, nearby: {
+      lat: origin.lat, lng: origin.lng, accuracy: origin.accuracy, timestamp: origin.timestamp
+    } }),
+    signal: signal && AbortSignal.any ? AbortSignal.any([signal, timeout]) : timeout
   });
   const payload = await response.json().catch(() => ({}));
+  if (!isActive() || signal?.aborted) return [];
   if (!response.ok) throw new Error(payload.error || '주변 장소 검색에 연결하지 못했습니다.');
   return Array.isArray(payload.places) ? payload.places : [];
 }

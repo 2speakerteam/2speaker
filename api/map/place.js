@@ -1,5 +1,4 @@
-const { nearbyInput, nearbyPlaces } = require('../../lib/nearby-places');
-const { radiusInput, searchRadiusPlaces } = require('../../lib/nearby-radius');
+const { radiusInput, searchRadiusPlaces, corroborateNearby } = require('../../lib/nearby-radius');
 
 function plainText(value, fallback) {
   if (typeof value !== 'string') return fallback;
@@ -29,22 +28,9 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: '목적지 이름을 확인해 주세요.' });
   }
 
-  // Add the coordinate search independently before moving the client to it.
-  if (req.body?.nearby?.version === 'radius-v2') {
-    const point = radiusInput(req.body.nearby);
-    if (!point) return res.status(400).json({ error: '주변 검색을 위한 현재 GPS를 확인해 주세요.' });
-    try {
-      return res.status(200).json(await searchRadiusPlaces(query, point, {
-        appKey: process.env.TMAP_TRANSIT_API_KEY?.trim()
-      }));
-    } catch (error) {
-      return res.status(error.statusCode || 502).json({ error: error.message || '주변 장소를 조회하지 못했습니다.' });
-    }
-  }
-
-  const origin = req.body?.nearby ? nearbyInput(req.body.nearby) : null;
+  const origin = req.body?.nearby ? radiusInput(req.body.nearby) : null;
   if (req.body?.nearby && !origin) {
-    return res.status(400).json({ error: '주변 검색을 위한 현재 GPS와 지역 정보를 확인해 주세요.' });
+    return res.status(400).json({ error: '주변 검색을 위한 현재 GPS를 확인해 주세요.' });
   }
 
   const clientId = process.env.NAVER_API_HUB_CLIENT_ID?.trim();
@@ -54,6 +40,7 @@ module.exports = async function handler(req, res) {
   }
 
   try {
+    const nearbyDeadline = origin ? AbortSignal.timeout(25000) : null;
     const search = async (term) => {
       const endpoint = new URL('https://naverapihub.apigw.ntruss.com/search/v1/local');
       endpoint.searchParams.set('query', term);
@@ -62,7 +49,7 @@ module.exports = async function handler(req, res) {
       endpoint.searchParams.set('sort', 'random'); // NAVER documents this value as accuracy order.
       endpoint.searchParams.set('format', 'json');
       const response = await fetch(endpoint, {
-        ...(origin ? { signal: AbortSignal.timeout(10000) } : {}),
+        ...(origin ? { signal: AbortSignal.any([nearbyDeadline, AbortSignal.timeout(7000)]) } : {}),
         headers: {
           'X-NCP-APIGW-API-KEY-ID': clientId,
           'X-NCP-APIGW-API-KEY': clientSecret,
@@ -102,8 +89,10 @@ module.exports = async function handler(req, res) {
     };
 
     if (origin) {
-      const result = await nearbyPlaces(query, origin, search);
-      return res.status(200).json(result);
+      const result = await searchRadiusPlaces(query, origin, {
+        appKey: process.env.TMAP_TRANSIT_API_KEY?.trim(), signal: nearbyDeadline
+      });
+      return res.status(200).json(await corroborateNearby(result, query, origin, search));
     }
 
     const normalized = (value) => String(value || '').toLowerCase().replace(/\s+/g, '');
