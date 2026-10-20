@@ -21,6 +21,13 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { tr
   }
   layer(front, true);
 
+  function release(channel) {
+    if (!channel) return;
+    try { channel.viewer.setVisible(false); } catch {}
+    try { channel.viewer.destroy?.(); } catch {}
+    channel.host.remove();
+  }
+
   function ensureBack(frame) {
     if (back) return false;
     const width = view.clientWidth;
@@ -64,6 +71,13 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { tr
     // Serialize SDK requests; never let an older request replace a newer one.
     while (loading) await loading;
     if (stopped) return null;
+    if (reload) {
+      // A stalled SDK instance may retain a failed tile or an unfinished scene.
+      // Rebuild only the hidden viewer; keep the last verified photo on screen.
+      const retired = back;
+      back = null;
+      release(retired);
+    }
     const created = ensureBack(frame);
     const target = back;
     if (!reload && ready(target, frame)) return target;
@@ -76,7 +90,8 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { tr
       }
       const started = performance.now();
       let stable = 0;
-      while (!stopped && performance.now() - started < 6000) {
+      const timeoutMs = reload ? 10000 : 6000;
+      while (!stopped && performance.now() - started < timeoutMs) {
         await new Promise(resolve => window.setTimeout(resolve, 30));
         if (stopped) return null;
         // Two loaded observations allow the SDK to paint before revealing it.
@@ -141,10 +156,11 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { tr
         const turn = now => {
           if (stopped || transition !== run) return;
           if (!run.steering && now - lastPaint >= 30) {
-            const pov = interpolateWalkingPov(preparedFrame.pov, frame.pov, (now - started) / durationMs);
+            const fraction = Math.min(1, (now - started) / durationMs);
+            const pov = interpolateWalkingPov(preparedFrame.pov, frame.pov, fraction);
             previous.viewer.setPov({ ...pov, fov: startPov.fov });
             target.viewer.setPov(pov);
-            onPov?.(pov);
+            onPov?.(pov, fraction);
             lastPaint = now;
           }
           run.raf = requestAnimationFrame(turn);
@@ -178,10 +194,7 @@ export function createWalkPanoramaBuffer(maps, canvas, view, initialViewer, { tr
       const active = transition;
       active?.cancel();
       for (const channel of [front, back]) {
-        if (!channel) continue;
-        channel.viewer.setVisible(false);
-        channel.viewer.destroy?.();
-        channel.host.remove();
+        release(channel);
       }
     }
   };

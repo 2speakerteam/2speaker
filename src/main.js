@@ -1,4 +1,4 @@
-import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261020-no-opacity-2';
+import { createWalkPanorama, findStationExit } from './walk-panorama.js?v=20261020-scene-recovery-1';
 import { createGuideConversation } from './guide-conversation.js?v=20261020-radius-2';
 import { createRoadviewGuide } from './roadview-guide.js?v=20261020-radius-2';
 import { ACCOUNT_EVENT, currentAccount, initializeAccount, signIn, signUp, signOut } from './account-session.js?v=20261018-cloud-history-1';
@@ -1527,6 +1527,19 @@ function initializeNaverRouteMap() {
           }
           renderPlaceChoices(result.choices, role, onSelect);
           updateStatus();
+          if (nearbySearch) window.requestAnimationFrame(() => {
+            if (session !== routeMapSession || currentPage !== 'guide'
+              || guideView !== 'route' || destinationLocation) return;
+            const content = document.querySelector('.guide-content');
+            const transport = content?.querySelector('.transport-options');
+            if (!content || !transport || !destinationChoicesElement?.firstElementChild) return;
+            // Nearby searches open on the choices, with the transport buttons above them.
+            // The map stays available by scrolling up; Back restores the saved list position.
+            content.scrollTo({
+              top: Math.max(0, content.scrollTop + transport.getBoundingClientRect().top
+                - content.getBoundingClientRect().top - 4), behavior: 'instant'
+            });
+          });
         } else {
           if (role === '출발지') {
             locationStatus = '네이버에서 일치하는 출발지를 확인하지 못했습니다.';

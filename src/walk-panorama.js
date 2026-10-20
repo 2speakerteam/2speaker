@@ -1,10 +1,10 @@
 import { createPanoramaProbe } from './panorama-probe.js?v=20261017-panorama-isolation-2';
-import { createWalkPanoramaBuffer } from './walk-panorama-buffer.js?v=20261020-no-opacity-2';
+import { createWalkPanoramaBuffer } from './walk-panorama-buffer.js?v=20261020-scene-recovery-1';
 import { walkingViewPov, walkingPlaybackTiming } from './walk-panorama-motion.js?v=20261019-walk-flow-10';
 import { createWalkMiniMap } from './walk-mini-map.js?v=20261016-route-arrow-sync-1';
 import { bindBoardingPanoramaGestures } from './boarding-panorama-gestures.js?v=20261019-boarding-direction-hold-1';
 import { createBoardingPanoramaTravel } from './boarding-panorama-travel.js?v=20261019-boarding-direction-hold-1';
-import { createWalkRouteArrowLayer } from './walk-route-arrow-layer.js?v=20261019-arrow-center-2';
+import { createWalkRouteArrowLayer } from './walk-route-arrow-layer.js?v=20261020-scene-recovery-1';
 
 const CAMERA_TO_ROUTE_LIMIT_METERS = 15;
 const CAMERA_TO_REQUEST_LIMIT_METERS = 25;
@@ -652,6 +652,16 @@ export function createWalkPanorama(maps, section) {
     const viewPov = walkingViewPov(previousFrame, frame, currentPov);
     const displayFrame = { ...frame, pov: viewPov };
     const timing = walkingPlaybackTiming(previousFrame, frame, !playing);
+    const fromArrowBearing = frames[selected]
+      ? arrowTargetForFrame(frames[selected], routeDecisions, routeEdges) : null;
+    const toArrowBearing = arrowTargetForFrame(frame, routeDecisions, routeEdges);
+    const syncTransitionArrow = (pov, fraction) => {
+      if (![fromArrowBearing, toArrowBearing].every(Number.isFinite)) return;
+      const t = Math.max(0, Math.min(1, fraction));
+      const eased = t * t * (3 - 2 * t);
+      routeArrowLayer?.setTransitionPov(pov,
+        fromArrowBearing + signedAngle(fromArrowBearing, toArrowBearing) * eased);
+    };
     let buffered = false;
     const matchesFrame = (found, expected) => found.status === 'OK'
       && found.panoId === expected.panoId;
@@ -665,7 +675,7 @@ export function createWalkPanorama(maps, section) {
     if (walkBuffer && selected >= 0 && panorama.getPanoId() !== frame.panoId) {
       let preparedViewer = await walkBuffer.show(displayFrame, {
         durationMs: timing.transitionMs, fromPov: panorama.getPov(),
-        onPov: pov => routeArrowLayer?.setPov(pov)
+        onPov: syncTransitionArrow
       });
       if (run !== generation) return;
       if (!preparedViewer && playing) {
@@ -676,7 +686,7 @@ export function createWalkPanorama(maps, section) {
         if (playing) {
           preparedViewer = await walkBuffer.show(displayFrame, {
             durationMs: timing.transitionMs, fromPov: panorama.getPov(),
-            onPov: pov => routeArrowLayer?.setPov(pov), reload: true
+            onPov: syncTransitionArrow, reload: true
           });
           if (run !== generation) return;
         } else {

@@ -33,6 +33,7 @@ export function createWalkRouteArrowLayer(canvas, view) {
   let renderer = null;
   let scene = null;
   let headingOffset = null;
+  let transitioning = false;
   let stopped = false;
 
   const renderedCamera = () => {
@@ -51,7 +52,7 @@ export function createWalkRouteArrowLayer(canvas, view) {
   const paint = () => {
     if (stopped || !Number.isFinite(bearing) || !pov) return;
     const width = view.clientWidth, height = view.clientHeight;
-    const camera = renderedCamera();
+    const camera = transitioning ? null : renderedCamera();
     const cameraPan = camera && headingOffset !== null ? camera.pan + headingOffset : pov.pan;
     const relative = ((bearing - cameraPan + 540) % 360) - 180;
     const pan = relative * RADIANS, tilt = (camera?.tilt ?? pov.tilt) * RADIANS;
@@ -96,12 +97,14 @@ export function createWalkRouteArrowLayer(canvas, view) {
     renderer = null;
     scene = null;
     headingOffset = null;
+    transitioning = false;
     canvas.classList.remove('has-retained-route-arrow');
   };
   const show = (source, directionKey, refreshPose = false, sceneKey = null, targetAngle = null, cameraPov = null, cameraElement = null) => {
     if (stopped) return;
     if (canvas.classList.contains('is-arrival')) { clear(); return; }
     if (!Number.isFinite(targetAngle) || !Number.isFinite(cameraPov?.pan)) { clear(); return; }
+    transitioning = false;
     if (renderer !== cameraElement || scene !== sceneKey) {
       cameraObserver.disconnect();
       renderer = cameraElement;
@@ -113,6 +116,14 @@ export function createWalkRouteArrowLayer(canvas, view) {
     bearing = cameraPov.pan + targetAngle;
     setPov(cameraPov);
   };
+  const setTransitionPov = (value, routeBearing) => {
+    if (!Number.isFinite(routeBearing)) return;
+    // During a buffered turn, the observed DOM still belongs to the old photo.
+    // Use the same interpolated camera and route bearing until the scene settles.
+    transitioning = true;
+    bearing = routeBearing;
+    setPov(value);
+  };
   const stop = () => {
     stopped = true;
     canvas.removeEventListener('pointerdown', anchorCamera, true);
@@ -121,5 +132,5 @@ export function createWalkRouteArrowLayer(canvas, view) {
     root.remove();
     style.remove();
   };
-  return { show, setPov, clear, stop };
+  return { show, setPov, setTransitionPov, clear, stop };
 }
