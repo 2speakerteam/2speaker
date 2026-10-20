@@ -50,6 +50,14 @@ test('numbered source blocks generate the actual quotation server-side and rejec
   assert.equal(validatePaths(raw, [{ ...source, content: body + ' 현재 출입 금지입니다.' }], '시험전망대').length, 0);
 });
 
+test('a sign naming a future junction is not treated as an arrival before intervening landmarks', () => {
+  const body = '시험입구에서 순환삼거리 방향으로 갑니다. 명상쉼터를 지나면 순환삼거리와 연결됩니다. 이후 시험전망대에 도착합니다.';
+  const make = nodes => ({ paths: [{ sourceId: 'S1', nodes,
+    edges: nodes.slice(0, -1).map((from, i) => ({ from, to: nodes[i + 1], fromBlock: 'B1', toBlock: 'B1', connectionBlock: 'B1' })) }] });
+  assert.equal(validatePaths(make(['시험입구', '명상쉼터', '순환삼거리', '시험전망대']), [{ ...source, content: body }], '시험전망대').length, 1);
+  assert.equal(validatePaths(make(['시험입구', '순환삼거리', '명상쉼터', '시험전망대']), [{ ...source, content: body }], '시험전망대').length, 0);
+});
+
 test('agreements and conflicts stay separate; same author cannot corroborate themselves', () => {
   const [a] = validatePaths({ paths: [path] }, [source], '시험전망대');
   const b = { ...a, id: 'P2', sourceId: 'S2', sourceUrl: 'https://m.blog.naver.com/other/100', sourceKind: 'community' };
@@ -97,6 +105,15 @@ test('missing or conflicting source connections never fall back to an unrelated 
   assert.doesNotMatch(retainPublishedSequence('5.1km', missing, 'ko'), /5\.1/);
   const conflicts = { accessResearch: { comparison: { conflicts: [{}] } } };
   assert.match(retainPublishedSequence('우회 경로입니다', conflicts, 'ko'), /연결 순서가 달라/);
+});
+
+test('published guidance renders only the checked sequence even when prose inserts an extra landmark', () => {
+  const evidence = { accessResearch: { selectedPathId: 'P1', alignment: {
+    remainingNodes: ['시험입구', '명상쉼터', '시험전망대'], namedStartOnPublishedSequence: true } } };
+  const actual = retainPublishedSequence('시험입구에서 순환삼거리를 먼저 거쳐 명상쉼터에서 시험전망대로 가세요.', evidence, 'ko');
+  assert.match(actual, /시험입구 → 명상쉼터 → 시험전망대/);
+  assert.doesNotMatch(actual, /순환삼거리/);
+  assert.match(actual, /말씀하신 출발 지점 기준/);
 });
 
 test('public source images restrict hosts, relevant captions and valid binary content', async () => {
