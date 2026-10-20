@@ -23,6 +23,21 @@ test('every published edge needs a literal connecting quote from one read source
   assert.equal(validatePaths({ paths: [path] }, [source], '다른목적지').length, 0);
 });
 
+test('adjacent paragraph references are grounded in bounded contiguous source spans, never across omitted text', () => {
+  const body = '시험입구에 도착합니다. 이후 숲길을 따라 올라갑니다. 시험전망대가 나타납니다.';
+  const raw = { paths: [{ sourceId: 'S1', nodes: ['시험입구', '시험전망대'], edges: [{ from: '시험입구', to: '시험전망대',
+    fromQuote: '시험입구에 도착합니다.', toQuote: '시험전망대가 나타납니다.', connectionQuote: '이후 숲길을 따라 올라갑니다.' }] }] };
+  assert.equal(validatePaths(raw, [{ ...source, content: body }], '시험전망대').length, 1);
+  assert.equal(validatePaths(raw, [{ ...source, content: body.replace('이후', '[중략] 이후') }], '시험전망대').length, 0);
+  const diagnostics = {};
+  assert.equal(validatePaths(raw, [{ ...source, content: body.replace('올라갑니다', '내려갑니다') }], '시험전망대', diagnostics).length, 0);
+  assert.equal(diagnostics.edgeGrounding, 1);
+  const overlapping = structuredClone(raw);
+  overlapping.paths[0].edges[0] = { from: '시험입구', to: '시험전망대',
+    fromQuote: '시험입구에서 시험전망대로', toQuote: '시험전망대로', connectionQuote: '이어집니다.' };
+  assert.equal(validatePaths(overlapping, [{ ...source, content: '시험입구에서 시험전망대로 이어집니다.' }], '시험전망대').length, 1);
+});
+
 test('agreements and conflicts stay separate; same author cannot corroborate themselves', () => {
   const [a] = validatePaths({ paths: [path] }, [source], '시험전망대');
   const b = { ...a, id: 'P2', sourceId: 'S2', sourceUrl: 'https://m.blog.naver.com/other/100', sourceKind: 'community' };

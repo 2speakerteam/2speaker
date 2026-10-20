@@ -144,11 +144,10 @@ test('coarse GPS never creates an entry connector from mere proximity', async ()
 
 test('a user-mentioned missing connection triggers a bounded focused search without changing their position', async () => {
   const h = harness({ official: true, plan: { ...routePlan, viaQuery: '시험후문', accessResearch: true } });
-  await h.guide.answerFieldQuestion({ body: {} }, `${topic}는 시험후문을 통해 가는 길이 있어`);
-  const { evidence } = h.models.at(-1).data;
-  assert.equal(evidence.requestedStart, '');
-  assert.equal(evidence.accessResearch.via, '시험후문');
-  assert.equal(evidence.accessResearch.selectedPathId, '');
+  const result = await h.guide.answerFieldQuestion({ body: {} }, `${topic}는 시험후문을 통해 가는 길이 있어`);
+  assert.equal(result.usage.originUserNamed, 0);
+  assert.equal(result.usage.accessSelected, 0);
+  assert.match(result.text, /시험후문/);
   assert.ok(h.requests.some(value => new URL(value).searchParams.get('query')?.includes('시험후문')));
   assert.equal(h.routes.length, 0);
 });
